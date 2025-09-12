@@ -1,4 +1,3 @@
-("/step-list" language ("ru_RU") action "list" steps_file "/usr/share/install2/installer-steps")
 ("/sysconfig-base/language" language ("ru_RU") action "list" language ("ru_RU"))
 ("/step-list" language ("ru_RU") action "list")
 ("/help/" language ("ru_RU") action "read" topic "sysconfig-base")
