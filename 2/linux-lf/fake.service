@@ -1,0 +1,8 @@
+[Unit]
+Description=fake
+After=network.target
+[Service]
+ExecStart=/bin/sh -c '/bin/echo "I am starting the fake service" ; /bin/sleep 30'
+ExecStop=/bin/echo "I am stopping the fake service"
+[Install]
+WantedBy=multi-user.target
