@@ -83,11 +83,8 @@ git push -u altlinux main
 ```bash
 ssh -t -i ~/.ssh/id_kvm_host admin@shoellin "su -"
 
-ssh -t -o "ProxyCommand=ssh -i ~/.ssh/id_kvm_host -W %h:%p shoel@shoellin" \
--i ~/.ssh/id_vm sadmin@192.168.121.4 \
-"su -"
-
-sed -i "30a\\        option domain-name-servers 77.88.8.8;" /etc/dhcp/dhcpd.conf
+sed -i "30a\\        option domain-name-servers 77.88.8.8;" \
+/etc/dhcp/dhcpd.conf
 
 systemctl restart dhcpd.service
 
