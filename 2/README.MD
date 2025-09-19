@@ -102,6 +102,7 @@ WantedBy=multi-user.target
 ##### 5. Остановите сервис
 ##### 6. Настройте сервис на автоматический запуск
 ```bash
+systemctl daemon-reload
 systemctl start fake.service \
 && systemctl status fake
 systemctl restart fake \
