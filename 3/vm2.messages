@@ -1,0 +1,74 @@
+total 192
+drwxr-xr-x  26 root root              4096 Sep 21 18:04 .
+drwxr-xr-x  16 root root              4096 Sep 11 17:44 ..
+-rw-r--r--   1 root root              1041 Jun 26 16:11 README.logs
+drwxr-x---   2 root adm               4096 Sep 11 17:51 ahttpd
+lrwxrwxrwx   1 root root                12 Jun 10  2020 alert -> syslog/alert
+drwx------   2 root root              4096 Sep 21 18:18 alt-s-p11
+drwx------   2 root root              4096 Sep 21 18:18 alt-w-p11
+drwxr-xr-x   3 root root              4096 Aug 18 16:22 alterator
+-rw-r--r--   1 root root                 0 Oct 11  2023 alterator-net-iptables
+drwx------   2 root root              4096 Jun  4 10:00 audit
+drwxr-x---   2 root adm               4096 Sep 21 14:43 auth
+lrwxrwxrwx   1 root root                11 Jun 10  2020 boot.log -> syslog/boot
+-rw-rw----   1 root utmp              1536 Sep 11 19:15 btmp
+drwxrwxr-t   2 root _chrony           4096 Dec  2  2024 chrony
+drwxr-x---   2 root adm               4096 Sep 21 14:43 cron
+drwxr-x---   2 root adm               4096 Sep 21 14:43 daemons
+drwxr-x---   2 root adm               4096 Sep 21 14:43 ftp
+drwxr-sr-x+  3 root systemd-journal   4096 Sep 11 17:44 journal
+-rw-r--r--   1 root root                 0 Sep 11 17:38 journald
+drwxr-x---   2 root adm               4096 Sep 21 14:43 kernel
+-rw-rw-r--   1 root utmp            292292 Sep 21 14:43 lastlog
+drwxr-x---   2 root adm               4096 Sep 21 14:43 lpr
+drwxr-x---   2 root adm               4096 Sep 21 14:43 mail
+lrwxrwxrwx   1 root root                 8 Jun 10  2020 maillog -> mail/all
+lrwxrwxrwx   1 root root                15 Jun 10  2020 messages -> syslog/messages
+drwxrwx---   2 root named             4096 May 22 11:22 named
+drwxr-x---   2 root adm               4096 Sep 21 14:43 news
+drwx------   2 root root              4096 Sep 11 17:54 ppp
+drwx------   2 root root              4096 Sep 11 17:38 private
+-rw-r--r--   1 root root             24033 Sep 21 15:37 rpmpkgs
+drwxr-x---   2 root adm               4096 Dec 18  2023 sa
+drwx------   3 root root              4096 Aug 16 00:58 samba
+lrwxrwxrwx   1 root root                11 Jun 10  2020 secure -> auth/secure
+lrwxrwxrwx   1 root root                14 Jun 10  2020 spooler -> syslog/spooler
+drwxr-x---   2 root adm               4096 Sep 21 14:43 syslog
+drwxr-x---   2 root adm               4096 Sep 21 14:43 user
+drwxr-x---   2 root adm               4096 Sep 21 14:43 uucp
+-rw-rw-r--   1 root utmp             41856 Sep 21 17:50 wtmp
+drwxr-x---   2 root adm               4096 Aug 26  2021 xinetd
+total 116
+drwxr-x---  2 root adm    4096 Sep 21 14:43 .
+drwxr-xr-x 26 root root   4096 Sep 21 18:04 ..
+-rw-r-----  1 root adm    2220 Sep 21 18:04 alert
+-rw-r-----  1 root adm       0 Sep 21 14:43 boot
+-rw-r-----  1 root adm  100689 Sep 21 18:21 messages
+-rw-r-----  1 root adm       0 Sep 21 14:43 spooler
+-rw-r-----  1 root adm       0 Sep 21 14:43 sudo
+/var/log/alt-w-p11:
+total 36
+drwx------  2 root root 4096 Sep 21 18:18 .
+drwxr-xr-x 26 root root 4096 Sep 21 18:04 ..
+-rw-------  1 root root  134 Sep 21 18:18 NetworkManager.log
+-rw-------  1 root root  369 Sep 21 18:18 dbus-daemon.log
+-rw-------  1 root root  353 Sep 21 18:04 root.log
+-rw-------  1 root root  425 Sep 21 18:04 rsyslogd.log
+-rw-------  1 root root  219 Sep 21 18:04 sshd.log
+-rw-------  1 root root  185 Sep 21 18:04 su.log
+-rw-------  1 root root 1536 Sep 21 18:18 systemd.log
+/var/log/alt-s-p11:
+total 72
+-rw-------  1 root root   182 Sep 21 18:20 (sd-pam).log
+-rw-------  1 root root   206 Sep 21 18:20 (systemd).log
+drwx------  2 root root  4096 Sep 21 18:18 .
+drwxr-xr-x 26 root root  4096 Sep 21 18:04 ..
+-rw-------  1 root root   560 Sep 21 18:20 crond.log
+-rw-------  1 root root   207 Sep 21 18:18 dhcpd.log
+-rw-------  1 root root 29769 Sep 21 18:21 nslcd.log
+-rw-------  1 root root   425 Sep 21 18:03 rsyslogd.log
+-rw-------  1 root root  8136 Sep 21 18:20 systemd.log
+Sep 21 18:04:37 alt-w-p11 systemd[1]: Stopping crond.service - Vixie Cron Daemon...
+Sep 21 18:04:37 alt-w-p11 systemd[1]: crond.service: Deactivated successfully.
+Sep 21 18:04:37 alt-w-p11 systemd[1]: Stopped crond.service - Vixie Cron Daemon.
+Sep 21 18:04:37 alt-w-p11 systemd[1]: Started crond.service - Vixie Cron Daemon.

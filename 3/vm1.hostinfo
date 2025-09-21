@@ -1,0 +1,5 @@
+alt-w-p11
+2: ens6: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 52:54:00:fe:31:a0 brd ff:ff:ff:ff:ff:ff
+    altname enp0s6
+    inet 192.168.121.4/29 brd 192.168.121.7 scope global dynamic noprefixroute ens6

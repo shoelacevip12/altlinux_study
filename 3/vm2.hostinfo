@@ -1,0 +1,5 @@
+alt-s-p11
+2: ens6: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 52:54:00:62:68:84 brd ff:ff:ff:ff:ff:ff
+    altname enp0s6
+    inet 192.168.121.2/29 brd 192.168.121.7 scope global ens6
