@@ -15,7 +15,7 @@
 apt-get update \
 && update-kernel -y \
 && apt-get dist-upgrade -y \
-&& apt-get -y rsyslog-classic
+&& apt-get install -y rsyslog-classic
 ```
 ![](./img/2.png)
 ##### 2. Ознакомьтесь с конфигурацией rsyslog по-умолчанию и запустите службу `rsyslog` на обоих узлах.
