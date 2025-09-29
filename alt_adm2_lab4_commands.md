@@ -16,7 +16,7 @@ touch README.MD
 mkdirk img
 
 sudo bash -c "virsh net-start --network vagrant-libvirt \
-&& virsh start altlinux_altlinux_install \
+&& virsh start altlinux_altlinux_install
 
 
 git status
