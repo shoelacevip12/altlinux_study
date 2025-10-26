@@ -1,0 +1,27 @@
+---
+- name: Обновление пакетов
+  apt_rpm:
+    update_cache: true
+    dist_upgrade: true
+    # update_kernel: true
+
+- name: Установка xrdp
+  apt_rpm:
+    name: 
+      - xrdp
+    state: present
+    clean: true
+
+- name: Запуск и включение сервисов xrdp
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - xrdp
+    - xrdp-sesman
+  register: result_services
+
+- name: Вывод состояния сервисов в сервисах
+  debug:
+    msg: "{{ result_services.stdout }}"

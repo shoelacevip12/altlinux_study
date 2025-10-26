@@ -1,0 +1,22 @@
+---
+- name: Установки RDP-сервера в ОС Альт
+  hosts: alt_work_p11
+  become: yes
+  become_method: su
+  become_user: root
+  gather_facts: yes
+
+  vars_prompt:
+    - name: "sudo_password"
+      prompt: "Введите пароль для su (пользователя sadmin)"
+      private: yes
+
+  # Устанавливаем переменную 'ansible_become_password' с помощью 'vars'
+  vars:
+    ansible_become_password: "{{ sudo_password }}"
+
+  tasks:
+    - name: Запуск роли xrdp_skv
+      include_role:
+        name: xrdp_skv
+      no_log: true
