@@ -1,0 +1,188 @@
+#!/bin/bash
+
+set -o pipefail
+
+DATA_FILE="data.txt"
+
+proverk_knigi() {
+    touch "$DATA_FILE" || {
+        echo -e "Ошибка: Не удалось изменить файл Телефонной книги '$DATA_FILE'.\nПроверьте права доступа." >&2
+        exit 100
+    }
+}
+
+show_help() {
+    echo -e "Правильное использование:
+    
+    $0 команда [аргументы]
+
+Доступные команды:
+    new    <имя> <номер>    Добавление записи в телефонную книгу
+    search <имя-или-номер>  Поиск записей в телефонной книге
+    list                    Просмотр всех записей
+    delete <имя-или-номер>  Удаление записи
+    help или -h             Показ этой справки"
+}
+
+proverk_vvoda() {
+    local vvodimyy_type="$1"
+    local vvodimo_znach="$2"
+
+    case "$vvodimyy_type" in
+        "name")
+            [[ "$vvodimo_znach" =~ ^[A-Za-zА-Яа-яЁё\ ]+$ ]] && return 0
+            echo -e "Ошибка: Имя содержит недопустимые символы: '$vvodimo_znach'.\n\
+            Разрешены только буквы (латиница, кириллица), и пробелы между словами." >&2
+            return -1
+            ;;
+        "phone")
+            local otfiltrov_vvod
+            otfiltrov_vvod=$(echo "$vvodimo_znach" | sed 's/[[:digit:] ()+-]//g')
+            [[ -z "$otfiltrov_vvod" ]] && return 0
+            echo -e "Ошибка: Номер телефона содержит недопустимые символы: '$otfiltrov_vvod'.\n\
+            Разрешены только цифры, пробелы, круглые скобки , '-' и '+'." >&2
+            return -2
+            ;;
+        *)
+            echo "Ошибка: Внутренняя ошибка: Неизвестный тип ввода '$vvodimyy_type' для проверки." >&2
+            return -3
+            ;;
+    esac
+}
+
+proverk_vvoda_telefona() {
+    local phone="$1"
+    local kolich_cifr
+    kolich_cifr=$(echo "$phone" | sed 's/[^[:digit:]]//g' | wc -c)
+    kolich_cifr=$((kolich_cifr - 1))
+
+    if [ $kolich_cifr -ne 11 ]; then
+        echo "Ошибка: Номер телефона должен содержать 11 цифр (без '+'). Введено: $kolich_cifr." >&2
+        return -4
+    fi
+    echo "$phone"  # Возвращаем исходный номер, если валидация прошла
+}
+# экранирование спец символов
+ekran_spec() {
+    echo "$1" | sed 's/[[\.*^$()+?{|]/\\&/g; s/\//\\\//g'
+}
+
+add_new() {
+    local name="$1"
+    local phone="$2"
+
+    proverk_vvoda "name" "$name" || return -1
+    proverk_vvoda "phone" "$phone" || return -2
+    phone=$(proverk_vvoda_telefona "$phone") || return -2
+
+    proverk_knigi
+
+    if grep -qF ": $phone$" "$DATA_FILE"; then
+        echo -e "Ошибка: Номер телефона '$phone'\n\
+        уже существует в телефонной книге." >&2
+        return -5
+    fi
+
+    printf '%s : %s\n' "$name" "$phone" >> "$DATA_FILE"
+    echo -e "Запись успешно добавлена:\n$name - $phone"
+}
+
+list_zapisey() {
+    proverk_knigi
+    if [[ -s "$DATA_FILE" ]]; then
+        sort "$DATA_FILE"
+    else
+        echo "Телефонная книга пуста."
+    fi
+    exit 0
+}
+
+poisk_zapisey() {
+    local poiskovyy_param="$1"
+    proverk_knigi
+
+    local naydenoe=$(grep -F "$poiskovyy_param" "$DATA_FILE")
+
+    if [ -n "$naydenoe" ]; then
+        echo "$naydenoe" | awk -F: '{print $2 " : " $1}'
+    else
+        echo "Записи не найдены для поискового запроса: $poiskovyy_param" >&2
+        exit 1
+    fi
+}
+
+delete_record() {
+    local udalenie_po_param="$1"
+    proverk_knigi
+
+    local filter_udaleniya=$(ekran_spec "$udalenie_po_param")
+
+    local sverka_bylo=$(wc -l < "$DATA_FILE" 2>/dev/null || echo 0)
+
+    sed -i "/^$filter_udaleniya : /Id" "$DATA_FILE"
+    sed -i "/ : $filter_udaleniya$/Id" "$DATA_FILE"
+
+    local sverka_stalo=$(wc -l < "$DATA_FILE" 2>/dev/null || echo 0)
+
+    if [ "$sverka_bylo" -eq "$sverka_stalo" ]; then
+        echo "Ошибка: Записей для удаления с запросом '$udalenie_po_param' не найдены." >&2
+        exit 1
+    else
+        echo -e "Запись, содержащая '$udalenie_po_param', успешно удалена."
+    fi
+}
+
+main() {
+    local commanda="$1"
+
+    case "$commanda" in
+        "new")
+            if [[ $# -ne 3 ]]; then
+                echo "Ошибка: Команда 'new' требует ровно 2 аргумента: <имя> <телефон>" >&2
+                show_help
+                exit 1
+            fi
+            add_new "$2" "$3"
+            ;;
+        "search")
+            if [[ $# -ne 2 ]]; then
+                echo "Ошибка: Команда 'search' требует ровно 1 аргумент: <имя-или-телефон>" >&2
+                show_help
+                exit 101
+            fi
+            poisk_zapisey "$2"
+            ;;
+        "list")
+            if [[ $# -ne 1 ]]; then
+                echo "Ошибка: Команда 'list' не принимает аргументы." >&2
+                show_help
+                exit 102
+            fi
+            list_zapisey
+            ;;
+        "delete")
+            if [[ $# -ne 2 ]]; then
+                echo "Ошибка: Команда 'delete' требует ровно 1 аргумент: <имя-или-телефон>" >&2
+                show_help
+                exit 103
+            fi
+            delete_record "$2"
+            ;;
+        "help"|"-h"|"--help")
+            show_help
+            exit 0
+            ;;
+        "")
+            echo "Ошибка: Команда не указана." >&2
+            show_help
+            exit 104
+            ;;
+        *)
+            echo "Ошибка: Неизвестная команда: $commanda" >&2
+            show_help
+            exit 105
+            ;;
+    esac
+}
+
+main "$@"
