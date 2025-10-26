@@ -116,8 +116,8 @@ sed -ie 's|;ssh_agent=.*|ssh_agent=auto|' ansible.cfg  \
 && grep "ssh_agent=" ansible.cfg
 
 
-sed -ie 's|;home=~/.ansible|home=~/ans|' ansible.cfg \
-&& grep "home=~/" ansible.cfg
+sed -ie 's|;home=~/.ansible|home=./|' ansible.cfg \
+&& grep "home=./" ansible.cfg
 
 sed -ie 's|;inventory=\[.*\]|inventory=./hosts.ini|' ansible.cfg \
 && grep "inventory=" ansible.cfg
@@ -126,7 +126,7 @@ touch hosts.ini
 
 mkdir roles
 
-sed -ie 's|;roles_path=\/.*|roles_path=~/ans/roles|' ansible.cfg \
+sed -ie 's|;roles_path=\/.*|roles_path=./roles|' ansible.cfg \
 && grep "roles_path=" ansible.cfg
 
 sed -ie 's|;host_key_checking.*|host_key_checking=False|' ansible.cfg \
@@ -136,12 +136,58 @@ ansible-galaxy init roles/xrdp_skv
 
 cat >  ~/ans/hosts.ini << 'EOF'
 [alt_work_p11]
-192.168.121.[4:6]
+# 192.168.121.[4:6]
+192.168.121.4
+EOF
 
-[alt_work_p11:vars]
-ansible_user=sadmin
-ansible_ssh_private_key_file=~/.ssh/id_xrdp_host
-ansible_python_interpreter=/usr/bin/python3
+cat > ~/ans/roles/xrdp_skv/defaults/main.yml<< 'EOF'
+---
+# Список пользователей и их пароли
+xrdp_users:
+  xrdpuser_1:
+    password: "password1"
+    groups: "tsusers"
+    shell: "/bin/bash"
+  xrdpuser_2: 
+    password: "password2"
+    groups: "tsusers"
+    shell: "/bin/bash"
+  xrdpuser_3:
+    password: "password3"
+    groups: "tsusers"
+    shell: "/bin/bash"
+  xrdpuser_4:
+    password: "password4"
+    groups: "tsusers"
+    shell: "/bin/bash"
+EOF
+
+cat > ~/ans/role_xrdp.yaml<< 'EOF'
+---
+- name: Установки RDP-сервера в ОС Альт
+  hosts: alt_work_p11
+  become: yes
+  become_method: su
+  become_user: root
+  gather_facts: yes
+
+  vars_prompt:
+    - name: "su_password"
+      prompt: "Введите пароль для su (пользователя sadmin)"
+      private: yes
+
+  # Устанавливаем переменную 'ansible_become_password' с помощью 'vars'
+  vars:
+    ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
+    ansible_python_interpreter: "/usr/bin/python3"
+    ansible_user: "sadmin"
+    ansible_become_password: "{{ su_password }}"
+
+  tasks:
+    - name: Запуск роли xrdp_skv
+      include_role:
+        name: xrdp_skv
+      no_log: true
 EOF
 
 cat > ~/ans/roles/xrdp_skv/tasks/main.yml << 'EOF'
@@ -157,13 +203,17 @@ cat > ~/ans/roles/xrdp_skv/tasks/main.yml << 'EOF'
     name: 
       - xrdp
     state: present
-    clean: true
+    # clean: true
+
+- name: Бэкап файла конфига xrdp-sesman 
+  shell: cp /etc/xrdp/sesman.ini{,.bak}
 
 - name: Запуск и включение сервисов xrdp
   systemd:
     name: "{{ item }}"
     state: started
     enabled: yes
+    masked: no
   loop:
     - xrdp
     - xrdp-sesman
@@ -171,37 +221,35 @@ cat > ~/ans/roles/xrdp_skv/tasks/main.yml << 'EOF'
 
 - name: Вывод состояния сервисов в сервисах
   debug:
-    msg: "{{ result_services.stdout }}"
+    msg: "{{ result_services.changed }}"
+
+- name: Создание пользователей RDP
+  include_tasks:
+    file: xrdp_users.yml
 EOF
 
-cat > ~/ans/role_xrdp.yaml<< 'EOF'
+cat > ~/ans/roles/xrdp_skv/tasks/xrdp_users.yml << 'EOF'
 ---
-- name: Установки RDP-сервера в ОС Альт
-  hosts: alt_work_p11
-  become: yes
-  become_method: su
-  become_user: root
-  gather_facts: yes
+- name: Создание пользователей xrdp-seasman
+  user:
+    name: "{{ item.key }}"
+    password: "{{ item.value.password | password_hash('sha512') }}"
+    groups: "{{ item.value.groups }}"
+    shell: "{{ item.value.shell }}"
+    append: yes
+  loop: "{{ xrdp_users | dict2items }}"
+  no_log: true
 
-  vars_prompt:
-    - name: "sudo_password"
-      prompt: "Введите пароль для su (пользователя sadmin)"
-      private: yes
-
-  # Устанавливаем переменную 'ansible_become_password' с помощью 'vars'
-  vars:
-    ansible_become_password: "{{ sudo_password }}"
-
-  tasks:
-    - name: Запуск роли xrdp_skv
-      include_role:
-        name: xrdp_skv
-      no_log: true
+- name: Добавление пользователей sadmin xrdp-seasman
+  user:
+    name: sadmin
+    groups: tsusers
+    append: yes
+  no_log: true
 EOF
+
 
 exit
-
-
 
 rsync \
 -e "ssh -i ~/.ssh/id_vm" \

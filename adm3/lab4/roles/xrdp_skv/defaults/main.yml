@@ -1,3 +1,19 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for roles/xrdp_skv
+# Список пользователей и их пароли
+xrdp_users:
+  xrdpuser_1:
+    password: "password1"
+    groups: "tsusers"
+    shell: "/bin/bash"
+  xrdpuser_2: 
+    password: "password2"
+    groups: "tsusers"
+    shell: "/bin/bash"
+  xrdpuser_3:
+    password: "password3"
+    groups: "tsusers"
+    shell: "/bin/bash"
+  xrdpuser_4:
+    password: "password4"
+    groups: "tsusers"
+    shell: "/bin/bash"

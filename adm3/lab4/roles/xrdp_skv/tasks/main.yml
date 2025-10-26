@@ -10,13 +10,17 @@
     name: 
       - xrdp
     state: present
-    clean: true
+    # clean: true
+
+- name: Бэкап файла конфига xrdp-sesman 
+  shell: cp /etc/xrdp/sesman.ini{,.bak}
 
 - name: Запуск и включение сервисов xrdp
   systemd:
     name: "{{ item }}"
     state: started
     enabled: yes
+    masked: no
   loop:
     - xrdp
     - xrdp-sesman
@@ -24,4 +28,8 @@
 
 - name: Вывод состояния сервисов в сервисах
   debug:
-    msg: "{{ result_services.stdout }}"
+    msg: "{{ result_services.changed }}"
+
+- name: Создание пользователей RDP
+  include_tasks:
+    file: xrdp_users.yml

@@ -1,0 +1,17 @@
+---
+- name: Создание пользователей xrdp-seasman
+  user:
+    name: "{{ item.key }}"
+    password: "{{ item.value.password | password_hash('sha512') }}"
+    groups: "{{ item.value.groups }}"
+    shell: "{{ item.value.shell }}"
+    append: yes
+  loop: "{{ xrdp_users | dict2items }}"
+  no_log: true
+
+- name: Добавление пользователей sadmin xrdp-seasman
+  user:
+    name: sadmin
+    groups: tsusers
+    append: yes
+  no_log: true
