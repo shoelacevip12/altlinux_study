@@ -391,6 +391,8 @@ cat > ~/ans/roles/xrdp_skv/handlers/main.yml << 'EOF'
 EOF
 ```
 ![](./img/1.png)
+![](./img/2.png)
+![](./img/3.png)
 ![](./img/GIF_ans.gif)
 ### Окончание Оформления лабораторной работы 4 и отправка на github
 ```bash
@@ -412,6 +414,9 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "для 4-ей лабы_adm4_END_1" \
+git commit -am "для 4-ей лабы_adm4_END_2" \
 && git push -u altlinux main
+
+cd ..
+tar -czf lab4_skv.tar.gz lab4
 ```
