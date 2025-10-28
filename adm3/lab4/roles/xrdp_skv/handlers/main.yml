@@ -1,3 +1,11 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# handlers file for roles/xrdp_skv
+- name: Запуск xrdp alt обработчиком
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+    masked: no
+  loop:
+    - xrdp
+    - xrdp-sesman
+  listen: start_xrdp_alt

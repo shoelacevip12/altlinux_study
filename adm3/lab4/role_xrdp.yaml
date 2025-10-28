@@ -11,15 +11,5 @@
       prompt: "Введите пароль для su (пользователя sadmin)"
       private: yes
 
-  # Устанавливаем переменную 'ansible_become_password' с помощью 'vars'
-  vars:
-    ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
-    ansible_python_interpreter: "/usr/bin/python3"
-    ansible_user: "sadmin"
-    ansible_become_password: "{{ su_password }}"
-
-  tasks:
-    - name: Запуск роли xrdp_skv
-      include_role:
-        name: xrdp_skv
-      no_log: true
+  roles:
+    - xrdp_skv

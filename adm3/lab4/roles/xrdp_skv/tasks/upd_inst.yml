@@ -1,0 +1,32 @@
+---
+- name: Обновление пакетов
+  apt_rpm:
+    update_cache: true
+    dist_upgrade: true
+
+- name: Установка glibc для обновления ядра через Ansible
+  apt_rpm:
+    name: 
+      - glibc
+    state: installed
+
+- name: Обновление ядра
+  apt_rpm:
+    update_kernel: true
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/usr/sbin"
+  ignore_errors: yes
+
+# - name: удаление для теста xrdp
+#   apt_rpm:
+#     name: 
+#       - xrdp
+#     state: absent
+
+- name: Установка xrdp
+  apt_rpm:
+    name: 
+      - xrdp
+    state: installed
+    # clean: true
+  notify: start_xrdp_alt

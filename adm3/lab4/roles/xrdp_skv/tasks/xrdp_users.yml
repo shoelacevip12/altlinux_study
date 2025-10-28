@@ -1,17 +1,19 @@
 ---
+- debug:
+    var: xrdp_groups
+
 - name: Создание пользователей xrdp-seasman
   user:
     name: "{{ item.key }}"
     password: "{{ item.value.password | password_hash('sha512') }}"
-    groups: "{{ item.value.groups }}"
-    shell: "{{ item.value.shell }}"
+    groups: "{{ xrdp_groups }}"
     append: yes
   loop: "{{ xrdp_users | dict2items }}"
   no_log: true
 
 - name: Добавление пользователей sadmin xrdp-seasman
   user:
-    name: sadmin
-    groups: tsusers
+    name: "{{ ansible_user }}"
+    groups: "{{ xrdp_groups }}"
     append: yes
   no_log: true

@@ -33,7 +33,7 @@ mkdir lab4 \
 
 sudo bash -c "virsh net-start --network vagrant-libvirt \
 && virsh start altlinux_altlinux_install \
-&& virsh start altlinux_empty_vm
+&& virsh start altlinux_empty_vm"
 
 git status
 
@@ -140,26 +140,33 @@ cat >  ~/ans/hosts.ini << 'EOF'
 192.168.121.4
 EOF
 
+mkdir group_vars \
+&& touch alt_work_p11.yml
+
+cat > ~/ans/group_vars/alt_work_p11.yml<< 'EOF'
+ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
+ansible_python_interpreter: "/usr/bin/python3"
+ansible_user: "sadmin"
+ansible_become_password: "{{ su_password }}"
+EOF
+
 cat > ~/ans/roles/xrdp_skv/defaults/main.yml<< 'EOF'
+---
+xrdp_groups: "tsusers"
+EOF
+
+cat > ~/ans/roles/xrdp_skv/vars/main.yml<< 'EOF'
 ---
 # Список пользователей и их пароли
 xrdp_users:
   xrdpuser_1:
     password: "password1"
-    groups: "tsusers"
-    shell: "/bin/bash"
   xrdpuser_2: 
     password: "password2"
-    groups: "tsusers"
-    shell: "/bin/bash"
   xrdpuser_3:
     password: "password3"
-    groups: "tsusers"
-    shell: "/bin/bash"
   xrdpuser_4:
     password: "password4"
-    groups: "tsusers"
-    shell: "/bin/bash"
 EOF
 
 cat > ~/ans/role_xrdp.yaml<< 'EOF'
@@ -176,84 +183,97 @@ cat > ~/ans/role_xrdp.yaml<< 'EOF'
       prompt: "Введите пароль для su (пользователя sadmin)"
       private: yes
 
-  # Устанавливаем переменную 'ansible_become_password' с помощью 'vars'
-  vars:
-    ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
-    ansible_python_interpreter: "/usr/bin/python3"
-    ansible_user: "sadmin"
-    ansible_become_password: "{{ su_password }}"
-
-  tasks:
-    - name: Запуск роли xrdp_skv
-      include_role:
-        name: xrdp_skv
-      no_log: true
+  roles:
+    - xrdp_skv
 EOF
 
 cat > ~/ans/roles/xrdp_skv/tasks/main.yml << 'EOF'
 ---
-- name: Обновление пакетов
-  apt_rpm:
-    update_cache: true
-    dist_upgrade: true
-    # update_kernel: true
-
-- name: Установка xrdp
-  apt_rpm:
-    name: 
-      - xrdp
-    state: present
-    # clean: true
-
-- name: Бэкап файла конфига xrdp-sesman 
-  shell: cp /etc/xrdp/sesman.ini{,.bak}
-
-- name: Запуск и включение сервисов xrdp
-  systemd:
-    name: "{{ item }}"
-    state: started
-    enabled: yes
-    masked: no
-  loop:
-    - xrdp
-    - xrdp-sesman
-  register: result_services
-
-- name: Вывод состояния сервисов в сервисах
-  debug:
-    msg: "{{ result_services.changed }}"
+# - name: Обновление пакетов и установка xrdp
+#   include_tasks:
+#     file: upd_inst.yml
 
 - name: Создание пользователей RDP
   include_tasks:
     file: xrdp_users.yml
 EOF
 
+cat > ~/ans/roles/xrdp_skv/tasks/upd_inst.yml << 'EOF'
+---
+- name: Обновление пакетов
+  apt_rpm:
+    update_cache: true
+    dist_upgrade: true
+
+- name: Установка glibc для обновления ядра через Ansible
+  apt_rpm:
+    name: 
+      - glibc
+    state: installed
+
+- name: Обновление ядра
+  apt_rpm:
+    update_kernel: true
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/usr/sbin"
+  ignore_errors: yes
+
+# - name: удаление для теста xrdp
+#   apt_rpm:
+#     name: 
+#       - xrdp
+#     state: absent
+
+- name: Установка xrdp
+  apt_rpm:
+    name: 
+      - xrdp
+    state: installed
+    # clean: true
+  notify: start_xrdp_alt
+EOF
+
 cat > ~/ans/roles/xrdp_skv/tasks/xrdp_users.yml << 'EOF'
 ---
+- debug:
+    var: xrdp_groups
+
 - name: Создание пользователей xrdp-seasman
   user:
     name: "{{ item.key }}"
     password: "{{ item.value.password | password_hash('sha512') }}"
-    groups: "{{ item.value.groups }}"
-    shell: "{{ item.value.shell }}"
+    groups: "{{ xrdp_groups }}"
     append: yes
   loop: "{{ xrdp_users | dict2items }}"
   no_log: true
 
 - name: Добавление пользователей sadmin xrdp-seasman
   user:
-    name: sadmin
-    groups: tsusers
+    name: "{{ ansible_user }}"
+    groups: "{{ xrdp_groups }}"
     append: yes
   no_log: true
 EOF
 
+cat > ~/ans/roles/xrdp_skv/handlers/main.yml << 'EOF'
+---
+- name: Запуск xrdp alt обработчиком
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+    masked: no
+  loop:
+    - xrdp
+    - xrdp-sesman
+  listen: start_xrdp_alt
+EOF
 
 exit
 
 rsync \
 -e "ssh -i ~/.ssh/id_vm" \
--P admin@192.168.121.2:~/ans/* .
+-aP admin@192.168.121.2:~/ans/* .
 
 cd ~/altlinux/adm/adm3/lab4
 

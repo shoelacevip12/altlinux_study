@@ -1,34 +1,7 @@
 ---
-- name: Обновление пакетов
-  apt_rpm:
-    update_cache: true
-    dist_upgrade: true
-    # update_kernel: true
-
-- name: Установка xrdp
-  apt_rpm:
-    name: 
-      - xrdp
-    state: present
-    # clean: true
-
-- name: Бэкап файла конфига xrdp-sesman 
-  shell: cp /etc/xrdp/sesman.ini{,.bak}
-
-- name: Запуск и включение сервисов xrdp
-  systemd:
-    name: "{{ item }}"
-    state: started
-    enabled: yes
-    masked: no
-  loop:
-    - xrdp
-    - xrdp-sesman
-  register: result_services
-
-- name: Вывод состояния сервисов в сервисах
-  debug:
-    msg: "{{ result_services.changed }}"
+# - name: Обновление пакетов и установка xrdp
+#   include_tasks:
+#     file: upd_inst.yml
 
 - name: Создание пользователей RDP
   include_tasks:
