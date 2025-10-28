@@ -1,4 +1,4 @@
 ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
 ansible_python_interpreter: "/usr/bin/python3"
-ansible_user: "sadmin"
+ansible_user: "{{ su_wheel_user }}"
 ansible_become_password: "{{ su_password }}"

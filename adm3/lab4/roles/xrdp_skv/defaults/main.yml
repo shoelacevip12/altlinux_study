@@ -1,2 +1,4 @@
 ---
-xrdp_groups: "tsusers"
+xrdp_groups: 
+  - tsusers
+  - users

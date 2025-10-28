@@ -1,4 +1,5 @@
 # Набор удачных команд для Лабораторной работы 4
+###### имхо
 
 ### Оформление лабараторной работы и подготовка подключения
 ```bash
@@ -13,11 +14,11 @@ git config --global user.name "shoelacevip12"
 
 git config --global --add safe.directory .
 
-git log --oneline
-
 git remote add altlinux https://github.com/shoelacevip12/altlinux_study.git
 
 git pull altlinux main
+
+git log --oneline
 
 git branch -M main
 
@@ -176,7 +177,8 @@ sed -i 's|;inventory=\[.*\]|inventory=./hosts.ini|' ansible.cfg \
 mkdir -p  group_vars group_vars/all \
 && touch  group_vars/alt_work_p11.yml
 
-# Генерация пароля (pwqgen) и запись значения в файл
+# Генерация пароля (pwqgen) и запись значения в файл 
+# для доступа к зашифрованному файлу переменных vault.yml
 # Создание зашифрованного файла vault.yml с паролями
 # и переход сразу к редактированию
 tee ./va_pa <<< $(pwqgen) \
@@ -185,8 +187,8 @@ ansible-vault create \
 --vault-password-file ./va_pa \
 ~/ans/group_vars/all/vault.yml
 
-# Выставляем ранее созданный файл с паролями для исключения применения 
-# переменной "-vault-password-file ./va_pa" при каждом запуске playbook`а
+# Выставляем ранее созданный файл с паролем доступа как по умолчанию ко всем зашифрованным файлам
+# Для исключения применения переменной "-vault-password-file ./va_pa" при каждом запуске playbook`а
 sed -i 's|;vault_password_file=*|vault_password_file=./va_pa|' ansible.cfg \
 && grep "vault_password_file=" ansible.cfg
 
@@ -211,7 +213,7 @@ ansible-galaxy init roles/xrdp_skv
 cat > ~/ans/group_vars/alt_work_p11.yml<< 'EOF'
 ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
 ansible_python_interpreter: "/usr/bin/python3"
-ansible_user: "sadmin"
+ansible_user: "{{ su_wheel_user }}"
 ansible_become_password: "{{ su_password }}"
 EOF
 
@@ -219,7 +221,9 @@ EOF
 # группы пользователей для на управляемом хосте
 cat > ~/ans/roles/xrdp_skv/defaults/main.yml<< 'EOF'
 ---
-xrdp_groups: "tsusers"
+xrdp_groups: 
+  - tsusers
+  - users
 EOF
 
 # Создание файла переменных в виде словаря с указанием:
@@ -363,12 +367,21 @@ cat > ~/ans/roles/xrdp_skv/tasks/xrdp_users.yml << 'EOF'
   no_log: true
 EOF
 
+# Редактируем шаблон файла роли с обработчиками ../handlers/main.yml
+# к которому идет разовое обращение: 
+# 1. При вызове notify в задачах c указанием именем обработчика(name) или значения listen
+# 2. После отработки всех задач 
+# или при использовании meta: flush_handlers после конкретной задачи
+# Производим:
+# перезапуск служб по списку
+# Выставление в автозагрузку
+# Исключение из маскирования(блокировок) службы
 cat > ~/ans/roles/xrdp_skv/handlers/main.yml << 'EOF'
 ---
 - name: Запуск xrdp alt обработчиком
   systemd:
     name: "{{ item }}"
-    state: restarted
+    state: started
     enabled: yes
     masked: no
   loop:
@@ -376,15 +389,22 @@ cat > ~/ans/roles/xrdp_skv/handlers/main.yml << 'EOF'
     - xrdp-sesman
   listen: start_xrdp_alt
 EOF
-
+```
+![](./img/1.png)
+![](./img/GIF_ans.gif)
+### Окончание Оформления лабораторной работы 4 и отправка на github
+```bash
+# Выходим с Управляющего хоста
 exit
+
+# Копируем проект с Управляющего хоста
+cd ~/altlinux/adm/adm3/lab4
 
 rsync \
 -e "ssh -i ~/.ssh/id_vm" \
 -aP admin@192.168.121.2:~/ans/* .
 
-cd ~/altlinux/adm/adm3/lab4
-
+# Подготовка на отправку на github
 git status
 
 git add . .. ../.. \
@@ -392,10 +412,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "для 4-ей лабы_adm4_1" \
+git commit -am "для 4-ей лабы_adm4_END_1" \
 && git push -u altlinux main
-```
-###
-```bash
-
 ```

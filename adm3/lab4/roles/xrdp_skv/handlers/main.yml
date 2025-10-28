@@ -2,7 +2,7 @@
 - name: Запуск xrdp alt обработчиком
   systemd:
     name: "{{ item }}"
-    state: restarted
+    state: started
     enabled: yes
     masked: no
   loop:
