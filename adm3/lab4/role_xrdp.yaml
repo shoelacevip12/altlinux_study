@@ -6,10 +6,10 @@
   become_user: root
   gather_facts: yes
 
-  vars_prompt:
-    - name: "su_password"
-      prompt: "Введите пароль для su (пользователя sadmin)"
-      private: yes
+  # vars_prompt:
+  #   - name: "su_password"
+  #     prompt: "Введите пароль для su (пользователя sadmin)"
+  #     private: yes
 
   roles:
     - xrdp_skv

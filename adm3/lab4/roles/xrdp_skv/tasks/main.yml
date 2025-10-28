@@ -1,7 +1,7 @@
 ---
-# - name: Обновление пакетов и установка xrdp
-#   include_tasks:
-#     file: upd_inst.yml
+- name: Обновление пакетов и установка xrdp
+  include_tasks:
+    file: upd_inst.yml
 
 - name: Создание пользователей RDP
   include_tasks:

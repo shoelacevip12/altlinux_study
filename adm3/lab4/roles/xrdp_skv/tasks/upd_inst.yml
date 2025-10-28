@@ -17,11 +17,11 @@
     PATH: "{{ ansible_env.PATH }}:/usr/sbin"
   ignore_errors: yes
 
-# - name: удаление для теста xrdp
-#   apt_rpm:
-#     name: 
-#       - xrdp
-#     state: absent
+- name: удаление для теста xrdp
+  apt_rpm:
+    name: 
+      - xrdp
+    state: absent
 
 - name: Установка xrdp
   apt_rpm:

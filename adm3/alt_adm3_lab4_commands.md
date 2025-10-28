@@ -80,7 +80,6 @@ apt-get update \
 && apt-get autoremove -y \
 && systemctl reboot
 
-
 ssh -o "ProxyCommand=ssh -i ~/.ssh/id_kvm_host -W %h:%p shoel@shoellin" \
 -i ~/.ssh/id_vm sadmin@192.168.121.4
 
@@ -112,27 +111,20 @@ ansible-config init --disabled -t all > ansible.cfg
 eval $(ssh-agent) \
 && ssh-add ~/.ssh/id_xrdp_host
 
-sed -ie 's|;ssh_agent=.*|ssh_agent=auto|' ansible.cfg  \
+sed -i 's|;ssh_agent=.*|ssh_agent=auto|' ansible.cfg  \
 && grep "ssh_agent=" ansible.cfg
 
 
-sed -ie 's|;home=~/.ansible|home=./|' ansible.cfg \
+sed -i 's|;home=~/.ansible|home=./|' ansible.cfg \
 && grep "home=./" ansible.cfg
-
-sed -ie 's|;inventory=\[.*\]|inventory=./hosts.ini|' ansible.cfg \
-&& grep "inventory=" ansible.cfg
-
-touch hosts.ini
 
 mkdir roles
 
-sed -ie 's|;roles_path=\/.*|roles_path=./roles|' ansible.cfg \
+sed -i 's|;roles_path=\/.*|roles_path=./roles|' ansible.cfg \
 && grep "roles_path=" ansible.cfg
 
-sed -ie 's|;host_key_checking.*|host_key_checking=False|' ansible.cfg \
+sed -i 's|;host_key_checking.*|host_key_checking=False|' ansible.cfg \
 && grep "host_key_checking=" ansible.cfg
-
-ansible-galaxy init roles/xrdp_skv
 
 cat >  ~/ans/hosts.ini << 'EOF'
 [alt_work_p11]
@@ -140,8 +132,27 @@ cat >  ~/ans/hosts.ini << 'EOF'
 192.168.121.4
 EOF
 
-mkdir group_vars \
-&& touch alt_work_p11.yml
+sed -i 's|;inventory=\[.*\]|inventory=./hosts.ini|' ansible.cfg \
+&& grep "inventory=" ansible.cfg
+
+mkdir -p  group_vars group_vars/all \
+&& touch  group_vars/alt_work_p11.yml
+
+tee ~/va_pa <<< $(pwqgen) \
+&& EDITOR=nano \
+ansible-vault create \
+--vault-password-file ~/va_pa \
+~/ans/group_vars/all/vault.yml
+
+sed -i 's|;vault_password_file=*|vault_password_file=./va_pa|' ansible.cfg \
+&& grep "vault_password_file=" ansible.cfg
+
+EDITOR=nano \
+ansible-vault edit \
+~/ans/group_vars/all/vault.yml
+
+ansible-galaxy init roles/xrdp_skv
+
 
 cat > ~/ans/group_vars/alt_work_p11.yml<< 'EOF'
 ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
@@ -160,13 +171,13 @@ cat > ~/ans/roles/xrdp_skv/vars/main.yml<< 'EOF'
 # Список пользователей и их пароли
 xrdp_users:
   xrdpuser_1:
-    password: "password1"
+    password: "{{ password1 }}"
   xrdpuser_2: 
-    password: "password2"
+    password: "{{ password2 }}"
   xrdpuser_3:
-    password: "password3"
+    password: "{{ password3 }}"
   xrdpuser_4:
-    password: "password4"
+    password: "{{ password4 }}"
 EOF
 
 cat > ~/ans/role_xrdp.yaml<< 'EOF'
@@ -178,10 +189,10 @@ cat > ~/ans/role_xrdp.yaml<< 'EOF'
   become_user: root
   gather_facts: yes
 
-  vars_prompt:
-    - name: "su_password"
-      prompt: "Введите пароль для su (пользователя sadmin)"
-      private: yes
+  # vars_prompt:
+  #   - name: "su_password"
+  #     prompt: "Введите пароль для su (пользователя sadmin)"
+  #     private: yes
 
   roles:
     - xrdp_skv
@@ -189,9 +200,9 @@ EOF
 
 cat > ~/ans/roles/xrdp_skv/tasks/main.yml << 'EOF'
 ---
-# - name: Обновление пакетов и установка xrdp
-#   include_tasks:
-#     file: upd_inst.yml
+- name: Обновление пакетов и установка xrdp
+  include_tasks:
+    file: upd_inst.yml
 
 - name: Создание пользователей RDP
   include_tasks:
@@ -218,11 +229,11 @@ cat > ~/ans/roles/xrdp_skv/tasks/upd_inst.yml << 'EOF'
     PATH: "{{ ansible_env.PATH }}:/usr/sbin"
   ignore_errors: yes
 
-# - name: удаление для теста xrdp
-#   apt_rpm:
-#     name: 
-#       - xrdp
-#     state: absent
+- name: удаление для теста xrdp
+  apt_rpm:
+    name: 
+      - xrdp
+    state: absent
 
 - name: Установка xrdp
   apt_rpm:
@@ -235,8 +246,16 @@ EOF
 
 cat > ~/ans/roles/xrdp_skv/tasks/xrdp_users.yml << 'EOF'
 ---
-- debug:
-    var: xrdp_groups
+# - debug:
+#     var: xrdp_groups
+
+- name: Удаление пользователей для теста
+  user:
+    name: "{{ item.key }}"
+    state: absent
+    remove: yes
+  loop: "{{ xrdp_users | dict2items }}"
+  no_log: true
 
 - name: Создание пользователей xrdp-seasman
   user:

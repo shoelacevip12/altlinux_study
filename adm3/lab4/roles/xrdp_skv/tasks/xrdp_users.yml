@@ -1,6 +1,14 @@
 ---
-- debug:
-    var: xrdp_groups
+# - debug:
+#     var: xrdp_groups
+
+- name: Удаление пользователей для теста
+  user:
+    name: "{{ item.key }}"
+    state: absent
+    remove: yes
+  loop: "{{ xrdp_users | dict2items }}"
+  no_log: true
 
 - name: Создание пользователей xrdp-seasman
   user:

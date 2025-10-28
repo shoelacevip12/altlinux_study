@@ -2,10 +2,10 @@
 # Список пользователей и их пароли
 xrdp_users:
   xrdpuser_1:
-    password: "password1"
+    password: "{{ password1 }}"
   xrdpuser_2: 
-    password: "password2"
+    password: "{{ password2 }}"
   xrdpuser_3:
-    password: "password3"
+    password: "{{ password3 }}"
   xrdpuser_4:
-    password: "password4"
+    password: "{{ password4 }}"
