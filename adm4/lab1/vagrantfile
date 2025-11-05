@@ -1,0 +1,55 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  # Путь к ISO образу ALT Linux p11
+  altlinux_iso_path = "/home/shoel/iso/alt-server-11.0-x86_64.iso"
+
+  # Конфигурация для libvirt (общая)
+  config.vm.provider :libvirt do |libvirt|
+    libvirt.driver = "kvm"
+    libvirt.uri = 'qemu:///system'
+    libvirt.memory = 4096
+    libvirt.cpus = 2
+    libvirt.nested = true
+    libvirt.disk_driver :cache => 'none'
+    libvirt.disk_bus = "virtio"
+    libvirt.default_prefix = "altlinux_"
+    libvirt.nic_model_type = "virtio"
+    libvirt.management_network_mode = "route"
+    libvirt.management_network_guest_ipv6 = "no"
+  end
+
+  # Определение ВМ для установки с ISO
+  config.vm.define "altlinux_install" do |iso_vm|
+    iso_vm.vm.hostname = "altlinux-install"
+    iso_vm.vm.communicator = "none"
+    iso_vm.vm.box = "my-dummy"
+    iso_vm.vm.network "forwarded_port", guest: 80, host: 8082
+    iso_vm.vm.network "forwarded_port", guest: 8080, host: 8081
+    iso_vm.vm.provider :libvirt do |libvirt|
+      libvirt.storage :file, :size => '30G', :type => 'qcow2'
+      libvirt.storage :file, :device => :cdrom, :path => altlinux_iso_path
+      libvirt.boot 'hd'
+      libvirt.boot 'cdrom'
+    end
+    iso_vm.vm.provision "shell", inline: "echo 'VM created.'", run: "never"
+  end
+
+  # Определение пустой виртуальной машины
+  config.vm.define "empty_vm" do |empty|
+    empty.vm.hostname = "empty-vm"
+    empty.vm.communicator = "none"
+    empty.vm.box = "my-dummy"
+
+    empty.vm.provider :libvirt do |libvirt|
+      libvirt.storage :file, :size => '30G', :type => 'qcow2'
+      libvirt.disk_bus = "virtio"
+      libvirt.boot 'hd'
+      libvirt.boot 'network'
+    end
+    # Отключаем provisioner'ы
+    empty.vm.provision "shell", inline: "echo 'Подготовлено для PXE или ручной установки ОС.'", run: "never"
+  end
+end
