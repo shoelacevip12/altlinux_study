@@ -172,6 +172,8 @@ su -
 
 ip -br a
 
+systemctl enable --now qemu-guest-agent.service
+
 exit
 
 exit
