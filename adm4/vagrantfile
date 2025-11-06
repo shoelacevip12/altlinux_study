@@ -1,0 +1,75 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  # Путь к ISO образу ALT Linux p11
+  altlinux_iso_path_s = "/home/shoel/iso/alt-server-11.0-x86_64.iso"
+  altlinux_iso_path_w = "/home/shoel/iso/alt-workstation-11.1-x86_64.iso"
+
+  # Общие настройки для провайдера libvirt
+  config.vm.provider :libvirt do |libvirt|
+    libvirt.driver = "kvm"
+    libvirt.uri = 'qemu:///system'
+    libvirt.memory = 3072
+    libvirt.cpus = 2
+    libvirt.nested = true
+    libvirt.disk_driver :cache => 'none'
+    libvirt.disk_bus = "virtio"
+    libvirt.nic_model_type = "virtio"
+    libvirt.storage :file, :size => '40G', :type => 'qcow2'
+    libvirt.boot 'hd' # Загрузка с жесткого диска
+    libvirt.boot 'cdrom' # Загрузка с CDROM (вторая опция)
+    libvirt.management_network_name = "vagrant-libvirt"
+    libvirt.management_network_mode = "route"
+    # libvirt.management_network_mode = "none" # Альтернатива route, если dhcp_enabled не срабатывает
+    libvirt.management_network_guest_ipv6 = "no"
+  end
+
+  # --- Создание 3 ВМ для altlinux_s ---
+  # Цикл для создания трёх одинаковых серверных ВМ
+  # Все они будут использовать одну и ту же сеть 's_private_network'
+  (1..3).each do |i|
+    config.vm.define "altlinux_s#{i}" do |node_2|
+      node_2.vm.hostname = "altlinux-s#{i}" # Устанавливаем имя хоста для ВМ
+      node_2.vm.communicator = "none" # Отключаем стандартный communicator (SSH), так как используется ISO
+
+      # Настройки сети: только private_network
+      node_2.vm.network "private_network",
+                             libvirt__network_name: "s_private_network", # Имя создаваемой сети
+                             libvirt__forward_mode: "none", # Режим маршрутизации
+                             libvirt__dhcp_enabled: false  # Отключаем DHCP в этой сети
+
+      # Настройки провайдера libvirt для конкретной ВМ
+      node_2.vm.provider :libvirt do |libvirt|
+        libvirt.storage :file, :device => :cdrom, :path => altlinux_iso_path_s
+      end
+
+      # Заглушка для provisioner (не запускается)
+      node_2.vm.provision "shell", inline: "echo 'altlinux_s#{i} VM created.'", run: "never"
+    end
+  end
+
+  # --- Создание 2 ВМ для altlinux_w ---
+  # Цикл для создания двух одинаковых desktop ВМ
+  # Все они будут использовать одну и ту же сеть 's_private_network'
+  (1..2).each do |i|
+    # --- Создание 2 ВМ для altlinux_w ---
+    config.vm.define "altlinux_w#{i}" do |node_3|
+      # Исправлено: имя хоста должно зависеть от переменной цикла i
+      node_3.vm.hostname = "altlinux-w#{i}"
+      node_3.vm.communicator = "none"
+      # Настройки сети: только private_network
+      node_3.vm.network "private_network",
+                            libvirt__network_name: "s_private_network",
+                            libvirt__forward_mode: "none",
+                            libvirt__dhcp_enabled: false
+
+      node_3.vm.provider :libvirt do |libvirt|
+        libvirt.storage :file, :device => :cdrom, :path => altlinux_iso_path_w
+        
+      end
+      node_3.vm.provision "shell", inline: "echo 'altlinux_w#{i} VM created.'", run: "never"
+    end
+  end
+end
