@@ -33,18 +33,18 @@ git log --oneline
 git pull altlinux main
 ```
 дистрибутивы для платформы x86_64
-• Альт Сервер
-• Альт Рабочая станция
-[>>Дистрибутивы устновки<<](https://getalt.org)
-[>>Alt p11 server 11.0<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/server/x86_64/alt-server-11.0-x86_64.iso)
-[>>Alt p11 рабочая станция 11.1<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/workstation/x86_64/alt-workstation-11.1-x86_64.iso)
+- Альт Сервер
+- Альт Рабочая станция
+- [>>Дистрибутивы устновки<<](https://getalt.org)
+  - [>>Alt p11 server 11.0<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/server/x86_64/alt-server-11.0-x86_64.iso)
+  - [>>Alt p11 рабочая станция 11.1<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/workstation/x86_64/alt-workstation-11.1-x86_64.iso)
 ##### Создаем в среде виртуализации libvirt 2 виртуальные машины с характеристиками
-• 3Гб ОЗУ
-• 2 ядро CPU
-• 1 сетевой интерфейс (типа bridge) для 1 из ВМ
-• 1 сетевой интерфейс типа isolated для всех ВМ
-• Диск размером не менее 40 Гб
-• Подсоедините к ВМ ISO-образ с дистрибутивом Альт Сервера\Рабочая станция
+- 3Гб ОЗУ
+- 2 ядро CPU
+- 1 сетевой интерфейс (типа bridge) для 1 из ВМ
+- 1 сетевой интерфейс типа isolated для всех ВМ
+- Диск размером 40 Гб
+- Подсоединяем к ВМ ISO-образы с дистрибутивом Альт Сервера\Рабочая станция
 
 ```bash
 mkdir amd4
@@ -59,7 +59,9 @@ https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/server/x86_64/
 wget -P \
 ~/iso/ \
 https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/workstation/x86_64/alt-workstation-11.1-x86_64.iso
-
+```
+##### Создаем файл vagrant для автоматического создания ВМ в количестве 5 шт
+```bash
 cat>vagrantfile<<'OEF'
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
@@ -377,6 +379,6 @@ git add . .. \
 
 git log --oneline
 
-git commit -am "оформение для ADM4_upd_4" \
+git commit -am "оформение для ADM4_upd_5" \
 && git push -u altlinux main
 ```
