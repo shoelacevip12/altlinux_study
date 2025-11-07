@@ -1,4 +1,17 @@
-# Лабораторная работа 1. «`Настройка DHCP-серверав ОС Альт`» `Скворцов Денис`
+# «`Настройка локального стенда ОС Альт`» `Скворцов Денис`
+### памятка для входа на на машины локальной сети
+```bash
+# включаем агента и запущенному процессу регистрируем используемые ключи
+eval $(ssh-agent) \
+&& ssh-add ~/.ssh/id_vm \
+&& ssh-add  ~/.ssh/id_kvm_host_to_vms
+
+# вход через шлюз 192.168.121.2 как прокси на машину локальной сети 10.10.10.241
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+-i ~/.ssh/id_vm sadmin@10.10.10.241
+```
+
 ### Предварительно
 
 ##### Для github
@@ -22,13 +35,16 @@ git pull altlinux main
 дистрибутивы для платформы x86_64
 • Альт Сервер
 • Альт Рабочая станция
-[>>Дистрибутива устновки<<](https://getalt.org)
+[>>Дистрибутивы устновки<<](https://getalt.org)
+[>>Alt p11 server 11.0<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/server/x86_64/alt-server-11.0-x86_64.iso)
+[>>Alt p11 рабочая станция 11.1<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/workstation/x86_64/alt-workstation-11.1-x86_64.iso)
 ##### Создаем в среде виртуализации libvirt 2 виртуальные машины с характеристиками
-• 4Гб ОЗУ
+• 3Гб ОЗУ
 • 2 ядро CPU
-• 1 сетевой интерфейс (типа bridge)
-• Диск размером не менее 30 Гб
-• Подсоедините к ВМ ISO-образ с дистрибутивом Альт Сервера 
+• 1 сетевой интерфейс (типа bridge) для 1 из ВМ
+• 1 сетевой интерфейс типа isolated для всех ВМ
+• Диск размером не менее 40 Гб
+• Подсоедините к ВМ ISO-образ с дистрибутивом Альт Сервера\Рабочая станция
 
 ```bash
 mkdir amd4
@@ -37,8 +53,12 @@ cd !$
 
 mkdir -p lab1/img
 
-wget -P /home/shoel/iso/ https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/server/x86_64/alt-server-11.0-x86_64.iso
-wget -P /home/shoel/iso/ https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/workstation/x86_64/alt-workstation-11.1-x86_64.iso
+wget -P \
+~/iso/ \
+https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/server/x86_64/alt-server-11.0-x86_64.iso
+wget -P \
+~/iso/ \
+https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/workstation/x86_64/alt-workstation-11.1-x86_64.iso
 
 cat>vagrantfile<<'OEF'
 # -*- mode: ruby -*-
@@ -122,10 +142,11 @@ vagrant up --no-destroy-on-error
 
 sudo virsh list --all
 ```
-##### Принудительная остановка машин и удаление секции DHCP libvirt поднятой сети
+##### Принудительная остановка машин и удаление секции DHCP libvirt в созданных сетях
 ```bash
 sudo virsh list --all
 
+# Остановка всех ВМ содержащих "nux" 
 sudo bash -c \
 "for i in \$(virsh list --all \
 | awk '/nux/ {print \$1}'); do \
@@ -133,14 +154,22 @@ virsh destroy \$i; done"
 
 sudo virsh net-list --all
 
+# Остановка всех сетей Libvirt начиная со 2ого по списку
 sudo virsh net-list --all \
 | awk 'NR > 3 {print $1}' \
 | xargs -I {} sudo virsh net-destroy {}
 
+# Запуск редактора сети vagrant-libvirt для выхода в интернет
 sudo virsh net-edit --network vagrant-libvirt
 
+# экспорт настроек созданных сетей Libvirt
 sudo virsh net-dumpxml vagrant-libvirt \
 > ./mngt_net.xml
+
+sudo chmod 777 !$
+
+sudo virsh net-dumpxml s_private_network \
+> ./s_private_network.xml
 
 sudo chmod 777 !$
 ```
@@ -155,8 +184,6 @@ sudo chmod 777 !$
   </ip>
 </network>
 ```
-
-
 ##### Удаление постоянного интерфейса со всех виртуальных машин кроме adm4_altlinux_w2
 ```bash
 # определяем список виртуальных машин поименно
@@ -172,7 +199,7 @@ sudo bash -c \
 | grep -B1 vagrant-libvir" \
 | sed -n "s/.*<mac address='\([^']*\)'.*/\1/p"
 
-# поочередное отключение интерфейсов
+# поочередное удаление интерфейсов выхода в интернет 
 sudo virsh detach-interface \
 adm4_altlinux_s1 \
 --type network \
@@ -197,6 +224,7 @@ adm4_altlinux_w1 \
 --mac 52:54:00:1c:86:b6 \
 --config
 
+# Экспорт настроек созданных ВМ
 sudo bash -c \
 "for i in \$(virsh list --all \
 | awk '/nux/ {print \$2}') ; do \
@@ -205,16 +233,24 @@ virsh dumpxml \$i \
 
 sudo chmod 777 *.xml
 ```
-##### Запуск отредактированной сети и виртуальных машин
+##### Запуск отредактированной сети, виртуальных машин
 ```bash
+# поочередный запуск всех сетей libvirt со 2ого по списку
 sudo virsh net-list --all \
 | awk 'NR > 3 {print $1}' \
 | xargs -I {} sudo virsh net-start {}
 
+# поочередный запуск всех ВМ содержаших "nux"
 sudo bash -c \
 "for i in \$(virsh list --all \
 | awk '/nux/ {print \$2}') ; do \
 virsh start --domain \$i; done"
+
+# добавление статического маршрута с хостовой машины до изолированной сети между ВМ
+sudo ip route \
+add 10.10.10.240/28 \
+via 192.168.121.2 \
+dev virbr1
 ```
 
 ##### Ручная установка ОС Альт рабочая станция.
@@ -229,95 +265,110 @@ virsh start --domain \$i; done"
 ![](img/8.png)![](img/9.png)![](img/10.png)
 
 
-##### Организация forwarding – маршрутизации на узле с 2мя сетевыми картами
+##### Организация NAT – маршрутизации на узле с 2мя сетевыми интерфейсами
 ![](img/11.png)
 
 ```bash
 su -
 
+# Отключени из автозагрузки служб для графического взаимодействия
 systemctl isolate multi-user.target
-
 systemctl set-default multi-user.target
 
 runlevel
 
-echo net.ipv4.ip_forward = 1 \
->> /etc/net/sysctl.conf
+# включение внутренней маршрутизации пакетов между интерфейсами
+sed -i 's/rd\ =\ 0/rd\ =\ 1/' \
+/etc/net/sysctl.conf
 
 systemctl restart network
 
+# обновление системы и установка пакетов для multicast-маршрутизации
 apt-get update \
 && update-kernel -y \
 && apt-get dist-upgrade -y \
 && apt-get install -y \
-igmpproxy \
-smcroute \
-iptables \
-net-tools \
-iproute2
+nftables
 
-cp /etc/igmpproxy.conf{,.bak}
+# Включаем и добавляем в автозагрузку службу nftables:
+systemctl enable --now nftables
 
-cat > /etc/igmpproxy.conf << 'EOF'
-quickleave
-# порт выхода в глобальную сеть ens5
-phyint ens5 upstream  ratelimit 0  threshold 1
-# порт выхода в локальную сеть ens6
-phyint ens6 downstream  ratelimit 0  threshold 1
-phyint lo disabled
-EOF
+# Cоздаём необходимую структуру для nftables (семейство, таблица, цепочка) для настройки NAT:
+nft add table ip nat
+nft add chain ip nat postrouting '{ type nat hook postrouting priority 0; }'
+nft add rule ip nat postrouting ip saddr 10.10.10.240/28 oifname "ens5" counter masquerade
 
-
-cat >>/etc/net/sysctl.conf<<'EOF'
-net.ipv4.conf.ens5.rp_filter=0
-net.ipv4.conf.ens5.force_igmp_version=1
-net.ipv4.conf.ens6.force_igmp_version=1
-EOF
+# Сохраняем правила nftables
+nft list ruleset \
+| tail -n6 \
+| tee -a /etc/nftables/nftables.nft
 
 systemctl reboot
 
 su -
 
-less /proc/config.gz | grep '\(MROUTE\|MULTICAST\)'
-
-cat /proc/sys/net/ipv4/conf/default/forwarding
-
-iptables -I INPUT -d 224.0.0.0/4 -j ACCEPT
-
-iptables -I FORWARD -d 224.0.0.0/4 -j ACCEPT
-
-route add -net 224.0.0.0/4 dev ens6
+nft list ruleset
 ```
 ![](img/12.png)
+
 ##### Организовываем подключение к серверному узлу
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_kvm_host -C "kvm-host-access-key"
-ssh-keygen -t ed25519 -f ~/.ssh/id_vm -C "vm-access-key"
+# создаем ключ для подключения к шлюзу
+ssh-keygen -t ed25519 \
+-f ~/.ssh/id_kvm_host_to_vms \
+-C "kvm-host_access_to_vms"
 
-ssh-copy-id -i ~/.ssh/id_kvm_host.pub shoel@shoellin
+# создаем ключ для подключения к виртуальным машинам
+ssh-keygen -t ed25519 \
+-f ~/.ssh/id_vm \
+-C "vm-access-key"
 
-ssh-copy-id -i ~/.ssh/id_vm.pub -o "ProxyJump shoel@shoellin" sadmin@192.168.121.2
+# проброс ключа до шлюза
+ssh-copy-id \
+-i ~/.ssh/id_kvm_host_to_vms.pub \
+sadmin@192.168.121.2
 
-ssh -i D:\Users\shoel\AppData\Roaming\MobaXterm\home\.ssh\id_kvm_host -o "ProxyJump shoel@shoellin" -i D:\Users\shoel\AppData\Roaming\MobaXterm\home\.ssh\id_vm sadmin@192.168.121.2
+# проброс ключа до виртуальной машины через шлюз как прокси-сервер
+ssh-copy-id \
+-i ~/.ssh/id_vm.pub \
+-o "ProxyJump sadmin@192.168.121.2" \
+sadmin@10.10.10.241
 
-su -
+# Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
+eval $(ssh-agent) \
+&& ssh-add ~/.ssh/id_vm \
+&& ssh-add  ~/.ssh/id_kvm_host_to_vms
 
-ip -br a
-
-systemctl enable --now qemu-guest-agent.service
+# вход через шлюз 192.168.121.2 как прокси на alt-s-p11-1 10.10.10.241
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+-i ~/.ssh/id_vm sadmin@10.10.10.241
 
 exit
 
-exit
+# libvirt выключение машины и создание snapshot
+sudo virsh destroy --domain adm4_altlinux_s1 --graceful
+sudo virsh snapshot-create-as --domain adm4_altlinux_s1 --name 1 --description "1" --atomic
 
-sudo virsh dumpxml altlinux_altlinux_install > ./altlinux_server.xml
+sudo virsh destroy --domain adm4_altlinux_s2 --graceful
+sudo virsh snapshot-create-as --domain adm4_altlinux_s2 --name 1 --description "1" --atomic
 
-# sudo virsh snapshot-create-as --domain altlinux_altlinux_install --name 1 --description "1" --atomic
+sudo virsh destroy --domain adm4_altlinux_s3 --graceful
+sudo virsh snapshot-create-as --domain adm4_altlinux_s3 --name 1 --description "1" --atomic
 
-# sudo virsh snapshot-delete altlinux_altlinux_install --snapshotname 1
+sudo virsh destroy --domain adm4_altlinux_w1 --graceful
+sudo virsh snapshot-create-as --domain adm4_altlinux_w1 --name 1 --description "1" --atomic
+
+sudo virsh destroy --domain adm4_altlinux_w2 --graceful
+sudo virsh snapshot-create-as --domain adm4_altlinux_s2 --name 1 --description "1" --atomic
+
+# libvirt удаление snapshot
+sudo virsh snapshot-delete adm4_altlinux_s1 --snapshotname 1
+sudo virsh snapshot-delete adm4_altlinux_s2 --snapshotname 1
+sudo virsh snapshot-delete adm4_altlinux_s3 --snapshotname 1
+sudo virsh snapshot-delete adm4_altlinux_w1 --snapshotname 1
+sudo virsh snapshot-delete adm4_altlinux_w2 --snapshotname 1
 ```
-
-
 
 ##### Для github
 ```bash
@@ -326,6 +377,6 @@ git add . .. \
 
 git log --oneline
 
-git commit -am "оформение для ADM4" \
+git commit -am "оформение для ADM4_upd_4" \
 && git push -u altlinux main
 ```

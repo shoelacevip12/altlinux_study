@@ -1,0 +1,7 @@
+<network connections='2' ipv6='yes'>
+  <name>s_private_network</name>
+  <uuid>41af5786-fff1-4621-9746-c525cbc0bcf9</uuid>
+  <bridge name='virbr2' stp='on' delay='0'/>
+  <mac address='52:54:00:43:f4:0a'/>
+</network>
+
