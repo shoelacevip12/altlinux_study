@@ -217,10 +217,78 @@ sudo bash -c \
 virsh start --domain \$i; done"
 ```
 
+##### Ручная установка ОС Альт рабочая станция.
+
+![](img/1.png)![](img/2.png)![](img/3.png)![](img/4.png)![](img/5.png)![](img/6.png)
+
+##### для других машин
+![](img/7.png)
+
 ##### Ручная установка ОС Альт Сервер.
 
-![](img/1.png)![](img/2.png)![](img/3.png)![](img/4.png)![](img/5.png)![](img/5.1.png)
+![](img/8.png)![](img/9.png)![](img/10.png)
 
+
+##### Организация forwarding – маршрутизации на узле с 2мя сетевыми картами
+![](img/11.png)
+
+```bash
+su -
+
+systemctl isolate multi-user.target
+
+systemctl set-default multi-user.target
+
+runlevel
+
+echo net.ipv4.ip_forward = 1 \
+>> /etc/net/sysctl.conf
+
+systemctl restart network
+
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y \
+igmpproxy \
+smcroute \
+iptables \
+net-tools \
+iproute2
+
+cp /etc/igmpproxy.conf{,.bak}
+
+cat > /etc/igmpproxy.conf << 'EOF'
+quickleave
+# порт выхода в глобальную сеть ens5
+phyint ens5 upstream  ratelimit 0  threshold 1
+# порт выхода в локальную сеть ens6
+phyint ens6 downstream  ratelimit 0  threshold 1
+phyint lo disabled
+EOF
+
+
+cat >>/etc/net/sysctl.conf<<'EOF'
+net.ipv4.conf.ens5.rp_filter=0
+net.ipv4.conf.ens5.force_igmp_version=1
+net.ipv4.conf.ens6.force_igmp_version=1
+EOF
+
+systemctl reboot
+
+su -
+
+less /proc/config.gz | grep '\(MROUTE\|MULTICAST\)'
+
+cat /proc/sys/net/ipv4/conf/default/forwarding
+
+iptables -I INPUT -d 224.0.0.0/4 -j ACCEPT
+
+iptables -I FORWARD -d 224.0.0.0/4 -j ACCEPT
+
+route add -net 224.0.0.0/4 dev ens6
+```
+![](img/12.png)
 ##### Организовываем подключение к серверному узлу
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/id_kvm_host -C "kvm-host-access-key"
@@ -249,7 +317,7 @@ sudo virsh dumpxml altlinux_altlinux_install > ./altlinux_server.xml
 # sudo virsh snapshot-delete altlinux_altlinux_install --snapshotname 1
 ```
 
-![](img/6.png)
+
 
 ##### Для github
 ```bash
