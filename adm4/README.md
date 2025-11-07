@@ -1,5 +1,5 @@
 # «`Настройка локального стенда ОС Альт`» `Скворцов Денис`
-### памятка для входа на на машины локальной сети
+### памятка для входа на машины локальной сети
 ```bash
 # включаем агента и запущенному процессу регистрируем используемые ключи
 eval $(ssh-agent) \
@@ -38,7 +38,7 @@ git pull altlinux main
 - [>>Дистрибутивы устновки<<](https://getalt.org)
   - [>>Alt p11 server 11.0<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/server/x86_64/alt-server-11.0-x86_64.iso)
   - [>>Alt p11 рабочая станция 11.1<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/workstation/x86_64/alt-workstation-11.1-x86_64.iso)
-##### Создаем в среде виртуализации libvirt 2 виртуальные машины с характеристиками
+##### Создаем в среде виртуализации libvirt 5 виртуальных машины с характеристиками
 - 3Гб ОЗУ
 - 2 ядро CPU
 - 1 сетевой интерфейс (типа bridge) для 1 из ВМ
@@ -186,6 +186,14 @@ sudo chmod 777 !$
   </ip>
 </network>
 ```
+```xml
+<network connections='2' ipv6='yes'>
+  <name>s_private_network</name>
+  <uuid>41af5786-fff1-4621-9746-c525cbc0bcf9</uuid>
+  <bridge name='virbr2' stp='on' delay='0'/>
+  <mac address='52:54:00:43:f4:0a'/>
+</network>
+```
 ##### Удаление постоянного интерфейса со всех виртуальных машин кроме adm4_altlinux_w2
 ```bash
 # определяем список виртуальных машин поименно
@@ -285,7 +293,7 @@ sed -i 's/rd\ =\ 0/rd\ =\ 1/' \
 
 systemctl restart network
 
-# обновление системы и установка пакетов для multicast-маршрутизации
+# обновление системы и установка пакетов для nat-маршрутизации
 apt-get update \
 && update-kernel -y \
 && apt-get dist-upgrade -y \
@@ -374,7 +382,9 @@ sudo virsh snapshot-delete adm4_altlinux_w2 --snapshotname 1
 
 ##### Для github
 ```bash
-git add . .. \
+cp ~/gited/.gitignore ../../.gitignore
+
+git add . .. ../.. \
 && git status
 
 git log --oneline
