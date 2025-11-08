@@ -137,7 +137,12 @@ apt-get update \
 && update-kernel -y \
 && apt-get dist-upgrade -y \
 && apt-get install -y \
-dhcp-server
+bind
+bind-utils
+```
+## План для выполнения 
+![](img/0.png)
+
 
 ### Выполнение работы
 ```bash
@@ -152,6 +157,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab2_upd1" \
+git commit -am "оформление для ADM4_lab2_upd2" \
 && git push -u altlinux main
 ```
