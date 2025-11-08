@@ -4,6 +4,7 @@ cache/
 __pycache__/
 mysql_D/
 .vscode/
+tmp/
 
 # игнорировать расширения и файлы:
 *.deb

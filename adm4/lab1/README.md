@@ -49,6 +49,8 @@ sudo bash -c \
 | awk '/nux/ {print \$2}') ; do \
 virsh start --domain \$i; done"
 ```
+### Ожидаемый план работы по организации DHCP
+![](img/0.png)
 ### Выполнение работы
 ##### Установка имен узлов
 ```bash
@@ -227,6 +229,6 @@ git add . .. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab1" \
+git commit -am "оформление для ADM4_lab1_upd_2" \
 && git push -u altlinux main
 ```
