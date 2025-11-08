@@ -1,0 +1,10 @@
+---
+- name: Остановка bind обработчиком
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: yes
+    masked: no
+  loop:
+    - bind
+  listen: stop_bind_alt

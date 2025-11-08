@@ -1,0 +1,4 @@
+---
+install_soft: false # установка софта
+kernel_upd: true # обновление ядра
+dist_upd: true # обновление дистрибутивов

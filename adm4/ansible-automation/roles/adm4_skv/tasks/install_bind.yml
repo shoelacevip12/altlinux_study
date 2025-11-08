@@ -1,0 +1,16 @@
+---
+- name: Установка bind
+  apt_rpm:
+    name: 
+      - bind
+    state: installed
+
+- name: Запуск bind
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+    masked: no
+  loop:
+    - bind
+  notify: stop_bind_alt

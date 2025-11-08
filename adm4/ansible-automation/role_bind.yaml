@@ -1,0 +1,14 @@
+---
+- name: Установки и обновление Для ОС Альт
+  hosts: alt_p11
+  become: yes
+  become_method: su
+  become_user: root
+  gather_facts: yes
+  vars:
+    install_soft: false # включаем(true)\выключаем(false) установку софта
+    kernel_upd: false # включаем(true)\выключаем(false) обновление ядра
+    dist_upd: false # включаем(true)\выключаем(false) только обновление кеша
+
+  roles:
+    - adm4_skv

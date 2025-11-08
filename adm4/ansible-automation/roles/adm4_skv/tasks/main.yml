@@ -1,0 +1,9 @@
+---
+- name: Обновление пакетов и ядра
+  include_tasks:
+    file: update.yml
+
+- name: Установка bind
+  include_tasks:
+    file: install_bind.yml
+  when: install_soft | bool

@@ -424,6 +424,46 @@ sudo virsh snapshot-delete \
 adm4_altlinux_w2 \
 --snapshotname 1
 ```
+### ansible. Проектирование автоматизации
+```bash
+mkdir -p ~/altlinux/adm/adm4/ansible-automation
+
+cp -r ~/altlinux/adm/adm3/lab4/* ~/altlinux/adm/adm4/ansible-automation
+
+cd !$
+
+rm -rf img README*
+
+sed -i -e '/^[[:space:]]*\(#\|;\)/d' -e '/^[[:space:]]*$/d' ansible.cfg
+
+# доступ до хранилища
+EDITOR=nano \
+ansible-vault edit \
+./group_vars/all/vault.yml
+
+# включаем агента и запущенному процессу регистрируем используемые ключи
+eval $(ssh-agent) \
+&& ssh-add ~/.ssh/id_vm \
+&& ssh-add  ~/.ssh/id_kvm_host_to_vms
+```
+### в playbook меняем переменные vars на true\false для включения\отключения обновлений\установки дистрибутивов
+```yaml
+vars:
+  install_soft: false # включаем(true)\выключаем(false) установку софта
+  kernel_upd: false # включаем(true)\выключаем(false) обновление ядра
+  dist_upd: false # включаем(true)\выключаем(false) только обновление кеша
+```
+### в hosts.ini комментируем или раскомментируем необходимые группы\хосты
+```ini
+[alt_p11:children]
+; alt_p11_group0
+alt_p11_group1
+alt_p11_group2
+```
+запуск
+```bash
+ansible-playbook role_bind.yaml
+```
 
 ##### Для github
 ```bash
@@ -434,6 +474,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_upd_5" \
+git commit -am "оформление для ADM4_upd_6" \
 && git push -u altlinux main
 ```
