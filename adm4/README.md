@@ -35,7 +35,7 @@ git pull altlinux main
 дистрибутивы для платформы x86_64
 - Альт Сервер
 - Альт Рабочая станция
-- [>>Дистрибутивы устновки<<](https://getalt.org)
+- [>>Дистрибутивы установки<<](https://getalt.org)
   - [>>Alt p11 server 11.0<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/server/x86_64/alt-server-11.0-x86_64.iso)
   - [>>Alt p11 рабочая станция 11.1<<](https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/workstation/x86_64/alt-workstation-11.1-x86_64.iso)
 ##### Создаем в среде виртуализации libvirt 5 виртуальных машины с характеристиками
@@ -201,7 +201,7 @@ sudo bash -c \
 "virsh list --all \
 | awk '/nux/ && !/x_w2/ {print \$2}'"
 
-# определяем мак адреса интерфесов для отключения
+# определяем мак адреса интерфейсов для отключения
 sudo bash -c \
 "virsh list --all \
 | awk '/nux/ && !/x_w2/ {print \$2}' \
@@ -243,6 +243,7 @@ virsh dumpxml \$i \
 
 sudo chmod 777 *.xml
 ```
+![](img/0.png)
 ##### Запуск отредактированной сети, виртуальных машин
 ```bash
 # поочередный запуск всех сетей libvirt со 2ого по списку
@@ -250,7 +251,7 @@ sudo virsh net-list --all \
 | awk 'NR > 3 {print $1}' \
 | xargs -I {} sudo virsh net-start {}
 
-# поочередный запуск всех ВМ содержаших "nux"
+# поочередный запуск всех ВМ содержащих "nux"
 sudo bash -c \
 "for i in \$(virsh list --all \
 | awk '/nux/ {print \$2}') ; do \
@@ -281,7 +282,7 @@ dev virbr1
 ```bash
 su -
 
-# Отключени из автозагрузки служб для графического взаимодействия
+# Отключение из автозагрузки служб для графического взаимодействия
 systemctl isolate multi-user.target
 systemctl set-default multi-user.target
 
@@ -303,7 +304,7 @@ nftables
 # Включаем и добавляем в автозагрузку службу nftables:
 systemctl enable --now nftables
 
-# Cоздаём необходимую структуру для nftables (семейство, таблица, цепочка) для настройки NAT:
+# Создаём необходимую структуру для nftables (семейство, таблица, цепочка) для настройки NAT:
 nft add table ip nat
 nft add chain ip nat postrouting '{ type nat hook postrouting priority 0; }'
 nft add rule ip nat postrouting ip saddr 10.10.10.240/28 oifname "ens5" counter masquerade
@@ -338,7 +339,7 @@ ssh-copy-id \
 -i ~/.ssh/id_kvm_host_to_vms.pub \
 sadmin@192.168.121.2
 
-# проброс ключа до виртуальной машины через шлюз как прокси-сервер
+# проброс ключа до виртуальных машин через шлюз как прокси-сервер
 ssh-copy-id \
 -i ~/.ssh/id_vm.pub \
 -o "ProxyJump sadmin@192.168.121.2" \
@@ -349,7 +350,8 @@ eval $(ssh-agent) \
 && ssh-add ~/.ssh/id_vm \
 && ssh-add  ~/.ssh/id_kvm_host_to_vms
 
-# вход через шлюз 192.168.121.2 как прокси на alt-s-p11-1 10.10.10.241
+# вход через шлюз 192.168.121.2 как прокси на виртуальные машины локальной сети
+# сервер DHCP
 ssh -i ~/.ssh/id_kvm_host_to_vms \
 -o "ProxyJump sadmin@192.168.121.2" \
 -i ~/.ssh/id_vm sadmin@10.10.10.241
@@ -357,27 +359,70 @@ ssh -i ~/.ssh/id_kvm_host_to_vms \
 exit
 
 # libvirt выключение машины и создание snapshot
-sudo virsh destroy --domain adm4_altlinux_s1 --graceful
-sudo virsh snapshot-create-as --domain adm4_altlinux_s1 --name 1 --description "1" --atomic
+sudo virsh destroy \
+--domain adm4_altlinux_s1 \
+--graceful
 
-sudo virsh destroy --domain adm4_altlinux_s2 --graceful
-sudo virsh snapshot-create-as --domain adm4_altlinux_s2 --name 1 --description "1" --atomic
+sudo virsh snapshot-create-as \
+--domain adm4_altlinux_s1 \
+--name 1 \
+--description "1" --atomic
 
-sudo virsh destroy --domain adm4_altlinux_s3 --graceful
-sudo virsh snapshot-create-as --domain adm4_altlinux_s3 --name 1 --description "1" --atomic
+sudo virsh destroy \
+--domain adm4_altlinux_s2 \
+--graceful
 
-sudo virsh destroy --domain adm4_altlinux_w1 --graceful
-sudo virsh snapshot-create-as --domain adm4_altlinux_w1 --name 1 --description "1" --atomic
+sudo virsh snapshot-create-as \
+--domain adm4_altlinux_s2 \
+--name 1 \
+--description "1" --atomic
 
-sudo virsh destroy --domain adm4_altlinux_w2 --graceful
-sudo virsh snapshot-create-as --domain adm4_altlinux_s2 --name 1 --description "1" --atomic
+sudo virsh destroy \
+--domain adm4_altlinux_s3 \
+--graceful
+
+sudo virsh snapshot-create-as \
+--domain adm4_altlinux_s3 \
+--name 1 \
+--description "1" --atomic
+
+sudo virsh destroy \
+--domain adm4_altlinux_w1 \
+--graceful
+
+sudo virsh snapshot-create-as \
+--domain adm4_altlinux_w1 \
+--name 1 \
+--description "1" --atomic
+
+sudo virsh destroy \
+--domain adm4_altlinux_w2 \
+--graceful
+
+sudo virsh snapshot-create-as \
+--domain adm4_altlinux_w2 \
+--name 1 \
+--description "1" --atomic
 
 # libvirt удаление snapshot
-sudo virsh snapshot-delete adm4_altlinux_s1 --snapshotname 1
-sudo virsh snapshot-delete adm4_altlinux_s2 --snapshotname 1
-sudo virsh snapshot-delete adm4_altlinux_s3 --snapshotname 1
-sudo virsh snapshot-delete adm4_altlinux_w1 --snapshotname 1
-sudo virsh snapshot-delete adm4_altlinux_w2 --snapshotname 1
+sudo virsh snapshot-delete \
+adm4_altlinux_s1 \
+--snapshotname 1
+
+sudo virsh snapshot-delete \
+adm4_altlinux_s2 \
+--snapshotname 1
+
+sudo virsh snapshot-delete \
+adm4_altlinux_s3 \
+--snapshotname 1
+sudo virsh snapshot-delete \
+adm4_altlinux_w1 \
+--snapshotname 1
+
+sudo virsh snapshot-delete \
+adm4_altlinux_w2 \
+--snapshotname 1
 ```
 
 ##### Для github
@@ -389,6 +434,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформение для ADM4_upd_5" \
+git commit -am "оформление для ADM4_upd_5" \
 && git push -u altlinux main
 ```

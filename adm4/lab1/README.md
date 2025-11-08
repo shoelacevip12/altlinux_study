@@ -6,11 +6,12 @@ eval $(ssh-agent) \
 && ssh-add ~/.ssh/id_vm \
 && ssh-add  ~/.ssh/id_kvm_host_to_vms
 
+# Шлюз
 ssh \
 -i ~/.ssh/id_kvm_host_to_vms \
 sadmin@alt-w-p11-route
 
-# вход через шлюз 192.168.121.2 как прокси на машину локальной сети 10.10.10.241
+# Основной сервер локальной сети
 ssh -i ~/.ssh/id_kvm_host_to_vms \
 -o "ProxyJump sadmin@alt-w-p11-route" \
 -i ~/.ssh/id_vm sadmin@alt-s-p11-1
@@ -42,7 +43,7 @@ sudo virsh net-list --all \
 | awk 'NR > 3 {print $1}' \
 | xargs -I {} sudo virsh net-start {}
 
-# Поочередный запуск всех ВМ содержаших "nux"
+# Поочередный запуск всех ВМ содержащих "nux"
 sudo bash -c \
 "for i in \$(virsh list --all \
 | awk '/nux/ {print \$2}') ; do \
@@ -81,7 +82,7 @@ EOF
 ```
 ##### Восстановление Nat настроек на шлюзе
 ```bash
-# Cоздаём необходимую структуру для nftables (семейство, таблица, цепочка) для настройки NAT:
+# Создаём необходимую структуру для nftables (семейство, таблица, цепочка) для настройки NAT:
 nft add table ip nat
 nft add chain ip nat postrouting '{ type nat hook postrouting priority 0; }'
 nft add rule ip nat postrouting ip saddr 10.10.10.240/28 oifname "ens5" counter masquerade
@@ -226,6 +227,6 @@ git add . .. \
 
 git log --oneline
 
-git commit -am "оформение для ADM4_lab1" \
+git commit -am "оформление для ADM4_lab1" \
 && git push -u altlinux main
 ```
