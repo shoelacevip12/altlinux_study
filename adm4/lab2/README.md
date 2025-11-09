@@ -644,22 +644,6 @@ rsync -aP \
 /etc/dhcp/dhcpd.conf \
 shoel@192.168.121.1:~/altlinux/adm/adm4/lab2/configs_bind_dhcp/dhcpd.conf_SERVER
 ```
-```bash
-ssh -i ~/.ssh/id_kvm_host_to_vms \
--o "ProxyJump sadmin@192.168.121.2" \
--i ~/.ssh/id_vm sadmin@10.10.10.242
-
-su -
-
-rsync -aP \
-/var/lib/bind/etc/options.conf \
-shoel@192.168.121.1:~/altlinux/adm/adm4/lab2/configs_bind_dhcp/etc/options.conf_SLAVE
-
-rsync -aP \
-/var/lib/bind/etc/local.conf \
-shoel@192.168.121.1:~/altlinux/adm/adm4/lab2/configs_bind_dhcp/etc/local.conf_SLAVE
-```
-
 ##### Конфиг Мастер-зоны /var/lib/bind/etc/options.conf
 ```ini
 options {
@@ -755,7 +739,6 @@ logging {
 	// };
 };
 ```
-
 ##### Конфиг Мастер-зоны /var/lib/bind/etc/local.conf
 ```ini
 include "/etc/bind/rfc1912.conf";
@@ -863,6 +846,21 @@ host alt-s-p11-3 {
   hardware ethernet 52:54:00:e7:19:99;
   fixed-address 10.10.10.243;
 }
+```
+```bash
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+-i ~/.ssh/id_vm sadmin@10.10.10.242
+
+su -
+
+rsync -aP \
+/var/lib/bind/etc/options.conf \
+shoel@192.168.121.1:~/altlinux/adm/adm4/lab2/configs_bind_dhcp/etc/options.conf_SLAVE
+
+rsync -aP \
+/var/lib/bind/etc/local.conf \
+shoel@192.168.121.1:~/altlinux/adm/adm4/lab2/configs_bind_dhcp/etc/local.conf_SLAVE
 ```
 ##### Конфиг вторичной-зоны /var/lib/bind/etc/options.conf
 ```ini
@@ -987,6 +985,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab2_upd7" \
+git commit -am "оформление для ADM4_lab2_upd8" \
 && git push -u altlinux main
 ```
