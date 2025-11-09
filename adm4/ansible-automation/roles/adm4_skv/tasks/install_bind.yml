@@ -3,6 +3,7 @@
   apt_rpm:
     name: 
       - bind
+      - bind-utils
     state: installed
 
 - name: Запуск bind
