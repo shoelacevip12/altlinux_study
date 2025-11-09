@@ -266,14 +266,55 @@ alt-s-p11-1 IN      A       10.10.10.241
 alt-s-p11-2 IN      A       10.10.10.242
 EOF
 
+# Копируем уже имеющийся полученный при первом запуске Bind
+cp etc/{rndc,ddns}.key
+
+chown named:named etc/bind/ddns.key
+
+sed -i 's/rndc-key/ddns-key-skv/' etc/ddns.key
+
+# присваиваем данному серверу роль мастера зоны
+cat >>./etc/local.conf<<'EOF'
+include "/etc/bind/ddns.key";
+zone "den.skv" {
+    type master;
+    file "ddns/den.skv.zone";
+    allow-update { key ddns-key-skv; };
+};
+EOF
+
+# проверка конфига на корректность
+named-checkconf -p
+
 chown named:named -R zone/ddns
 
-named-checkzone de.skv. zone/ddns/den.skv.zone
+named-checkzone den.skv. zone/ddns/den.skv.zone
 ```
 ![](img/6.png)
 
-
+##### обновление DHCP для обновления ddns зоны
 ```bash
+sed -i '3s/none;/interim;/' \
+/etc/dhcp/dhcpd.conf
+
+sed -i '2a\ddns-updates on;' \
+/etc/dhcp/dhcpd.conf
+
+ln -s /var/lib/bind/etc/ddns.key /etc/dhcp/
+
+sed -i '4a\include "/etc/dhcp/ddns.key";' \
+/etc/dhcp/dhcpd.conf
+
+sed -i '/.key";/r /dev/stdin' /etc/dhcp/dhcpd.conf << 'EOF'
+zone den.skv {
+        primary 10.10.10.241;
+        key ddns-key-skv;
+}
+EOF
+
+systemctl restart dhcpd
+
+systemctl start bind
 
 exit
 
@@ -313,6 +354,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab2_upd3" \
+git commit -am "оформление для ADM4_lab2_upd4" \
 && git push -u altlinux main
 ```
