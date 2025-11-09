@@ -485,7 +485,7 @@ exit
 
 exit
 ```
-![](img/8.png)![](img/9.png)
+![](img/8.png)![](img/9.png)![](img/10.png)![](img/11.png)![](img/12.png)![](img/13.png)
 
 #### Выгрузка конфигов работы
 ```bash
@@ -985,6 +985,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab2_upd8" \
+git commit -am "оформление для ADM4_lab2_upd9" \
 && git push -u altlinux main
 ```
