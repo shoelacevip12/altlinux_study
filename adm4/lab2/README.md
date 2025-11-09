@@ -135,7 +135,7 @@ sadmin@10.10.10.244
 ![](img/0.png)
 
 ### Выполнение работы
-#### установка bind на шлюзе, alt-s-p11-1 alt-s-p11-2
+#### установка bind на шлюзе, alt-s-p11-1 и alt-s-p11-2
 ```bash
 cd ../ansible-automation/
 
@@ -183,8 +183,18 @@ systemctl stop bind
 ![](img/4.png)
 #### Настраиваем Forward запросов на наш домен на наши сервера
 ```bash
+# Зону прямого просмотра 
 cat >>./etc/local.conf<<'EOF'
 zone "den.skv" {
+    type forward;
+    forward only;
+    forwarders { 10.10.10.242; 10.10.10.241; };
+};
+EOF
+
+# Зону обратного просмотра 
+cat >>./etc/local.conf<<'EOF'
+zone "10.10.10.in-addr.arpa" {
     type forward;
     forward only;
     forwarders { 10.10.10.242; 10.10.10.241; };
@@ -196,11 +206,12 @@ named-checkconf -p
 
 systemctl start bind
 
+journalctl -efu bind
+
 exit
 
 exit
 ```
-
 
 #### Настройка службы BIND на мастера зоны den.skv.
 ```bash
@@ -231,6 +242,9 @@ systemctl restart network
 ```bash
 cd /var/lib/bind
 
+# даем доступ на dump кеша согласно пути по умолчанию в ./etc/options.conf
+chmod g+x var 
+
 # Прослушивать только локальный порт и Loopback интерфейс
 sed -i 's/0.1;/0.1; 10.10.10.240\/28;/' etc/options.conf
 
@@ -241,6 +255,15 @@ sed -i 's/S=""/S="-4"/' /etc/sysconfig/bind
 sed -i 's|//allow-recursion { localnets|allow-recursion { 10.10.10.240/28|' \
 etc/options.conf
 
+
+
+# разрешаем трансфер до описанных серверов (нужно для вторичного сервера)
+sed -i '/::1; };/a\        allow-transfer { localhost; 10.10.10.242; };' etc/options.conf
+
+# ограничиваем оповещение определенным DNS серверам
+sed -i '/::1; };/a\        allow-notify { 10.10.10.242; };' etc/options.conf
+
+
 # проверка конфига на корректность
 named-checkconf -p
 ```
@@ -248,6 +271,7 @@ named-checkconf -p
 ```bash
 mkdir zone/ddns
 
+# зона прямого просмотра
 cat >>zone/ddns/den.skv.zone<<'EOF'
 $TTL 1w
 @           IN      SOA     alt-s-p11-1.den.skv. ya.den.skv. (
@@ -264,21 +288,59 @@ $TTL 1w
 ; Записи A для серверов имён
 alt-s-p11-1 IN      A       10.10.10.241
 alt-s-p11-2 IN      A       10.10.10.242
+
+; A-запись для самого домена
+@           IN      A       10.10.10.241
 EOF
 
-# Копируем уже имеющийся полученный при первом запуске Bind
+# Зона зона обратного просмотра
+cat >>zone/ddns/10.10.10.zone<<'EOF'
+$TTL 1w
+10.10.10.in-addr.arpa.        IN      SOA     alt-s-p11-1.den.skv. ya.den.skv. (
+                              2025110901         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
+                              2d                 ; Refresh (2 дня)
+                              1h                 ; Retry (2 часа)
+                              1w                 ; Expire (1 неделя)
+                              1w )               ; Negative Cache TTL (1 неделя)
+
+; Определение серверов имён (NS)
+                              IN      NS      alt-s-p11-1.den.skv.
+                              IN      NS      alt-s-p11-2.den.skv.
+
+; Записи A для серверов имён
+241                           IN      PTR     alt-s-p11-1.den.skv.
+242                           IN      PTR     alt-s-p11-2.den.skv.
+EOF
+
+```
+```bash
+# Копируем уже имеющийся ключ авторизации для изменения зоны полученный при первом запуске Bind
 cp etc/{rndc,ddns}.key
 
+# предоставляем доступ службе bind до скопированного ключа авторизации
 chown named:named etc/bind/ddns.key
 
+# Даем уникальное имя для ключа авторизации для обновления зоны ddns
 sed -i 's/rndc-key/ddns-key-skv/' etc/ddns.key
 
-# присваиваем данному серверу роль мастера зоны
+# присваиваем данному серверу роль мастера зоны прямого просмотра
 cat >>./etc/local.conf<<'EOF'
 include "/etc/bind/ddns.key";
 zone "den.skv" {
     type master;
     file "ddns/den.skv.zone";
+    notify yes;
+    allow-update { key ddns-key-skv; };
+};
+EOF
+
+# присваиваем данному серверу роль мастера зоны прямого просмотра
+cat >>./etc/local.conf<<'EOF'
+
+zone "10.10.10.in-addr.arpa" {
+    type master;
+    file "ddns/10.10.10.zone";
+    notify yes;
     allow-update { key ddns-key-skv; };
 };
 EOF
@@ -286,25 +348,36 @@ EOF
 # проверка конфига на корректность
 named-checkconf -p
 
+# Даем доступ службе Bind до созданной зоны
 chown named:named -R zone/ddns
 
+# Проверка зоны на корректность
 named-checkzone den.skv. zone/ddns/den.skv.zone
 ```
 ![](img/6.png)
 
 ##### обновление DHCP для обновления ddns зоны
 ```bash
-sed -i '3s/none;/interim;/' \
-/etc/dhcp/dhcpd.conf
-
+# Включаем обновление зоны ddns
 sed -i '2a\ddns-updates on;' \
 /etc/dhcp/dhcpd.conf
 
+# обозначаем механизм добавления записей в зону
+sed -i '3s/none;/interim;/' \
+/etc/dhcp/dhcpd.conf
+
+# создаем символьную ссылку до файла ключа для обновления записей
 ln -s /var/lib/bind/etc/ddns.key /etc/dhcp/
 
+# Указываем путь до ссылки на фал ключа
 sed -i '4a\include "/etc/dhcp/ddns.key";' \
 /etc/dhcp/dhcpd.conf
 
+# позволяем записывать в зону зарезервированные адреса
+sed -i '4a\update-static-leases on;' \
+/etc/dhcp/dhcpd.conf
+
+# описываем зону в которую будем автоматически вносить A и TXT записи 
 sed -i '/.key";/r /dev/stdin' /etc/dhcp/dhcpd.conf << 'EOF'
 zone den.skv {
         primary 10.10.10.241;
@@ -312,9 +385,21 @@ zone den.skv {
 }
 EOF
 
+# описываем обратную зону в которую будем автоматически вносить PTR записи 
+sed -i '/.key";/r /dev/stdin' /etc/dhcp/dhcpd.conf << 'EOF'
+
+zone 10.10.10.in-addr.arpa {
+        primary 10.10.10.241;
+        key ddns-key-skv;
+}
+
+EOF
+
 systemctl restart dhcpd
 
-systemctl start bind
+systemctl restart bind
+
+journalctl -efu bind
 
 exit
 
@@ -334,11 +419,50 @@ systemctl stop bind
 
 cd /var/lib/bind
 
+# даем доступ на dump кеша согласно пути по умолчанию в ./etc/options.conf
+chmod g+x var 
+
 # Прослушивать только локальный порт и Loopback интерфейс
 sed -i 's/0.1;/0.1; 10.10.10.240\/28;/' etc/options.conf
 
 # Указываем на работу только на IPv4
 sed -i 's/S=""/S="-4"/' /etc/sysconfig/bind
+
+# Ограничиваем рекурсию запросов
+sed -i 's|//allow-recursion { localnets|allow-recursion { 10.10.10.240/28|' \
+etc/options.conf
+
+# Переводим сервер DNS в режим вторичного сервера
+control bind-slave enabled
+
+# проверка конфига на корректность
+named-checkconf -p
+```
+```bash
+# присваиваем данному серверу роль slave зоны прямого просмотра den.svk
+cat >>./etc/local.conf<<'EOF'
+zone "den.skv" {
+    type slave;
+    masters { 10.10.10.241; };
+    file "slave/den.skv.zone";
+};
+EOF
+
+cat >>./etc/local.conf<<'EOF'
+
+zone "10.10.10.in-addr.arpa" {
+    type slave;
+    masters { 10.10.10.241; };
+    file "slave/10.10.10.zone";
+};
+EOF
+
+# проверка конфига на корректность
+named-checkconf -p
+
+systemctl restart bind
+
+journalctl -efu bind
 
 exit
 
@@ -354,6 +478,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab2_upd4" \
+git commit -am "оформление для ADM4_lab2_upd5" \
 && git push -u altlinux main
 ```
