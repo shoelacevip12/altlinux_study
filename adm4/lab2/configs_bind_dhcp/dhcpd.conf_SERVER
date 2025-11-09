@@ -1,0 +1,38 @@
+# See dhcpd.conf(5) for further configuration
+
+ddns-updates on;
+ddns-update-style interim;
+update-static-leases on;
+include "/etc/dhcp/ddns.key";
+
+zone 10.10.10.in-addr.arpa {
+        primary 10.10.10.241;
+        key ddns-key-skv;
+}
+
+zone den.skv {
+        primary 10.10.10.241;
+        key ddns-key-skv;
+}
+
+subnet 10.10.10.240 netmask 255.255.255.240 {
+	option routers			10.10.10.254;
+	option subnet-mask		255.255.255.240;
+
+	option nis-domain		"den.skv";
+	option domain-name		"den.skv";
+	option domain-name-servers	10.10.10.254, 10.10.10.242;
+
+	range dynamic-bootp 10.10.10.242 10.10.10.253;
+	default-lease-time 172800;
+	max-lease-time 259200;
+}
+host alt-s-p11-2 {
+  hardware ethernet 52:54:00:23:25:a0;
+  fixed-address 10.10.10.242;
+}
+
+host alt-s-p11-3 {
+  hardware ethernet 52:54:00:e7:19:99;
+  fixed-address 10.10.10.243;
+}

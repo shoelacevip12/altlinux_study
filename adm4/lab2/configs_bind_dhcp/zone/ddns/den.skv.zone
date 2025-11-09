@@ -1,0 +1,20 @@
+$ORIGIN .
+$TTL 604800	; 1 week
+den.skv			IN SOA	alt-s-p11-1.den.skv. ya.den.skv. (
+				2025110906 ; serial
+				172800     ; refresh (2 days)
+				3600       ; retry (1 hour)
+				604800     ; expire (1 week)
+				604800     ; minimum (1 week)
+				)
+			NS	alt-s-p11-1.den.skv.
+			NS	alt-s-p11-2.den.skv.
+den.skv			IN A	10.10.10.241
+$ORIGIN den.skv.
+alt-s-p11-1		A	10.10.10.241
+alt-s-p11-2		A	10.10.10.242
+$TTL 3600	; 1 hour
+alt-s-p11-3		A	10.10.10.243
+			TXT	"003e4423b944b88ce4b47d40ec501e3562"
+alt-w-p11-1		A	10.10.10.244
+			TXT	"003124413cf77d293aec83c42b609b3144"

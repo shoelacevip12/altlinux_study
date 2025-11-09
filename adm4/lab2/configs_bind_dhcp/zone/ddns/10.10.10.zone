@@ -1,0 +1,16 @@
+$ORIGIN .
+$TTL 604800	; 1 week
+10.10.10.in-addr.arpa	IN SOA	alt-s-p11-1.den.skv. ya.den.skv. (
+				2025110902 ; serial
+				172800     ; refresh (2 days)
+				3600       ; retry (1 hour)
+				604800     ; expire (1 week)
+				604800     ; minimum (1 week)
+				)
+			NS	alt-s-p11-1.den.skv.
+			NS	alt-s-p11-2.den.skv.
+$ORIGIN 10.10.10.in-addr.arpa.
+241			PTR	alt-s-p11-1.den.skv.
+242			PTR	alt-s-p11-2.den.skv.
+$TTL 3600	; 1 hour
+243			PTR	alt-s-p11-3.den.skv.

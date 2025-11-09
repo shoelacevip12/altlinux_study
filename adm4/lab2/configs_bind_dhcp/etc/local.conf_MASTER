@@ -1,0 +1,21 @@
+include "/etc/bind/rfc1912.conf";
+
+// Consider adding the 1918 zones here,
+// if they are not used in your organization.
+//	include "/etc/bind/rfc1918.conf";
+
+// Add other zones here
+include "/etc/bind/ddns.key";
+zone "den.skv" {
+    type master;
+    file "ddns/den.skv.zone";
+    notify yes;
+    allow-update { key ddns-key-skv; };
+};
+
+zone "10.10.10.in-addr.arpa" {
+    type master;
+    file "ddns/10.10.10.zone";
+    notify yes;
+    allow-update { key ddns-key-skv; };
+};

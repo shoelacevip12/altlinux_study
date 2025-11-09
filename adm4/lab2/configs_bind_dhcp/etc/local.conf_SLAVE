@@ -1,0 +1,18 @@
+include "/etc/bind/rfc1912.conf";
+
+// Consider adding the 1918 zones here,
+// if they are not used in your organization.
+//	include "/etc/bind/rfc1918.conf";
+
+// Add other zones here
+zone "den.skv" {
+    type slave;
+    masters { 10.10.10.241; };
+    file "slave/den.skv.zone";
+};
+
+zone "10.10.10.in-addr.arpa" {
+    type slave;
+    masters { 10.10.10.241; };
+    file "slave/10.10.10.zone";
+};
