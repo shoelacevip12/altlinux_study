@@ -233,5 +233,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-
+git commit -am "оформление для ADM4_lab3_upd2" \
+&& git push -u altlinux main
 ```
