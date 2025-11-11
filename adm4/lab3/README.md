@@ -216,6 +216,53 @@ EOF
 
 systemctl enable --now smb
 ```
+![](img/7.png)
+```ini
+[global]
+        netbios name = TRASH
+        printcap name = cups
+        security = USER
+        server string = Samba Server den.skv %v
+        workgroup = DEN.SKV
+        idmap config * : backend = tdb
+        cups options = raw
+        hosts allow = 10.10.10.240/28
+        include = /etc/samba/usershares.conf
+
+
+[trash]
+        comment = TyT /7OJLHbIU TRASH
+        guest ok = Yes
+        path = /srv/samba_skv
+        read list = guest
+        read only = No
+        write list = +team
+
+
+[homes]
+        browseable = No
+        comment = Home Directories
+        inherit acls = Yes
+        read only = No
+        valid users = %S %D%w%S
+
+
+[printers]
+        browseable = No
+        comment = All Printers
+        create mask = 0600
+        path = /var/tmp
+        printable = Yes
+
+
+[print$]
+        comment = Printer Drivers
+        create mask = 0664
+        directory mask = 0775
+        force group = @printadmin
+        path = /var/lib/samba/drivers
+        write list = @printadmin root
+```
 #### Проверка работы
 ![](img/5.png)
 ```bash
