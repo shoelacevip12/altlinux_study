@@ -6,7 +6,7 @@
   become_user: root
   gather_facts: yes
   vars:
-    install_soft: true # включаем(true)\выключаем(false) установку софта
+    install_soft: false # включаем(true)\выключаем(false) установку софта
     kernel_upd: true # включаем(true)\выключаем(false) обновление ядра
     dist_upd: true # включаем(true)\выключаем(false) только обновление кеша
 

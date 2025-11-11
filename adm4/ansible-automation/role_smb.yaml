@@ -1,0 +1,10 @@
+---
+- name: Установки samba в ОС Альт
+  hosts: alt_smb_server
+  become: yes
+  become_method: su
+  become_user: root
+  gather_facts: yes
+
+  roles:
+    - smb_skv

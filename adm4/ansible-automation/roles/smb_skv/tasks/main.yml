@@ -1,0 +1,8 @@
+---
+- name: Обновление пакетов и установка samba
+  include_tasks:
+    file: upd_inst.yml
+
+- name: Создание пользователей samba
+  include_tasks:
+    file: samba_users.yml

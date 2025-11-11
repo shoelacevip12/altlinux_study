@@ -1,0 +1,19 @@
+---
+- name: Установка samba
+  apt_rpm:
+    name: 
+      - samba
+      - samba-common-tools
+      - samba-client
+    state: installed
+  notify: start_samba_alt
+
+- name: Создание пользователей samba без home
+  user:
+    name: "{{ item.key }}"
+    password: "{{ item.value.password | password_hash('sha512') }}"
+    shell: /sbin/nologin
+    groups: "{{ samba_groups }}"
+    append: yes
+  loop: "{{ samba_users | dict2items }}"
+  no_log: true

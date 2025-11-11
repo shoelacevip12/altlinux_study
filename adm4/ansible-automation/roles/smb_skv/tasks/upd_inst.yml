@@ -1,0 +1,12 @@
+---
+- name: Обновление пакетов
+  apt_rpm:
+    update_cache: true
+    dist_upgrade: true
+
+- name: Обновление ядра
+  apt_rpm:
+    update_kernel: true
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/usr/sbin"
+  ignore_errors: true

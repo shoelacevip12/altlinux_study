@@ -1,0 +1,12 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/smb_skv
+samba_users:
+  sambauser_1:
+    password: "{{ usersmb1 }}"
+  sambauser_2: 
+    password: "{{ usersmb2 }}"
+  sambauser_3:
+    password: "{{ usersmb3 }}"
+  sambauser_4:
+    password: "{{ usersmb4 }}"

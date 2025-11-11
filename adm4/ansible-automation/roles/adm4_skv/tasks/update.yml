@@ -8,6 +8,18 @@
     dist_upgrade: true
   when: dist_upd | bool
 
+
+- name: Установка дополнений для узлов
+  apt_rpm:
+    name: 
+      - python3
+      - python3-module-yaml
+      - python3-module-jinja2
+      - python3-module-json5
+      - python3-module-passlib
+      - samba-client
+    state: installed
+
 - name: Обновление ядра
   apt_rpm:
     update_kernel: true

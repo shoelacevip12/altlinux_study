@@ -15,7 +15,7 @@
     update_kernel: true
   environment:
     PATH: "{{ ansible_env.PATH }}:/usr/sbin"
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: удаление для теста xrdp
   apt_rpm:
