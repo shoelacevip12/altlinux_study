@@ -191,7 +191,12 @@ pdbedit -L -v \
 ```bash
 mkdir /srv/samba_skv
 
+
+
 sed -i 's/SAMBA/DEN.SKV/' \
+/etc/samba/smb.conf
+
+sed -i '/DEN.SKV/a\        map to guest = Bad User' \
 /etc/samba/smb.conf
 
 sed -i '/DEN.SKV/a\        netbios name = TRASH' \
@@ -203,15 +208,17 @@ sed -i '/DEN.SKV/a\        server string = Samba Server den.skv %v' \
 sed -i '/= user/a\        hosts allow = 10.10.10.240\/28' \
 /etc/samba/smb.conf
 
-cat >>/etc/samba/usershares.conf<<'EOF'
+cat >/etc/samba/usershares.conf<<'EOF'
 [trash]
         comment = TyT /7OJLHbIU TRASH
         path = /srv/samba_skv
-        writable = yes
+        writable = no
         guest ok = yes
-        read list = guest
-        write list = +team
+        read list = +guest +team
+        write list = sambauser_1
         browseable = yes
+        create mask = 0755
+        directory mask = 0755
 EOF
 
 systemctl enable --now smb
@@ -219,6 +226,7 @@ systemctl enable --now smb
 ![](img/7.png)
 ```ini
 [global]
+        map to guest = Bad User
         netbios name = TRASH
         printcap name = cups
         security = USER
@@ -232,11 +240,11 @@ systemctl enable --now smb
 
 [trash]
         comment = TyT /7OJLHbIU TRASH
+        create mask = 0755
         guest ok = Yes
         path = /srv/samba_skv
-        read list = guest
-        read only = No
-        write list = +team
+        read list = +guest +team
+        write list = sambauser_1
 
 
 [homes]
@@ -266,12 +274,12 @@ systemctl enable --now smb
 #### Проверка работы
 ![](img/5.png)
 ```bash
-for p in {1..4}; do \
+for p in {1..6}; do \
 smbclient -L alt-s-p11-3 -U sambauser_$p --password smbskv$p; done
 
 smbclient -L TRASH -U sambauser_1
 ```
-![](img/6.png)
+![](img/6.png)![](img/6.1.png)![](img/6.2.png)![](img/6.3.png)
 ##### Для github
 ```bash
 
@@ -280,6 +288,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab3_upd2" \
+git commit -am "оформление для ADM4_lab3_upd3" \
 && git push -u altlinux main
 ```
