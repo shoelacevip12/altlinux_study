@@ -276,18 +276,43 @@ systemctl enable --now smb
 ```bash
 for p in {1..6}; do \
 smbclient -L alt-s-p11-3 -U sambauser_$p --password smbskv$p; done
-
-smbclient -L TRASH -U sambauser_1
 ```
 ![](img/6.png)![](img/6.1.png)![](img/6.2.png)![](img/6.3.png)
+
+#### автомонтирование
+```bash
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+-i ~/.ssh/id_vm sadmin@10.10.10.244
+
+su -
+
+apt-get install fuse-gvfs gvfs-backend-smb libgio avahi-daemon
+
+systemctl enable --now avahi-daemon
+
+systemctl status  avahi-daemon
+
+cat >/etc/samba/.seccreds<<'EOF'
+username=sambauser_1
+password=smbskv1
+EOF
+
+chmod 600 /etc/samba/.seccreds
+chown root: /etc/samba/.seccreds
+echo '//alt-s-p11-3/trash /mnt/share cifs noauto,_netdev,x-systemd.automount,users,credentials=/etc/samba/.seccreds 0 0' >> /etc/fstab
+systemctl reboot
+```
+![](img/GIF.gif)
+![](img/8.png)
+
 ##### Для github
 ```bash
-
 git add . .. ../.. \
 && git status
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab3_upd3" \
+git commit -am "оформление для ADM4_lab3_upd5" \
 && git push -u altlinux main
 ```
