@@ -334,7 +334,11 @@ for g in \
 echo "---$g---"
 samba-tool group listmembers "$g"; done
 ```
-![](img/5.png)![](img/5.1.png)![](img/5.2.png)![](img/5.3.png)![](img/5.4.png)
+![](img/5.png)
+![](img/5.1.png)
+![](img/5.2.png)
+![](img/5.3.png)
+![](img/5.4.png)
 
 #### Подготовка сервера времени к основному SAMBA-DC серверу
 ```bash
@@ -422,7 +426,13 @@ id smaba_u{1..3}
 
 getent passwd smaba_u{1..3}
 ```
-![](img/7.png)![](img/7.1.png)![](img/7.2.png)![](img/7.3.png)![](img/7.4.png)![](img/7.5.png)![](img/7.6.png)
+![](img/7.png)
+![](img/7.1.png)
+![](img/7.2.png)
+![](img/7.3.png)
+![](img/7.4.png)
+![](img/7.5.png)
+![](img/7.6.png)
 
 ### Для github
 ```bash
@@ -431,37 +441,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab4_upd4" \
+git commit -am "оформление для ADM4_lab4_upd5" \
 && git push -u altlinux main
 ```
-
-apt-get reinstall -y \
-libref_array-0.1.5-alt6 \
-libsss_nss_idmap-2.9.7-alt3 \
-libsss_idmap-2.9.7-alt3 \
-libldb-modules-ldap-4.21.9-alt1 \
-adcli-0.9.2-alt1 \
-samba-dc-libs-4.21.9-alt1 \
-sssd-client-2.9.7-alt3 \
-sssd-winbind-idmap-2.9.7-alt3 \
-samba-winbind-clients-4.21.9-alt1 \
-python3-module-sssdconfig-2.9.7-alt3 \
-python3-module-systemd-1:235-alt1 \
-python3-module-sssd-2.9.7-alt3 \
-libsss_certmap-2.9.7-alt3 \
-libsepol-1:3.8-alt1 \
-libsemanage-1:3.8-alt1 \
-libpath_utils-0.2.1-alt6 \
-libdhash-0.5.0-alt6 \
-libcollection-0.7.0-alt6 \
-libbasicobjects-0.1.1-alt6 \
-libini_config-1.3.1-alt6 \
-sssd-2.9.7-alt3 \
-sssd-dbus-2.9.7-alt3 \
-python3-module-sss-2.9.7-alt3 \
-sssd-tools-2.9.7-alt3 \
-sssd-krb5-common-2.9.7-alt3 \
-sssd-pac-2.9.7-alt3 \
-sssd-ad-2.9.7-alt3 \
-diag-domain-client-0.5-alt1 \
-task-auth-ad-sssd-0.48-alt1
