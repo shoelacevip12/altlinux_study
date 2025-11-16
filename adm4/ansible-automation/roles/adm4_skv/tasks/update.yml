@@ -18,6 +18,7 @@
       - python3-module-json5
       - python3-module-passlib
       - samba-client
+      - bind-utils
     state: installed
 
 - name: Обновление ядра

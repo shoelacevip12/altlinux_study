@@ -163,6 +163,9 @@ chmod g+x var
 # Прослушивать только локальный порт и Loopback интерфейс
 sed -i 's/0.1;/0.1; 10.10.10.240\/28;/' etc/options.conf
 
+# Разрешение запросов только с локальных IP и IP Loopback интерфейса
+sed -i 's|//allow-query { localnets; };|allow-query { 127.0.0.1; 10.10.10.240/28; };|' etc/options.conf
+
 # Указываем на работу только на IPv4
 sed -i 's/S=""/S="-4"/' /etc/sysconfig/bind
 
@@ -237,7 +240,7 @@ systemctl restart dhcpd
 
 systemctl restart network
 ```
-##### Проверка работы кеширующего DNS
+##### Проверка работы через кеширующий DNS
 ![](img/5.png)
 ```bash
 cd /var/lib/bind
@@ -247,6 +250,9 @@ chmod g+x var
 
 # Прослушивать только локальный порт и Loopback интерфейс
 sed -i 's/0.1;/0.1; 10.10.10.240\/28;/' etc/options.conf
+
+# Разрешение запросов только с локальных IP и IP Loopback интерфейса
+sed -i 's|//allow-query { localnets; };|allow-query { 127.0.0.1; 10.10.10.240/28; };|' etc/options.conf
 
 # Указываем на работу только на IPv4
 sed -i 's/S=""/S="-4"/' /etc/sysconfig/bind
@@ -426,6 +432,9 @@ chmod g+x var
 # Прослушивать только локальный порт и Loopback интерфейс
 sed -i 's/0.1;/0.1; 10.10.10.240\/28;/' etc/options.conf
 
+# Разрешение запросов только с локальных IP и IP Loopback интерфейса
+sed -i 's|//allow-query { localnets; };|allow-query { 127.0.0.1; 10.10.10.240/28; };|' etc/options.conf
+
 # Указываем на работу только на IPv4
 sed -i 's/S=""/S="-4"/' /etc/sysconfig/bind
 
@@ -555,7 +564,7 @@ options {
 	/*
 	 * Specifies which hosts are allowed to ask ordinary questions.
 	 */
-	//allow-query { localnets; };
+	allow-query { 127.0.0.1; 10.10.10.240/28; };
 
 	/*
 	 * This lets "allow-query" be used to specify the default zone access
@@ -575,7 +584,7 @@ options {
 	 * queries for a host does not prevent the host from retrieving data
 	 * that is already in the server's cache.
 	 */
-	//allow-recursion { localnets; };
+	allow-query { 127.0.0.1; 10.10.10.240/28; };
 
 	/*
 	 * Sets the maximum time for which the server will cache ordinary
@@ -676,7 +685,7 @@ options {
 	/*
 	 * Specifies which hosts are allowed to ask ordinary questions.
 	 */
-	//allow-query { localnets; };
+	allow-query { 127.0.0.1; 10.10.10.240/28; };
 
 	/*
 	 * This lets "allow-query" be used to specify the default zone access
@@ -892,7 +901,7 @@ options {
 	/*
 	 * Specifies which hosts are allowed to ask ordinary questions.
 	 */
-	//allow-query { localnets; };
+	allow-query { 127.0.0.1; 10.10.10.240/28; };
 
 	/*
 	 * This lets "allow-query" be used to specify the default zone access
