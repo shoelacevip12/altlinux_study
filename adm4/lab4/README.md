@@ -222,6 +222,11 @@ ifdown ens6; ifup ens6
 
 # проверка работы через кеширующий DNS
 cat /etc/resolv.conf
+
+# Для сервиса DHCP поменяем внешние DNS на локальные
+sed -i 's/77.88.8.8, 77.88.8.1/10.10.10.241, 10.10.10.254/' /etc/dhcp/dhcpd.conf
+
+systemctl restart dhcpd
 ```
 #### Проверка поднятого домена
 ```bash
@@ -331,7 +336,7 @@ samba-tool group listmembers "$g"; done
 ```
 ![](img/5.png)![](img/5.1.png)![](img/5.2.png)![](img/5.3.png)![](img/5.4.png)
 
-#### Подготовка сервера времени для SMABA-DC
+#### Подготовка сервера времени к основному SAMBA-DC серверу
 ```bash
 # Перенастраиваем на Московские серверы ВНИИФТРИ ntp3.vniiftri.ru
 sed -i 's/pool pool.ntp.org/server ntp3.vniiftri.ru/' \
@@ -360,6 +365,65 @@ ss -ulnp | grep :123
 ```
 ![](img/6.png)
 
+#### Подключение хостов к домену
+```bash
+# Подключение к Рабочей станции станция alt-w-p11-1
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+-i ~/.ssh/id_vm sadmin@10.10.10.244
+
+su -
+
+# Перезапускаем сетевые службы для обновления DNS по DHCP
+systemctl restart network
+systemctl restart NetworkManager
+
+# Проверка связи через внешние и локальные DNS
+cat /etc/resolv.conf
+ping pub.ru -c 2; \
+ping den.skv -c 2
+
+cat 
+# Переименовываем имя хоста согласно FQDN имени домена 
+hostnamectl set-hostname alt-w-p11-1.den.skv
+
+# Перенастраиваем сервер времени на домен контроллер сети alt-s-p11-1
+sed -i 's/pool pool.ntp.org/server alt-s-p11-1.den.skv/' \
+/etc/chrony.conf
+
+# Перезапуск служб NTP
+systemctl restart \
+chrony-wait.service \
+chronyd.service \
+chrony.service
+
+# Проверка NTP с новым сервером
+chronyc tracking
+chronyc sources -v
+
+# Установка пакетов для авторизации машины в Домен
+apt-get update; \
+apt-get -y install task-auth-ad-sssd
+
+# Ввод в домен через командную строку 
+# alt-w-p11-1 имя вводимого хоста
+system-auth write ad \
+den.skv alt-w-p11-1 den \
+'smaba_u1' '1qaz@WSX'
+
+# Проверка подсоединенного узла
+net ads testjoin
+
+ls -ld /etc/krb5*
+
+cat /etc/krb5.conf
+
+id smaba_u{1..3}
+
+getent passwd smaba_u{1..3}
+```
+![](img/7.png)![](img/7.1.png)![](img/7.2.png)![](img/7.3.png)![](img/7.4.png)![](img/7.5.png)![](img/7.6.png)
+
 ### Для github
 ```bash
 git add . .. ../.. \
@@ -367,6 +431,37 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab4_upd3" \
+git commit -am "оформление для ADM4_lab4_upd4" \
 && git push -u altlinux main
 ```
+
+apt-get reinstall -y \
+libref_array-0.1.5-alt6 \
+libsss_nss_idmap-2.9.7-alt3 \
+libsss_idmap-2.9.7-alt3 \
+libldb-modules-ldap-4.21.9-alt1 \
+adcli-0.9.2-alt1 \
+samba-dc-libs-4.21.9-alt1 \
+sssd-client-2.9.7-alt3 \
+sssd-winbind-idmap-2.9.7-alt3 \
+samba-winbind-clients-4.21.9-alt1 \
+python3-module-sssdconfig-2.9.7-alt3 \
+python3-module-systemd-1:235-alt1 \
+python3-module-sssd-2.9.7-alt3 \
+libsss_certmap-2.9.7-alt3 \
+libsepol-1:3.8-alt1 \
+libsemanage-1:3.8-alt1 \
+libpath_utils-0.2.1-alt6 \
+libdhash-0.5.0-alt6 \
+libcollection-0.7.0-alt6 \
+libbasicobjects-0.1.1-alt6 \
+libini_config-1.3.1-alt6 \
+sssd-2.9.7-alt3 \
+sssd-dbus-2.9.7-alt3 \
+python3-module-sss-2.9.7-alt3 \
+sssd-tools-2.9.7-alt3 \
+sssd-krb5-common-2.9.7-alt3 \
+sssd-pac-2.9.7-alt3 \
+sssd-ad-2.9.7-alt3 \
+diag-domain-client-0.5-alt1 \
+task-auth-ad-sssd-0.48-alt1
