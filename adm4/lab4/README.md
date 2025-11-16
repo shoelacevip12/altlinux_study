@@ -330,6 +330,36 @@ echo "---$g---"
 samba-tool group listmembers "$g"; done
 ```
 ![](img/5.png)![](img/5.1.png)![](img/5.2.png)![](img/5.3.png)![](img/5.4.png)
+
+#### Подготовка сервера времени для SMABA-DC
+```bash
+# Перенастраиваем на Московские серверы ВНИИФТРИ ntp3.vniiftri.ru
+sed -i 's/pool pool.ntp.org/server ntp3.vniiftri.ru/' \
+/etc/chrony.conf
+
+# Указание что данный сервер выступает в роли сервера времени
+sed -i 's|#allow 192.168.0.0/16|allow 10.10.10.240/28|' \
+/etc/chrony.conf
+
+# Указываем возможность отвечать клиентам, если к внешнему NTP серверу нет доступа
+sed -i 's|#local|local|' \
+/etc/chrony.conf
+
+# Перезапуск служб NTP
+systemctl restart \
+chrony-wait.service \
+chronyd.service \
+chrony.service
+
+# Проверка NTP с новым сервером
+chronyc tracking
+chronyc sources -v
+
+# Проверка открытого порта для клиентов
+ss -ulnp | grep :123
+```
+![](img/6.png)
+
 ### Для github
 ```bash
 git add . .. ../.. \
@@ -337,6 +367,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab4_upd2" \
+git commit -am "оформление для ADM4_lab4_upd3" \
 && git push -u altlinux main
 ```
