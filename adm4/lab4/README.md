@@ -243,6 +243,93 @@ host -t SRV _ldap._tcp.den.skv
 ```
 ![](img/2.png)![](img/2.1.png)![](img/2.2.png)![](img/2.3.png)![](img/2.4.png)![](img/2.5.png)
 
+#### Проверка работы Kerberos
+```bash
+# Заменяем настройки Kerberos для клиентского обращение к серверу созданные доменом
+cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
+
+# выходим из супер пользователя
+exit
+
+# проверка имеющихся белетов kerberos
+klist
+
+# удаление имеющихся ключей kerberos
+kdestroy
+
+# Получение белета kerberos
+kinit Administrator
+
+# Проверка получения белета
+klist
+```
+![](img/3.png)
+#### Создание пользователей
+```bash
+su -
+
+samba-tool user create \
+smaba_u1 \
+--given-name='Василий Иванович Чапаев' \
+--mail-address='chapay_vi@den.skv'
+
+samba-tool user create \
+smaba_u2 \
+--given-name='Моледцев Владимир Александрович' \
+--mail-address='syn_polka@den.skv'
+
+samba-tool user create \
+smaba_u3 \
+--given-name='Колкин Павел Сергеевич' \
+--mail-address='garaj@den.skv'
+
+# Просмотр списка имеющихся пользователей
+samba-tool user list
+
+# Подробный просмотр пользователя LDAP 
+samba-tool user show smaba_u2
+
+# Разблокировка созданных учетных записей
+for n in {1..3}; do \
+samba-tool user \
+setexpiry smaba_u$n \
+--noexpiry; done
+```
+![](img/4.png)![](img/4.1.png)![](img/4.2.png)![](img/4.3.png)![](img/4.4.png)
+
+#### Создание групп пользователей
+```bash
+# Создание групп
+samba-tool group add \
+'Вымышленные_герои'
+
+samba-tool group add \
+'Доменные_Администраторы'
+
+# Списки имеющихся групп
+samba-tool group list 
+
+# Добавление пользователей в группы
+for n in {1..3}; do \
+samba-tool group addmembers \
+'Вымышленные_герои' \
+smaba_u$n ; done
+
+samba-tool group addmembers \
+'Доменные_Администраторы' \
+smaba_u1
+
+samba-tool group addmembers \
+'Domain Admins' \
+smaba_u1
+
+# Проверка членства в группах
+for g in \
+{'Доменные_Администраторы','Вымышленные_герои','Domain Users','Domain Admins'}; do \
+echo "---$g---"
+samba-tool group listmembers "$g"; done
+```
+![](img/5.png)![](img/5.1.png)![](img/5.2.png)![](img/5.3.png)![](img/5.4.png)
 ### Для github
 ```bash
 git add . .. ../.. \
@@ -250,6 +337,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab4_upd1" \
+git commit -am "оформление для ADM4_lab4_upd2" \
 && git push -u altlinux main
 ```
