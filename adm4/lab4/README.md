@@ -324,6 +324,11 @@ samba-tool group addmembers \
 'Доменные_Администраторы' \
 smaba_u1
 
+for n in {1,2}; do \
+samba-tool group addmembers \
+'Доменные_Администраторы' \
+smaba_u$n ; done
+
 samba-tool group addmembers \
 'Domain Admins' \
 smaba_u1
@@ -434,6 +439,43 @@ getent passwd smaba_u{1..3}
 ![](img/7.5.png)
 ![](img/7.6.png)
 
+#### Установка ролей
+```bash
+# Проверка работы ролей на хосте введённого в домен
+control libnss-role
+
+# Вывод списка ролей хоста
+rolelst
+
+# Добавление доменной группы в роль local admins
+echo 'Доменные_Администраторы:localadmins' >> /etc/role
+```
+#### Проверки входа
+```bash
+# Выход из-под суперпользователя
+exit
+
+# Выход с управляемого хоста
+exit
+
+# Подключение доменными учётными записями smaba_u1@DEN.SKV smaba_u2@DEN.SKV smaba_u3@DEN.SKV
+# Напоминание иерархии
+ssh -i ~/.ssh/id_kvm_host_to_vms -o "ProxyJump sadmin@192.168.121.2"  smaba_u3@DEN.SKV@10.10.10.244
+
+# Проверка получения kerberos билета при входе
+klist
+
+# Проверка членства в группах и ролях
+id
+
+# Проверка авторизации суперпользователем хоста
+su -
+```
+![](img/8.png)
+![](img/8.1.png)
+![](img/8.2.png)
+![](img/8.3.png)
+
 ### Для github
 ```bash
 git add . .. ../.. \
@@ -441,6 +483,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab4_upd5" \
+git commit -am "оформление для ADM4_lab4_upd6" \
 && git push -u altlinux main
 ```
