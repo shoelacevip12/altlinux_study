@@ -69,6 +69,7 @@ sudo virsh list --all
 sudo bash -c \
 "for i in \$(virsh list --all \
 | awk '/nux/ {print \$2}') ; do \
+echo "\$i" && \
 virsh snapshot-list --domain \$i; done"
 
 # Удаляем снэпшот цепочки основного сервера alt-s-p11-1 после настройки DNS службы
@@ -476,6 +477,227 @@ su -
 ![](img/8.2.png)
 ![](img/8.3.png)
 
+#### Подготовка Стенда перед созданием Вторичного домен контроллера
+```bash
+# Вход на основной сервер
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@alt-w-p11-route" \
+-i ~/.ssh/id_vm sadmin@10.10.10.241
+
+su -
+
+# выключаем машину
+systemctl poweroff
+
+# Вход на сервер вторичного DC
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+-i ~/.ssh/id_vm sadmin@10.10.10.242
+
+su -
+
+# выключаем машину
+systemctl poweroff
+
+
+# Выводим список снэпшотов ВМ стенда
+sudo bash -c \
+"for i in \$(virsh list --all \
+| awk '/nux/ {print \$2}') ; do \
+echo "----\$i"
+virsh snapshot-list --domain \$i; done"
+
+# Создание snapshot
+### Основного сервера сети
+sudo virsh snapshot-create-as \
+--domain adm4_altlinux_s1 \
+--name 3 \
+--description "before_lab4-4" --atomic
+
+
+### Дополнительного сервера сети
+sudo virsh snapshot-create-as \
+--domain adm4_altlinux_s2 \
+--name 3 \
+--description "before_lab4-4" --atomic
+
+
+# Поочередный запуск всех ВМ содержащих "nux"
+sudo bash -c \
+"for i in \$(virsh list --all \
+| awk '/nux/ {print \$2}') ; do \
+virsh start --domain \$i; done"
+```
+
+#### Подготовка создания Вторичного домен контроллера
+```bash
+# Вход на вторичный DC
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+-i ~/.ssh/id_vm sadmin@10.10.10.242
+
+su -
+
+# Переименовываем имя хоста согласно FQDN имени домена 
+hostnamectl set-hostname alt-s-p11-2.den.skv
+
+# Перенастраиваем сервер времени на домен контроллер сети alt-s-p11-1
+sed -i 's/pool pool.ntp.org/server alt-s-p11-1.den.skv/' \
+/etc/chrony.conf
+
+# Указание что данный сервер выступает в роли сервера времени
+sed -i 's|#allow 192.168.0.0/16|allow 10.10.10.240/28|' \
+/etc/chrony.conf
+
+# Указываем возможность отвечать клиентам, если к внешнему NTP серверу нет доступа
+sed -i 's|#local|local|' \
+/etc/chrony.conf
+
+# Перезапуск служб NTP
+systemctl restart \
+chrony-wait.service \
+chronyd.service \
+chrony.service
+
+# Проверка NTP с новым сервером
+chronyc tracking
+chronyc sources -v
+ss -ulpn | grep ":123"
+
+# Установка необходимых пакетов
+apt-get update; \
+apt-get -y install \
+task-samba-dc
+
+# Подготовка kerberos 
+sed -i 's/lm = true/lm = false/' \
+/etc/krb5.conf
+
+sed -i 's/# default_realm = EXAMPLE.COM/\ default_realm = DEN.SKV/' \
+/etc/krb5.conf
+
+# Вход на основной контроллер домена
+ssh sadmin@alt-s-p11-1
+
+su -
+
+# Создание A DNS записи для вторичного DC
+## 127.0.0.1 на DC этого сервера
+## В зоне DNS den.skv
+## Добавляем хост с именем alt-s-p11-2
+## под соответствующей A записью ipv4 10.10.10.242
+## Процедуру выполняем под доменным пользователем входящих в Domain Admins smaba_u1
+samba-tool dns add \
+127.0.0.1 \
+den.skv \
+alt-s-p11-2 \
+A 10.10.10.242 \
+-Usmaba_u1
+
+# Проверка созданной записи
+samba-tool dns query \
+127.0.0.1 \
+den.skv \
+alt-s-p11-2 \
+ALL \
+-Usmaba_u1
+
+
+# Возвращаемся на вторичный сервер
+exit
+
+exit
+
+# проверка что DNS вторичного сервера подхватил настройки с DHCP
+cat /etc/resolv.conf
+
+# Получаем kerberos билет на имя входящего в доменную группу Domain Admins 
+kinit smaba_u1
+
+# проверка полученного билета
+klist
+
+# Остановка служб мешающих развертыванию
+systemctl disable --now smb nmb krb5kdc slapd bind dnsmasq
+
+# Чиста конфигов, настроенных и по умолчанию
+rm -f /etc/samba/smb.conf
+rm -rf /var/lib/samba
+rm -rf /var/cache/samba
+
+# Создание каталога для домен-контроллера
+mkdir -p /var/lib/samba/sysvol
+
+# Развертывание второго DC
+## den.skv указание подключения к домену
+## Роль в домене DC
+## -Usmaba_u1 аутентифицироваться под указанным пользователем
+## опции
+### --realm=den.skv как зарегистрировать realm
+### Перенаправление запросов внешних DNS через указанный сервер
+samba-tool domain join \
+den.skv \
+DC \
+-Usmaba_u1 \
+--realm=den.skv \
+--option="dns forwarder=10.10.10.254"
+```
+![](img/9.png)
+![](img/9.1.png)
+![](img/9.2.png)
+![](img/9.3.png)
+![](img/9.4.png)
+![](img/9.5.png)
+
+#### перевод работы интерфейса Вторичного сервера с DHCP адресации на static
+```bash
+# выставляем статический Ip
+echo "10.10.10.242/28" \
+> /etc/net/ifaces/ens6/ipv4address
+
+# Выставляем шлюз
+echo "default via 10.10.10.254" \
+> /etc/net/ifaces/ens6/ipv4route
+
+# указываем основным DNS самого себя
+touch /etc/net/ifaces/ens6/resolv.conf
+cat > /etc/net/ifaces/ens6/resolv.conf <<'EOF' 
+nameserver 127.0.0.1
+search den.skv
+EOF
+
+# Доступность сети во время загрузки
+echo "ONBOOT=yes" >> /etc/net/ifaces/ens6/options
+
+# Проставляем режим получения адресов IP интерфейса хоста в static режиме
+sed -i 's/\bdhcp\b/static/; s/dhcp4/static/' \
+/etc/net/ifaces/ens6/options
+
+# Перезапускаем сетевые службы для обновления настроек интерфейса или reboot
+systemctl restart network
+ifdown ens6; ifup ens6
+```
+# Запуск вторичного сервера и проверки
+```bash
+# запускаем службу вторичного DC
+kinit smaba_u1
+
+systemctl enable --now samba
+
+# Проверки
+
+cat /etc/resolv.conf
+host den.skv
+host -t NS den.skv
+host ya.ru
+host -t SRV _ldap._tcp.den.skv
+samba-tool computer list
+journalctl -efu samba
+```
+![](img/10.png)
+![](img/10.1.png)
+![](img/10.2.png)
+![](img/10.3.png)
 ### Для github
 ```bash
 git add . .. ../.. \
@@ -483,6 +705,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab4_upd6" \
+git commit -am "оформление для ADM4_lab4_upd7" \
 && git push -u altlinux main
 ```
