@@ -247,6 +247,7 @@ ipactl status
 
 #### Создание пользователей и групп
 ```bash
+# Создание пользователя chapay_iv
 ipa user-add \
 Chapay_IV \
 --first=Иван \
@@ -254,13 +255,16 @@ Chapay_IV \
 --displayname="Иван Васильевич Чапаев" \
 --password
 
+# Создание создание группы division_25
 ipa group-add \
 division_25 \
 --desc "25-ая Чапаевская дивизия"
 
+# Вывод всех пользователей Freeipa
 ipa user-find \
 | grep 'пользователя'
 
+# Добавление пользователей в группы
 ipa group-add-member \
 division_25 \
 --users=Chapay_IV
@@ -273,6 +277,7 @@ ipa group-add-member \
 ordinarec \
 --users=petka_i
 
+# вывод всех пользователей, групп и состав пользователей групп division_25 ordinarec
 ipa user-find | grep 'Имя ' \
 && ipa group-find | grep 'группы:' \
 && ipa group-show division_25 \
@@ -325,6 +330,7 @@ hostnamectl set-hostname alt-w-p11-1.den.skv
 # Проверка возвращения ответа о службе kerberos от поднятого DC freeipa
 host -t SRV _kerberos._udp.den.skv
 
+# Запуск процедуры добавления узла в домен
 ipa-client-install
 
 # Проверка статуса нахождения в домене
@@ -342,6 +348,50 @@ petka_i@10.10.10.244
 
 ![](img/3.png)![](img/3.1.png)![](img/3.2.png)
 
+#### Настройка ролей пользователей на конечном узле
+
+```bash
+# Вход под пользователем группы wheel
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+sadmin@10.10.10.244
+
+su-
+
+# Переназначаем приоритет Модуля ролей на локальную sss службу
+sed -i 's/role sss/sss role/' \
+/etc/nsswitch.conf
+
+systemctl restart sssd
+
+# Добавляет роль и назначает ей привилегии и группы. 
+## РОЛЬ (division_25) — имя роли (должна совпадать с уже имеющейся группой FreeIPA). 
+## ПРИВИЛЕГИЯ (-m division_25 wheel) — имя роли или привилегии, которые будут назначены.
+roleadd \
+--file=division_25.role \
+-m division_25 \
+wheel
+
+rolelst
+
+exit
+exit
+```
+#### Проверка Входа в суперпользователя под chapay_iv на введенном в домен хосте
+```bash
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+chapay_iv@10.10.10.244
+
+id
+
+su -
+
+id
+```
+
+![](img/4.1.png)
+
 ### Для github
 ```bash
 git add . .. ../.. \
@@ -349,7 +399,7 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab5_upd2" \
+git commit -am "оформление для ADM4_lab5_upd5" \
 && git push -u altlinux main
 ```
 
