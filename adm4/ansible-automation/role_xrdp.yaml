@@ -1,0 +1,13 @@
+---
+- name: Установки RDP-сервера в ОС Альт
+  hosts: alt_p11_group0
+  become: yes
+  become_method: su
+  become_user: root
+  gather_facts: yes
+  vars:
+    dist_upd: true # включаем(true)\выключаем(false) только обновление кеша, дистрибутива, ядра
+    install_soft: true # включаем(true)\выключаем(false) установку софта и подготовку
+
+  roles:
+    - xrdp_skv

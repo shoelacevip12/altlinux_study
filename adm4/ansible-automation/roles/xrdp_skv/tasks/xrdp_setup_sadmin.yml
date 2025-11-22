@@ -1,0 +1,14 @@
+---
+- name: Установка xrdp
+  apt_rpm:
+    name: 
+      - xrdp
+    state: installed
+  notify: start_xrdp_alt
+
+- name: Добавление пользователя xrdp-seasman
+  user:
+    name: "{{ su_wheel_user }}"
+    groups: "{{ xrdp_groups }}"
+    append: yes
+  no_log: true

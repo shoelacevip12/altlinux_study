@@ -1,0 +1,5 @@
+---
+xrdp_groups: 
+  - tsusers
+install_soft: true # установка софта
+dist_upd: true # обновление дистрибутивов

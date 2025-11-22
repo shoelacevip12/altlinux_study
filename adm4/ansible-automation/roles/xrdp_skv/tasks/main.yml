@@ -1,0 +1,10 @@
+---
+- name: Обновление пакетов и установка xrdp
+  include_tasks:
+    file: upd_inst.yml
+  when: dist_upd | bool
+
+- name: Создание пользователей RDP
+  include_tasks:
+    file: xrdp_setup_sadmin.yml
+  when: install_soft | bool

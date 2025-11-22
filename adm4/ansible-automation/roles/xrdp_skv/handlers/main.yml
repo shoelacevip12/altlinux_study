@@ -1,0 +1,11 @@
+---
+- name: Запуск xrdp alt обработчиком
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+    masked: no
+  loop:
+    - xrdp
+    - xrdp-sesman
+  listen: start_xrdp_alt
