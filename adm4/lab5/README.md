@@ -216,6 +216,11 @@ cat > /etc/net/ifaces/ens6/resolv.conf<<'EOF'
 search den.skv
 EOF
 
+# Для сервиса DHCP поменяем внешние DNS на локальные
+sed -i 's/77.88.8.8, 77.88.8.1/10.10.10.241, 10.10.10.254/' /etc/dhcp/dhcpd.conf
+
+systemctl restart dhcpd
+
 resolvconf -a ens6 < /etc/net/ifaces/ens6/resolv.conf
 
 # перезапускаем службу etcnet управления сетью
@@ -275,6 +280,68 @@ ipa user-find | grep 'Имя ' \
 ```
 ![](img/2.png)![](img/2.1.png)![](img/2.2.png)![](img/2.3.png)![](img/2.4.png)![](img/2.5.png)![](img/2.6.png)
 
+```bash
+# Вход на станцию alt-w-p11-1
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+-i ~/.ssh/id_vm sadmin@10.10.10.244
+
+# Перезапускаем сетевые службы для обновления DNS по DHCP
+systemctl restart network
+systemctl restart NetworkManager
+
+# Проверка связи через внешние и локальные DNS
+cat /etc/resolv.conf
+
+# Если присутствую останавливаем конфликтующие службы
+systemctl stop \
+smb \
+nmb \
+krb5kdc \
+slapd \
+bind \
+dnsmasq
+
+# Чистка имеющихся настроек SAMBA
+rm -f /etc/samba/smb.conf
+rm -rf /var/lib/samba
+rm -rf /var/cache/samba
+
+# Устанавливаем пакеты для FreeIPA-клиента
+apt-get update \
+&& apt-get install -y \
+freeipa-client \
+libsss_sudo \
+krb5-kinit \
+bind-utils \
+libbind \
+zip \
+task-auth-freeipa \
+freeipa-client-automount
+
+# Переименовываем имя сервера согласно FQDN имени домена 
+hostnamectl set-hostname alt-w-p11-1.den.skv
+
+# Проверка возвращения ответа о службе kerberos от поднятого DC freeipa
+host -t SRV _kerberos._udp.den.skv
+
+ipa-client-install
+
+# Проверка статуса нахождения в домене
+system-auth status
+
+# выход из хоста
+exit
+exit
+
+# Авторизация под доменной учетной записью
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@192.168.121.2" \
+petka_i@10.10.10.244
+```
+
+![](img/3.png)![](img/3.1.png)![](img/3.2.png)
+
 ### Для github
 ```bash
 git add . .. ../.. \
@@ -282,7 +349,7 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM4_lab5_upd1" \
+git commit -am "оформление для ADM4_lab5_upd2" \
 && git push -u altlinux main
 ```
 
