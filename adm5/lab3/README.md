@@ -29,9 +29,11 @@ git log --oneline
 
 git pull altlinux main
 
-mkdir -p adm5/{lab3,img}
+mkdir -p adm5/lab3
 
-cd  adm5/lab3
+cd !$
+
+mkdir img
 
 touch README.md
 ```
