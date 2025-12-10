@@ -100,7 +100,6 @@ if [ -n "$status" ]; then
     ts=$(date '+%Y-%m-%dT%H:%M:%S%z')
     msg="$ts $dev: $status"
     echo "$msg" >> /var/log/usb-smart-minimal.log
-    # logger -t udev-smart "$msg"
 fi
 EOF
 
@@ -155,6 +154,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM5_lab4_upd2" \
+git commit -am "оформление для ADM5_lab4_upd3" \
 && git push -u altlinux main
 ```
