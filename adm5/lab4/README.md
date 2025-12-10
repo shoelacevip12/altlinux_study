@@ -85,31 +85,23 @@ EOF
 # Создание скрипта
 cat > /etc/udev/usb_on_smart.sh <<'EOF'
 #!/bin/sh
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
-# вывод состояния (PASSED / FAILED / UNKNOWN / ERROR)
+dev="/dev/$1"
+[ -b "$dev" ] || exit 0
 
-LOG="/var/log/usb-smart-minimal.log"
-DEVICE="$1"
-DEV_PATH="/dev/$DEVICE"
+# Получаем статус
+status=$(smartctl -H "$dev" 2>&1 \
+| grep -i 'SMART Health Status:' \
+| sed 's/.*://; s/^[[:space:]]*//')
 
-[ -z "$DEVICE" ] && exit 1
-[ ! -b "$DEV_PATH" ] && exit 1
-
-# Проверяем только если smartctl есть и устройство поддерживает SMART
-if command -v smartctl >/dev/null 2>&1 && \
-   smartctl -q silent -d auto -H "$DEV_PATH" >/dev/null 2>&1; then
-    OUT=$(smartctl -q errorsonly -d auto -H "$DEV_PATH" 2>/dev/null)
-    case "$OUT" in
-        *PASSED*)   STATUS="PASSED" ;;
-        *FAILED*)   STATUS="FAILED" ;;
-        *)          STATUS="UNKNOWN" ;;
-    esac
-else
-    STATUS="ERROR or UNSUPPORTED"
+if [ -n "$status" ]; then
+    # Используем date без -I
+    ts=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    msg="$ts $dev: $status"
+    echo "$msg" >> /var/log/usb-smart-minimal.log
+    # logger -t udev-smart "$msg"
 fi
-
-echo "$(date -Iseconds) $DEV_PATH: SMART status: $STATUS" >> "$LOG"
-exit 0
 EOF
 
 # Делаем скрипт исполняемым
@@ -163,6 +155,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM5_lab4_upd1" \
+git commit -am "оформление для ADM5_lab4_upd2" \
 && git push -u altlinux main
 ```
