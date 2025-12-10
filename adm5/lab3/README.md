@@ -29,9 +29,9 @@ git log --oneline
 
 git pull altlinux main
 
-mkdir -p adm5/lab3
+mkdir -p adm5/{lab3,img}
 
-cd !$
+cd  adm5/lab3
 
 touch README.md
 ```
@@ -79,14 +79,11 @@ sed -i -e 's/Run OSEC every day at midnight/Запуск через 5 минут
 -e '/^OnCalendar=\*-\*-\* 3:00$/c\OnBootSec=5min\nOnUnitActiveSec=3h' \
 -e '/^RandomizedDelaySec=60m$/d' \
 /etc/systemd/system/osec.timer
-
-systemctl daemon-reload
-
-systemctl enable --now osec.timer
-
+```
+### Проверка таймер-unit`а
+```bash
 systemctl cat osec.timer
 ```
-###
 ```ini
 # /etc/systemd/system/osec.timer
 [Unit]
@@ -99,6 +96,12 @@ OnUnitActiveSec=3h
 [Install]
 WantedBy=multi-user.target
 ```
+### Обновление списка unit`ов и активация расписания запуска скрипта osec 
+```bash
+systemctl daemon-reload
+systemctl enable --now osec.timer
+```
+### Проверка журнала запуска
 ```bash
 journalctl -efu osec*
 ```
@@ -111,6 +114,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM5_lab3" \
+git commit -am "оформление для ADM5_lab3_upd1" \
 && git push -u altlinux main
 ```
