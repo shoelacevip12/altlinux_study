@@ -29,7 +29,7 @@ git log --oneline
 
 git pull altlinux main
 
-mkdir -p adm5/{lab5,img}
+mkdir -p adm5/{lab5,lab5/img}
 
 cd adm5/lab5
 
