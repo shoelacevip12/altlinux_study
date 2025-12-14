@@ -7,6 +7,9 @@ mysql_D/
 tmp/
 
 # игнорировать расширения и файлы:
+passwd
+*.enc
+*.asc
 *.gpg
 *.deb
 authorized_key.json
