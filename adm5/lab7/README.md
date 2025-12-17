@@ -73,26 +73,31 @@ sudo virsh start \
 --domain adm4_altlinux_w2
 ```
 
-### Выполнение работы
+#### Подготовка для работы с yandex cloud
 ```bash
 # вход на хост
 ssh \
 -i ~/.ssh/id_kvm_host_to_vms \
 sadmin@alt-w-p11-route
 
+# Скачиваем скрипт для установки yandex console
 curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh \
 | bash
 
+# Применение новых переменных окружения в текущей сессии
 source \
 ~/.bashrc 
 
+# инициализация подключения к уже созданному аккаунту yandex cloud
 yc init
 https://oauth.yandex.ru/authorize?response_type=token&client_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 y0__xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 1
 Y
 1
-
+```
+```bash
+# Вывод списка аккаунтов управления (сервисный аккаунт) для работы с новыми виртуальными машинами
 yc iam service-account list
 ```
 ```bash
@@ -105,14 +110,15 @@ yc iam service-account list
 +----------------------+----------------------+--------+---------------------+-----------------------+
 ```
 ```bash
+# Добавления новых переменных окружения для авторизации на yandex cloud
 cat >> .bashrc <<'EOF'
 export YC_TOKEN=$(yc iam create-token --impersonate-service-account-id ajxxxxxxxxxxxxxxxxxx)
 export YC_CLOUD_ID=$(yc config get cloud-id)
 export YC_FOLDER_ID=$(yc config get folder-id)
 EOF
 
+# Применение переменных окружения
 source .bashrc
-
 
 su -
 
@@ -122,7 +128,7 @@ apt-get update \
 && apt-get dist-upgrade -y \
 && apt-get install -y openvpn easy-rsa
 
-
+# Скрипт установки последнего доступного terraform с зеркала yandex cloud
 cat > terraform_for_altlinux.sh <<'EOF'
 #!/bin/bash -x
 
@@ -185,11 +191,17 @@ echo "================================================FINISHED==================
 echo "========================================================================================================";
 EOF
 
+# Делаем скрипт исполняемым
 chmod +x terraform_for_altlinux.sh
 
+# Запуск скрипта установки
+./terraform_for_altlinux.sh
+
+# выход из-под супер пользователя
 exit
 
-cat > ~/.terraformrc << 'EOF'
+# указываем источник (yandex cloud), из которого будет устанавливаться провайдер
+cat > .terraformrc << 'EOF'
 provider_installation {
   network_mirror {
     url = "https://terraform-mirror.yandexcloud.net/"
@@ -203,6 +215,11 @@ EOF
 
 exit
 
+# в папке с проектом создаем конфигурационный файл .tf:
+# source — глобальный адрес источника провайдера.
+# required_version — минимальная версия Terraform, с которой совместим провайдер.
+# provider — название провайдера.
+# zone — зона доступности, в которой по умолчанию будут создаваться все облачные ресурсы.
 cat > providers.tf <<'EOF'
 terraform {
   required_providers {
@@ -218,6 +235,11 @@ provider "yandex" {
 }
 EOF
 
+# в папке с проектом создаем отдельный конфигурационный файл .tf:
+# где будет расписан какой образ из репозитория будет использоваться
+# с какими параметрами
+# Сетями
+# Будет созданы виртуальные машины
 cat > vms.tf <<'EOF'
 #считываем данные об образе ОС
 data "yandex_compute_image" "altserver" {
@@ -259,6 +281,8 @@ resource "yandex_compute_instance" "openvpn-altserver" {
 }
 EOF
 
+# в папке с проектом создаем отдельный конфигурационный файл .tf:
+# с часто повторяющимися переменными в других файлах.tf
 cat > variables.tf <<'EOF'
 variable "dz" {
   type    = string
@@ -284,6 +308,8 @@ variable "srv" {
 }
 EOF
 
+# в папке с проектом создаем отдельный конфигурационный файл .tf:
+# с описанием структуры сетей и доступа
 cat > network.tf <<'EOF'
 #Общая облачная сеть yandex
 resource "yandex_vpc_network" "skv" {
@@ -382,6 +408,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM5_lab7_upd1" \
+git commit -am "оформление для ADM5_lab7_upd2" \
 && git push -u altlinux main
 ```
