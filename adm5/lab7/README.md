@@ -371,7 +371,7 @@ resource "yandex_vpc_security_group" "openvpn-altserver" {
   }
 
   ingress {
-    description    = "Allow zabbix-agent"
+    description    = "Allow openvpn"
     protocol       = "TCP"
     port           = 10051
     v4_cidr_blocks = ["0.0.0.0/0"]
@@ -400,6 +400,20 @@ resource "yandex_vpc_security_group" "LAN" {
 }
 EOF
 ```
+#### Подготовка Тестовый Запуск
+```bash
+terraform init
+
+terraform validate \
+&& terraform fmt  \
+&& terraform init --upgrade \
+&& terraform plan -out=tfplan
+
+terraform apply "tfplan"
+
+terraform destroy
+```
+![](./img/1.png)![](./img/2.png)![](./img/3.png)![](./img/4.png)![](./img/5.png)
 
 ### Для github
 ```bash
@@ -408,6 +422,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM5_lab7_upd2" \
+git commit -am "оформление для ADM5_lab7_upd3" \
 && git push -u altlinux main
 ```
