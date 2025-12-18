@@ -11,6 +11,10 @@ ssh \
 -i ~/.ssh/id_kvm_host_to_vms \
 sadmin@alt-w-p11-route
 
+# Сервер CA
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@alt-w-p11-route" \
+-i ~/.ssh/id_vm sadmin@10.10.10.241
 
 #### Создание snapshot
 sudo virsh snapshot-create-as \
@@ -18,15 +22,30 @@ sudo virsh snapshot-create-as \
 --name 7 \
 --description "before_adm5_lab7" --atomic
 
-# Откатываем на снэпшот 6
+# Откатываем на снэпшот 7
 sudo virsh snapshot-revert \
 --snapshotname 7 \
 --domain adm4_altlinux_w2
 
-# Удаляем снэпшот цепочки 6
+# Удаляем снэпшот цепочки 7
 sudo virsh snapshot-delete \
 --domain adm4_altlinux_w2 \
---snapshotname 6
+--snapshotname 7
+
+# Удаляем снэпшот цепочки основного сервера alt-s-p11-1
+sudo virsh snapshot-delete \
+--domain adm4_altlinux_s1 \
+--snapshotname 5
+
+# Откатываем основной сервер alt-s-p11-1
+sudo virsh snapshot-revert \
+--snapshotname 2 \
+--domain adm4_altlinux_s1
+
+# Вход через шлюз 192.168.121.2 как прокси на машину локальной сети 10.10.10.241
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@alt-w-p11-route" \
+-i ~/.ssh/id_vm sadmin@alt-s-p11-1
 ```
 
 ## Предварительно
@@ -71,11 +90,15 @@ sudo virsh net-list --all \
 # Запуск Рабочей станции p11
 sudo virsh start \
 --domain adm4_altlinux_w2
+
+# Запуск сервера CA
+sudo virsh start \
+--domain adm4_altlinux_s1
 ```
 
 #### Подготовка для работы с yandex cloud
 ```bash
-# вход на хост
+# вход на VPN-клиент
 ssh \
 -i ~/.ssh/id_kvm_host_to_vms \
 sadmin@alt-w-p11-route
@@ -86,8 +109,9 @@ curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh \
 
 # Применение новых переменных окружения в текущей сессии
 source \
-~/.bashrc 
-
+~/.bashrc
+```
+```bash
 # инициализация подключения к уже созданному аккаунту yandex cloud
 yc init
 https://oauth.yandex.ru/authorize?response_type=token&client_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -99,8 +123,7 @@ Y
 ```bash
 # Вывод списка аккаунтов управления (сервисный аккаунт) для работы с новыми виртуальными машинами
 yc iam service-account list
-```
-```bash
+
 +----------------------+----------------------+--------+---------------------+-----------------------+
 |          ID          |         NAME         | LABELS |     CREATED AT      | LAST AUTHENTICATED AT |
 +----------------------+----------------------+--------+---------------------+-----------------------+
@@ -119,14 +142,36 @@ EOF
 
 # Применение переменных окружения
 source .bashrc
-
+```
+```bash
+# генерация пары ssh ключей для подключения к ВМ yandex cloud
+ssh-keygen -f \
+~/.ssh/id_skv_adm5_L7_ed25519 \
+-t ed25519 -C "adm5_L7"
+```
+```bash
+# Генерация пользователя с правами wheel
+# переключение на суперпользователя без пароля 
+# средствами cloud-init для yandex cloud
+cat >cloud-init.yml<<'EOF'
+#cloud-config
+users:
+  - name: skv
+    groups: wheel
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+EOF
+```
+```bash
+# подсовываем публичный ключ в cloud-init для авторизации пользователем ключем ssh
+cat ~/.ssh/id_skv_adm5_L7_ed25519.pub \
+| sed 's/ssh-/      - ssh-/' \
+>> cloud-init.yml
+```
+```bash
+# вход под суперпользователем
 su -
-
-# обновление системы и установка openvpn easy-rsa на клиенте соединения
-apt-get update \
-&& update-kernel -y \
-&& apt-get dist-upgrade -y \
-&& apt-get install -y openvpn easy-rsa
 
 # Скрипт установки последнего доступного terraform с зеркала yandex cloud
 cat > terraform_for_altlinux.sh <<'EOF'
@@ -189,19 +234,22 @@ install_terraform
 echo "========================================================================================================";
 echo "================================================FINISHED================================================";
 echo "========================================================================================================";
+terraform -version
 EOF
-
+```
+```bash
 # Делаем скрипт исполняемым
 chmod +x terraform_for_altlinux.sh
 
 # Запуск скрипта установки
 ./terraform_for_altlinux.sh
 
-# выход из-под супер пользователя
+# выход из-под суперпользователя
 exit
-
+```
+```bash
 # указываем источник (yandex cloud), из которого будет устанавливаться провайдер
-cat > .terraformrc << 'EOF'
+cat > ~/.terraformrc << 'EOF'
 provider_installation {
   network_mirror {
     url = "https://terraform-mirror.yandexcloud.net/"
@@ -212,9 +260,9 @@ provider_installation {
   }
 }
 EOF
-
-exit
-
+```
+#### Подготовка `.tf` файлов для развертывания ВМ на yandex cloud
+```bash
 # в папке с проектом создаем конфигурационный файл .tf:
 # source — глобальный адрес источника провайдера.
 # required_version — минимальная версия Terraform, с которой совместим провайдер.
@@ -234,7 +282,8 @@ provider "yandex" {
   zone = "<зона_доступности_по_умолчанию>"
 }
 EOF
-
+```
+```bash
 # в папке с проектом создаем отдельный конфигурационный файл .tf:
 # где будет расписан какой образ из репозитория будет использоваться
 # с какими параметрами
@@ -280,7 +329,8 @@ resource "yandex_compute_instance" "openvpn-altserver" {
   }
 }
 EOF
-
+```
+```bash
 # в папке с проектом создаем отдельный конфигурационный файл .tf:
 # с часто повторяющимися переменными в других файлах.tf
 cat > variables.tf <<'EOF'
@@ -307,7 +357,8 @@ variable "srv" {
   }
 }
 EOF
-
+```
+```bash
 # в папке с проектом создаем отдельный конфигурационный файл .tf:
 # с описанием структуры сетей и доступа
 cat > network.tf <<'EOF'
@@ -345,7 +396,7 @@ resource "yandex_vpc_route_table" "route" {
 ##Правила NAT
 #Разрешаем Всем Входящие соединения по 22 порту по протоколу TCP, необходимо для proxy-jump
 #Разрешаем Всем входящие соединения по протоколу TCP по 80,443 портам
-#Разрешаем Всем входящие соединения по протоколу TCP по 10051
+#Разрешаем Всем входящие соединения по протоколу UDP по 1194
 resource "yandex_vpc_security_group" "openvpn-altserver" {
   name       = "openvpn-altserver-${var.dz}"
   network_id = yandex_vpc_network.skv.id
@@ -372,8 +423,8 @@ resource "yandex_vpc_security_group" "openvpn-altserver" {
 
   ingress {
     description    = "Allow openvpn"
-    protocol       = "TCP"
-    port           = 10051
+    protocol       = "udp"
+    port           = 1194
     v4_cidr_blocks = ["0.0.0.0/0"]
   }
 }
@@ -400,20 +451,183 @@ resource "yandex_vpc_security_group" "LAN" {
 }
 EOF
 ```
-#### Подготовка Тестовый Запуск
+### Выполнение работы
+
+#### Развертывание CA
 ```bash
+# Подключение к CA
+ssh -i ~/.ssh/id_kvm_host_to_vms \
+-o "ProxyJump sadmin@alt-w-p11-route" \
+-i ~/.ssh/id_vm sadmin@alt-s-p11-1
+
+su -
+
+# Обновление системы и установка easyrsa
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y easy-rsa tree
+```
+```bash
+# Генерация структуры каталогов PKI и генерация сертификата CA
+cd /srv \
+&& easyrsa init-pki \
+&& easyrsa build-ca
+```
+#### Генерация пар сертификатов\ключей для TLS VPN сертификатов
+
+```bash
+# Группа Диффи-Хелмана
+easyrsa gen-dh
+
+# сертификат\ключ VPN-сервера
+easyrsa build-server-full \
+openvpn-altserver \
+nopass
+
+# сертификат\ключ VPN-клиента
+easyrsa build-client-full \
+alt-w-p11-route \
+nopass
+
+# перенос генерации Диффи-Хелмана и пары сертификата\ключа для VPN-сервера
+rsync -P /srv/pki/{ca.crt,dh.pem} \
+/srv/pki/{private,issued}/openvpn-altserver* \
+sadmin@alt-w-p11-route:~/openvpn-altserver/
+
+# перенос генерации пары сертификата\ключа для VPN-клиента
+rsync -P /srv/pki/{private,issued}/alt-w-p11-route* \
+sadmin@alt-w-p11-route:~/
+```
+![](./img/0.1.png)
+
+#### Подготовка VPN-клиента
+```bash
+# обновление системы и установка openvpn easy-rsa на клиенте соединения
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y openvpn easy-rsa
+
+# Генерация Ключ HMAC
+openvpn --genkey \
+secret \
+/etc/openvpn/keys/ta.key
+
+# Перенос скопированных клиентских сертификатов в каталог /etc/openvpn/keys/
+mv /home/sadmin/{alt-w-p11-route.*,ca.*} \
+/etc/openvpn/keys/
+
+# Выставление желательных прав для ключей\сертификатов
+chmod -R 600 /etc/openvpn/keys
+```
+```bash
+# Создание конфига туннельного соединения-клиента по subnet топологии
+cat > /etc/openvpn/client/tun0.conf <<'EOF'
+dev tun0
+  client
+  nobind
+  remote 1194
+  proto udp4
+  tls-client
+  cipher AES-256-CBC
+  data-ciphers-fallback BF-CBC
+  ca /etc/openvpn/keys/ca.crt
+  cert /etc/openvpn/keys/alt-w-p11-route.crt
+  key /etc/openvpn/keys/alt-w-p11-route.key
+  remote-cert-eku "TLS Web Server Authentication"
+EOF
+```
+![](./img/0.2.png)
+
+#### Подготовка сервера VPN
+```bash
+# Инициализация провайдера yandex cloud через terraform
 terraform init
 
+# Проверка .tf конфигов и формирования файла tfplan для развертывания ВМ в yandex cloud
 terraform validate \
 && terraform fmt  \
 && terraform init --upgrade \
 && terraform plan -out=tfplan
 
-terraform apply "tfplan"
+# Запуск развертывания ВМ и вывод внешнего IP для подключения в промежуточный файл openvpn-server
+terraform apply "tfplan" \
+&& yc compute instance list \
+| awk '/[0-9]/{print $10}' \
+> openvpn-server
+```
+```bash
+su -
+# Донастройка конфига туннеля для VPN-клиента
+sed -i 's/^remote*$/remote $(cat /home/sadmin/openvpn-server) 1194/' \
+/etc/openvpn/client/tun0.conf
 
-terraform destroy
+# Включение и запуск службы VPN-клиента
+systemctl enable --now openvpn-client@tun0
+
+exit
+```
+```bash
+# echo "$(yc compute instance list \
+# | awk '/[0-9]/{print $10}') openvpn-altserver openvpn-altserver.den.skv" \
+# >> /etc/hosts
+
+# перенос подготовленных ключей\сертификатов для VPN-сервера
+rsync -P /home/sadmin/openvpn-altserver \
+-i ~/.ssh/id_skv_adm5_L7_ed25519 \
+skv@$(yc compute instance list \
+| awk ' /[0-9]/{print $10}'):~/
 ```
 ![](./img/1.png)![](./img/2.png)![](./img/3.png)![](./img/4.png)![](./img/5.png)
+```bash
+# Подключение к ВМ yandex cloud
+ssh -i \
+~/.ssh/id_skv_adm5_L7_ed25519 \
+skv@$(yc compute instance list \
+| awk ' /[0-9]/{print $10}')
+
+# Авторизация под суперпользователем
+sudo su
+
+# Обновление системы и установка easyrsa openvpn
+apt-get update \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y openvpn easy-rsa
+
+# Перенос скопированных серверных сертификатов в каталог /etc/openvpn/keys/
+mv /home/skv/openvpn-altserver/* \
+/etc/openvpn/keys/
+
+# Выставление желательных прав для ключей\сертификатов
+chmod -R 600 /etc/openvpn/keys
+```
+```bash
+# Создание конфига туннельного соединения-клиента по subnet топологии
+cat > /etc/openvpn/server/tun0.conf <<'EOF'
+dev tun0
+  local
+  port 1194
+  proto udp4
+  keepalive 10 60
+  tls-server
+  data-ciphers-fallback BF-CBC
+  cipher AES-256-CBC
+  ca /etc/openvpn/keys/ca.crt
+  dh /etc/openvpn/keys/dh.pem
+  cert /etc/openvpn/keys/openvpn-altserver.crt
+  key /etc/openvpn/keys/openvpn-altserver.key
+  remote-cert-eku "TLS Web Client Authentication"
+EOF
+
+ip -br a | awk 'NR>2 {print $3}'
+
+sed -i 's/^local*$/local $(ip -br a | awk 'NR>2 {print $3}')/' \
+/etc/openvpn/server/tun0.conf
+```
+```bash
+terraform destroy
+```
 
 ### Для github
 ```bash

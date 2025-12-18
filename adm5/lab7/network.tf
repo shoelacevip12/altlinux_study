@@ -32,7 +32,7 @@ resource "yandex_vpc_route_table" "route" {
 ##Правила NAT
 #Разрешаем Всем Входящие соединения по 22 порту по протоколу TCP, необходимо для proxy-jump
 #Разрешаем Всем входящие соединения по протоколу TCP по 80,443 портам
-#Разрешаем Всем входящие соединения по протоколу TCP по 10051
+#Разрешаем Всем входящие соединения по протоколу TCP по 1194
 resource "yandex_vpc_security_group" "openvpn-altserver" {
   name       = "openvpn-altserver-${var.dz}"
   network_id = yandex_vpc_network.skv.id
@@ -59,8 +59,8 @@ resource "yandex_vpc_security_group" "openvpn-altserver" {
 
   ingress {
     description    = "Allow zabbix-agent"
-    protocol       = "TCP"
-    port           = 10051
+    protocol       = "udp"
+    port           = 1194
     v4_cidr_blocks = ["0.0.0.0/0"]
   }
 }
