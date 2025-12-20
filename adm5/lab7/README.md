@@ -71,7 +71,8 @@ cd adm5/lab7
 
 touch README.md
 ```
-
+## План развертывания
+![](./img/0.png)
 ### Подготовка и запуск стенда
 ```bash
 # включаем агента-ssh
@@ -585,7 +586,7 @@ terraform apply "tfplan" \
 | awk '/[0-9]/{print $10}' \
 > openvpn-server
 ```
-![](./img/1.png)![](./img/2.png)![](./img/3.png)
+![](./img/1.png)![](./img/2.png)![](./img/3.png)![](./img/3.1.png)
 ```bash
 # Вход под суперпользователем
 su -
@@ -652,7 +653,12 @@ mv /home/skv/openvpn-altserver/* \
 # Выставление желательных прав для ключей\сертификатов
 chmod -R 600 \
 /etc/openvpn/keys
+
+# Ограничение прав до доступа к ключам
+chown root:openvpn -R \
+/etc/openvpn/keys
 ```
+![](./img/6.png)
 ```bash
 # Создание конфига туннельного соединения-клиента по subnet топологии
 cat > /etc/openvpn/server/tun0.conf <<'EOF'
@@ -681,6 +687,7 @@ sed -i "s@local@local $(ip -br a \
 
 cat /etc/openvpn/server/tun0.conf
 ```
+![](./img/7.png)![](./img/8.png)
 ```bash
 systemctl enable --now \
 openvpn-server@tun0
@@ -689,6 +696,63 @@ journalctl \
 -feu \
 openvpn-server@tun0.service
 ```
+![](./img/9.png)
+
+### Тестирование
+#### Со стороны клиента
+```bash
+apt-get update \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y \
+perf3
+
+# Отображение текущих ip маршрутов
+ip r
+
+# Отображение текущих ip интерфейсов
+ip -br a
+
+# Отображение внешнего ip выхода в WAN
+curl 2ip.ru
+
+ping 172.16.100.1 -c 2
+
+ping 10.10.10.20 -c 2
+
+# Добавление маршрута до внутренней сети в yandex cloud
+ip r add 10.10.10.0/26 \
+via 172.16.100.1 \
+dev tun0
+
+ping 10.10.10.20 -c 2
+
+# тестирование пропускной способности через VPN до внутренней сети в yandex cloud
+# В роли клиента
+iperf3 -c 10.10.10.20
+```
+#### Со стороны сервера
+```bash
+apt-get update \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y \
+perf3
+
+# Отображение текущих ip маршрутов
+ip r
+
+# Отображение текущих ip интерфейсов
+ip -br a
+
+# Отображение внешнего ip выхода в WAN
+curl 2ip.ru
+ping 172.16.100.2 -c 2
+
+# тестирование пропускной способности через VPN до внутренней
+# В роли сервера
+iperf3 -s
+```
+![](./img/10.png)![](./img/11.png)![](./img/12.png)
+
 
 ### Для github
 ```bash
@@ -699,6 +763,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM5_lab7_upd4" \
+git commit -am "оформление для ADM5_lab7_upd5" \
 && git push -u altlinux main
 ```
