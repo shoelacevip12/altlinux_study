@@ -763,6 +763,6 @@ git add . .. ../.. \
 
 git log --oneline
 
-git commit -am "оформление для ADM5_lab7_upd5" \
+git commit -am "оформление для ADM5_lab7_upd6" \
 && git push -u altlinux main
 ```
