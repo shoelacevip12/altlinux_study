@@ -451,6 +451,7 @@ resource "yandex_vpc_security_group" "LAN" {
 }
 EOF
 ```
+![](./img/0.3.png)
 ### Выполнение работы
 
 #### Развертывание CA
@@ -489,7 +490,8 @@ nopass
 easyrsa build-client-full \
 alt-w-p11-route \
 nopass
-
+```
+```bash
 # перенос генерации Диффи-Хелмана и пары сертификата\ключа для VPN-сервера
 rsync -P /srv/pki/{ca.crt,dh.pem} \
 /srv/pki/{private,issued}/openvpn-altserver* \
@@ -503,17 +505,36 @@ sadmin@alt-w-p11-route:~/
 
 #### Подготовка VPN-клиента
 ```bash
+# вход на VPN-клиент
+ssh \
+-i ~/.ssh/id_kvm_host_to_vms \
+sadmin@alt-w-p11-route
+
+# вход под суперпользователем
+su -
+
 # обновление системы и установка openvpn easy-rsa на клиенте соединения
 apt-get update \
 && update-kernel -y \
 && apt-get dist-upgrade -y \
-&& apt-get install -y openvpn easy-rsa
-
+&& apt-get install -y \
+openvpn \
+easy-rsa
+```
+```bash
 # Генерация Ключ HMAC
 openvpn --genkey \
 secret \
 /etc/openvpn/keys/ta.key
 
+# Копируем сгенерированный HMAC в папку для переноса ключей на VPN-сервер
+cp /etc/openvpn/keys/ta.key \
+/home/sadmin/openvpn-altserver/
+
+chown sadmin:sadmin \
+/home/sadmin/openvpn-altserver/ta.key
+```
+```bash
 # Перенос скопированных клиентских сертификатов в каталог /etc/openvpn/keys/
 mv /home/sadmin/{alt-w-p11-route.*,ca.*} \
 /etc/openvpn/keys/
@@ -529,19 +550,26 @@ dev tun0
   nobind
   remote 1194
   proto udp4
-  tls-client
+  topology subnet
+  pull
   cipher AES-256-CBC
-  data-ciphers-fallback BF-CBC
+  data-ciphers-fallback AES-256-CBC
   ca /etc/openvpn/keys/ca.crt
   cert /etc/openvpn/keys/alt-w-p11-route.crt
   key /etc/openvpn/keys/alt-w-p11-route.key
+  tls-client
   remote-cert-eku "TLS Web Server Authentication"
+  tls-auth /etc/openvpn/keys/ta.key 1
+  auth-nocache
 EOF
 ```
 ![](./img/0.2.png)
 
 #### Подготовка сервера VPN
 ```bash
+# Выход из-под суперпользователя
+exit
+
 # Инициализация провайдера yandex cloud через terraform
 terraform init
 
@@ -557,35 +585,54 @@ terraform apply "tfplan" \
 | awk '/[0-9]/{print $10}' \
 > openvpn-server
 ```
+![](./img/1.png)![](./img/2.png)![](./img/3.png)
 ```bash
+# Вход под суперпользователем
 su -
+
 # Донастройка конфига туннеля для VPN-клиента
-sed -i 's/^remote*$/remote $(cat /home/sadmin/openvpn-server) 1194/' \
+sed -i "s|remote 1194|remote $(cat /home/sadmin/openvpn-server) 1194|" \
 /etc/openvpn/client/tun0.conf
+
+cat /etc/openvpn/client/tun0.conf
+
+# Добавляем в hosts ip и имя внешнего сервера VPN 
+# имя указанного хоста соответствует на чье имя был выписан сертификат из CA (openvpn-altserver)
+echo "$(cat /home/sadmin/openvpn-server) \
+openvpn-altserver \
+openvpn-altserver.den.skv" \
+>> /etc/hosts
+
+cat /etc/hosts
 
 # Включение и запуск службы VPN-клиента
 systemctl enable --now openvpn-client@tun0
 
 exit
 ```
-```bash
-# echo "$(yc compute instance list \
-# | awk '/[0-9]/{print $10}') openvpn-altserver openvpn-altserver.den.skv" \
-# >> /etc/hosts
+![](./img/4.png)
 
+```bash
 # перенос подготовленных ключей\сертификатов для VPN-сервера
-rsync -P /home/sadmin/openvpn-altserver \
--i ~/.ssh/id_skv_adm5_L7_ed25519 \
+rsync -rvP /home/sadmin/openvpn-altserver \
+-e "ssh -i ~/.ssh/id_skv_adm5_L7_ed25519" \
 skv@$(yc compute instance list \
-| awk ' /[0-9]/{print $10}'):~/
+    | awk ' /[0-9]/{print $10}'):~/
+
+# Проверка переноса файлов для VPN-server
+ssh -t -i \
+~/.ssh/id_skv_adm5_L7_ed25519 \
+skv@$(yc compute instance list \
+    | awk ' /[0-9]/{print $10}') \
+"ls -lR openvpn-altserver" 
 ```
-![](./img/1.png)![](./img/2.png)![](./img/3.png)![](./img/4.png)![](./img/5.png)
+![](./img/5.png)
 ```bash
 # Подключение к ВМ yandex cloud
 ssh -i \
 ~/.ssh/id_skv_adm5_L7_ed25519 \
 skv@$(yc compute instance list \
-| awk ' /[0-9]/{print $10}')
+    | awk ' /[0-9]/{print $10}')
 
 # Авторизация под суперпользователем
 sudo su
@@ -593,14 +640,18 @@ sudo su
 # Обновление системы и установка easyrsa openvpn
 apt-get update \
 && apt-get dist-upgrade -y \
-&& apt-get install -y openvpn easy-rsa
-
+&& apt-get install -y \
+openvpn \
+easy-rsa
+```
+```bash
 # Перенос скопированных серверных сертификатов в каталог /etc/openvpn/keys/
 mv /home/skv/openvpn-altserver/* \
 /etc/openvpn/keys/
 
 # Выставление желательных прав для ключей\сертификатов
-chmod -R 600 /etc/openvpn/keys
+chmod -R 600 \
+/etc/openvpn/keys
 ```
 ```bash
 # Создание конфига туннельного соединения-клиента по subnet топологии
@@ -610,32 +661,44 @@ dev tun0
   port 1194
   proto udp4
   keepalive 10 60
-  tls-server
-  data-ciphers-fallback BF-CBC
+  topology subnet
+  server 172.16.100.0 255.255.255.248
+  data-ciphers-fallback AES-256-CBC
   cipher AES-256-CBC
   ca /etc/openvpn/keys/ca.crt
   dh /etc/openvpn/keys/dh.pem
   cert /etc/openvpn/keys/openvpn-altserver.crt
   key /etc/openvpn/keys/openvpn-altserver.key
+  tls-server
   remote-cert-eku "TLS Web Client Authentication"
+  tls-auth /etc/openvpn/keys/ta.key 0
 EOF
 
-ip -br a | awk 'NR>2 {print $3}'
-
-sed -i 's/^local*$/local $(ip -br a | awk 'NR>2 {print $3}')/' \
+sed -i "s@local@local $(ip -br a \
+                      | awk '/e[tn]/{print $3}' \
+                      | cut -d '/' -f1)@" \
 /etc/openvpn/server/tun0.conf
+
+cat /etc/openvpn/server/tun0.conf
 ```
 ```bash
-terraform destroy
+systemctl enable --now \
+openvpn-server@tun0
+
+journalctl \
+-feu \
+openvpn-server@tun0.service
 ```
 
 ### Для github
 ```bash
+terraform destroy
+
 git add . .. ../.. \
 && git status
 
 git log --oneline
 
-git commit -am "оформление для ADM5_lab7_upd3" \
+git commit -am "оформление для ADM5_lab7_upd4" \
 && git push -u altlinux main
 ```
