@@ -383,3 +383,120 @@ main \
 altlinux_gf \
 main
 ```
+![](img/0.png)
+#### Запуск отредактированной сети, виртуальных машин
+```bash
+# поочередный запуск всех сетей libvirt со 2ого по списку
+sudo virsh net-list --all \
+| awk 'NR > 3 {print $1}' \
+| xargs -I {} sudo virsh net-start {}
+
+# поочередный запуск всех ВМ содержащих "nux"
+sudo bash -c \
+"for i in \$(virsh list --all \
+| awk '/nux/ {print \$2}') ; do \
+virsh start --domain \$i; done"
+
+# добавление статических маршрутов с хостовой машины до изолированных сетей между ВМ
+sudo ip route \
+add 10.1.1.240/28 \
+via 192.168.121.2 \
+dev virbr1
+
+sudo ip route \
+add 10.0.0.0/24 \
+via 192.168.121.2 \
+dev virbr1
+
+sudo ip route \
+add 10.20.20.240/28 \
+via 192.168.121.2 \
+dev virbr1
+```
+#### Ручная установка ОС Альт.
+
+![](../adm4/img/1.png)![](../adm4/img/2.png)![](../adm4/img/8.png)
+
+#### Организация – маршрутизации на узле с 4-мя сетевыми интерфейсами
+
+![](../adm4/img/11.png)
+
+##### Донастройка сетей `s_internet`, `s_internal`,`s_DMZ` на узле `alt-s-p11-route`
+
+![](img/1.png) ![](img/2.png)
+
+```bash
+# вход на bastion хост по паролю по ssh
+> ~/.ssh/known_hosts \
+&& ssh -t -o StrictHostKeyChecking=accept-new \
+sadmin@192.168.121.2 \
+"su -"
+
+ip a \
+| grep -A1 "ens"
+
+# копируем настройки статических адресов для интерфейса с сетью s_internet
+cp /etc/net/ifaces/ens{5,6}/options
+
+# статический адрес для сети s_internet
+echo '10.0.0.254/24' \
+> /etc/net/ifaces/ens6/ipv4address
+
+# копируем настройки статических адресов для интерфейса с сетью s_internal
+cp /etc/net/ifaces/ens{5,7}/options
+
+# статический адрес для сети s_internal
+echo '10.1.1.254/28' \
+> /etc/net/ifaces/ens7/ipv4address
+
+
+# копируем настройки статических адресов для интерфейса с сетью s_DMZ
+cp /etc/net/ifaces/ens{5,8}/options
+
+# статический адрес для сети s_DMZ
+echo '10.20.20.254/28' \
+> /etc/net/ifaces/ens8/ipv4address
+
+systemctl restart network
+```
+![](img/3.png) ![](img/4.png)
+##### Промежуточное сохранение(snapshot) машины
+```bash
+systemctl poweroff
+
+# Создание snapshot
+### Основного сервера сети
+sudo virsh snapshot-create-as \
+--domain adm6_altlinux_s1 \
+--name 1 \
+--description "before_routing" --atomic
+
+# запуск ВМ alt-s-p11-route
+sudo virsh start \
+--domain adm6_altlinux_s1
+```
+### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6 развертка стенда 2' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
