@@ -733,7 +733,7 @@ systemctl enable --now dhcpd
 
 systemctl status dhcpd | grep Active
 ```
-![](img/6.png)
+![](img/6.png) ![](img/7.png)
 
 ### Для github и gitflic
 ```bash
@@ -750,7 +750,7 @@ git add . .. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6 развертка стенда, DHCP' \
+git commit -am 'оформление для ADM6 развертка стенда, DHCP_update1' \
 && git push \
 --set-upstream \
 altlinux \
