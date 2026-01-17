@@ -628,7 +628,7 @@ chmod 644 \
 
 # проброс ключа до alt-s-p11-route
 > ~/.ssh/known_hosts \
-ssh-copy-id \
+&& ssh-copy-id \
 -o StrictHostKeyChecking=accept-new \
 -i ~/.ssh/id_alt-adm6_2026_vm_ed25519.pub \
 sadmin@192.168.121.2
@@ -759,4 +759,143 @@ main \
 --set-upstream \
 altlinux_gf \
 main
+```
+#### Промежуточное сохранение(snapshot) машины
+```bash
+# выключение машины
+systemctl poweroff
+
+# вывод списка snapshot хоста
+sudo virsh snapshot-list \
+adm6_altlinux_s1
+
+# Создание snapshot
+### Основного сервера сети
+sudo virsh snapshot-create-as \
+--domain adm6_altlinux_s1 \
+--name 2 \
+--description "after_dhcp-up" --atomic
+```
+#### Проброс ключей на машины
+```bash
+# Поочередный запуск всех сетей libvirt со 2ого по списку
+sudo virsh net-list --all \
+| awk 'NR > 3 {print $1}' \
+| xargs -I {} sudo virsh net-start {}
+
+# запуск ВМ alt-s-p11-route
+sudo virsh start \
+--domain adm6_altlinux_s1
+
+# Поочередный запуск всех ВМ содержащих "nux"
+sudo bash -c \
+"for i in \$(virsh list --all \
+| awk '/nux/ {print \$2}') ; do \
+virsh start --domain \$i; done"
+```
+##### проброс ключей до виртуальных машин через alt-s-p11-route
+```bash
+# Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
+> ~/.ssh/known_hosts
+eval $(ssh-agent) \
+&& ssh-add ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+&& ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519
+
+# проверка подключения
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@192.168.121.2 \
+"ping ya.ru -c 3"
+
+# на alt-s-p11-4 в зоне сети s_internet
+ssh-copy-id \
+-i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+-o "ProxyJump sadmin@192.168.121.2" \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.0.0.8
+
+# на alt-s-p11-2 в зоне сети s_internet
+ssh-copy-id \
+-i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+-o "ProxyJump sadmin@192.168.121.2" \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.0.0.9
+
+# на alt-s-p11-3 в зоне сети s_DMZ
+ssh-copy-id \
+-i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+-o "ProxyJump sadmin@192.168.121.2" \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.20.20.244
+
+# на alt-w-p11-1 в зоне сети s_internal
+ssh-copy-id \
+-i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+-o "ProxyJump sadmin@192.168.121.2" \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.1.1.244
+
+# тест работы proxyjump
+for test in 10.0.0.9 10.0.0.8 10.20.20.244 10.1.1.244; do
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@$test \
+hostnamectl
+done
+```
+### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6 развертка стенда, проброс ключей' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
+```bash
+# Включаем агента в текущей оснастке
+> ~/.ssh/known_hosts
+eval $(ssh-agent) \
+&& ssh-add ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+&& ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519
+
+# Поочередный запуск всех сетей libvirt со 2ого по списку
+sudo virsh net-list --all \
+| awk 'NR > 3 {print $1}' \
+| xargs -I {} sudo virsh net-start {}
+
+# запуск ВМ alt-s-p11-route
+sudo virsh start \
+--domain adm6_altlinux_s1
+
+# Поочередный запуск всех ВМ содержащих "nux"
+sudo bash -c \
+"for i in \$(virsh list --all \
+| awk '/nux/ {print \$2}') ; do \
+virsh start --domain \$i; done"
+
+# вход на bastion хост по ключу по ssh
+ssh -t -o StrictHostKeyChecking=accept-new \
+sadmin@192.168.121.2 \
+"su -"
 ```
