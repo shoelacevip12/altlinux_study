@@ -1,0 +1,7 @@
+<network ipv6='yes'>
+  <name>s_internet</name>
+  <uuid>14121d01-8caf-43af-b73b-9e199cee8a11</uuid>
+  <bridge name='virbr2' stp='on' delay='0'/>
+  <mac address='52:54:00:c4:92:02'/>
+</network>
+

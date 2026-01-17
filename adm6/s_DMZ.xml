@@ -1,0 +1,7 @@
+<network ipv6='yes'>
+  <name>s_DMZ</name>
+  <uuid>001cbae7-869b-40f6-8908-36aa79b7a5c2</uuid>
+  <bridge name='virbr4' stp='on' delay='0'/>
+  <mac address='52:54:00:cb:86:b6'/>
+</network>
+

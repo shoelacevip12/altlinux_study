@@ -1,0 +1,10 @@
+<network>
+  <name>s_host-libvirt</name>
+  <uuid>9dbf7df8-3ca5-4ca2-8831-d8ff14f38030</uuid>
+  <forward mode='route'/>
+  <bridge name='virbr1' stp='on' delay='0'/>
+  <mac address='52:54:00:ee:56:62'/>
+  <ip address='192.168.121.1' netmask='255.255.255.0'>
+  </ip>
+</network>
+

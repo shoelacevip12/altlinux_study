@@ -1,0 +1,111 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  # Путь к ISO образу ALT Linux p11
+  altlinux_iso_path_s = "/home/shoel/iso/alt-server-11.0-x86_64.iso"
+  altlinux_iso_path_w = "/home/shoel/iso/alt-workstation-11.1-x86_64.iso"
+
+  # Общие настройки для провайдера libvirt
+  config.vm.provider :libvirt do |libvirt|
+    libvirt.driver = "kvm"
+    libvirt.uri = 'qemu:///system'
+    libvirt.memory = 3072
+    libvirt.cpus = 2
+    libvirt.nested = true
+    libvirt.disk_driver :cache => 'none'
+    libvirt.disk_bus = "virtio"
+    libvirt.nic_model_type = "virtio"
+    libvirt.storage :file, :size => '40G', :type => 'qcow2'
+    libvirt.boot 'hd' # Загрузка с жесткого диска
+    libvirt.boot 'cdrom' # Загрузка с CDROM (вторая опция)
+    libvirt.management_network_name = "s_host-libvirt"
+    libvirt.management_network_mode = "route"
+    libvirt.management_network_guest_ipv6 = "no"
+  end
+
+  # --- Создание  ВМ для altlinux_s1 ROUTER ---
+  config.vm.define "altlinux_s1" do |node_1|
+    node_1.vm.hostname = "altlinux-s1" # Устанавливаем имя хоста для ВМ
+    node_1.vm.communicator = "none" # Отключаем стандартный communicator (SSH), так как используется ISO
+
+    # Настройки сети: только private_network
+    node_1.vm.network "private_network",
+                            libvirt__network_name: "s_internet", # Имя создаваемой сети
+                            libvirt__forward_mode: "none", # Режим маршрутизации
+                            libvirt__dhcp_enabled: false  # Отключаем DHCP в этой сети
+    node_1.vm.network "private_network",
+                            libvirt__network_name: "s_internal",
+                            libvirt__forward_mode: "none",
+                            libvirt__dhcp_enabled: false
+    node_1.vm.network "private_network",
+                            libvirt__network_name: "s_DMZ",
+                            libvirt__forward_mode: "none",
+                            libvirt__dhcp_enabled: false
+    # Настройки провайдера libvirt для конкретной ВМ
+    node_1.vm.provider :libvirt do |libvirt|
+      libvirt.storage :file, :device => :cdrom, :path => altlinux_iso_path_s
+    end
+
+    # Заглушка для provisioner (не запускается)
+    node_1.vm.provision "shell", inline: "echo 'altlinux_s1 VM created.'", run: "never"
+  end
+
+  # --- Создание 2 ВМ для altlinux_s internet ---
+  # Цикл для создания 2-х одинаковых серверных ВМ
+  # Все они будут использовать одну и ту же сеть 's_internet'
+  [2,4].each do |i|
+    config.vm.define "altlinux_s#{i}" do |node_2|
+      node_2.vm.hostname = "altlinux-s#{i}" # Устанавливаем имя хоста для ВМ
+      node_2.vm.communicator = "none" # Отключаем стандартный communicator (SSH), так как используется ISO
+
+      # Настройки сети: только private_network
+      node_2.vm.network "private_network",
+                             libvirt__network_name: "s_internet", # Имя создаваемой сети
+                             libvirt__forward_mode: "none", # Режим маршрутизации
+                             libvirt__dhcp_enabled: false  # Отключаем DHCP в этой сети
+
+      # Настройки провайдера libvirt для конкретной ВМ
+      node_2.vm.provider :libvirt do |libvirt|
+        libvirt.storage :file, :device => :cdrom, :path => altlinux_iso_path_s
+      end
+
+      # Заглушка для provisioner (не запускается)
+      node_2.vm.provision "shell", inline: "echo 'altlinux_s#{i} VM created.'", run: "never"
+    end
+  end
+
+  # --- Создание  ВМ для altlinux_s3 DMZ  ---
+  config.vm.define "altlinux_s3" do |node_3|
+    node_3.vm.hostname = "altlinux-s1" # Устанавливаем имя хоста для ВМ
+    node_3.vm.communicator = "none" # Отключаем стандартный communicator (SSH), так как используется ISO
+
+    # Настройки сети: только private_network
+    node_3.vm.network "private_network",
+                            libvirt__network_name: "s_DMZ", # Имя создаваемой сети
+                            libvirt__forward_mode: "none", # Режим маршрутизации
+                            libvirt__dhcp_enabled: false  # Отключаем DHCP в этой сети
+    # Настройки провайдера libvirt для конкретной ВМ
+    node_3.vm.provider :libvirt do |libvirt|
+      libvirt.storage :file, :device => :cdrom, :path => altlinux_iso_path_s
+    end
+  end
+
+  # --- Создание ВМ для altlinux_w1 ---
+    config.vm.define "altlinux_w1" do |node_4|
+      node_4.vm.hostname = "altlinux-w1"
+      node_4.vm.communicator = "none"
+      # Настройки сети: только private_network
+      node_4.vm.network "private_network",
+                            libvirt__network_name: "s_internal",
+                            libvirt__forward_mode: "none",
+                            libvirt__dhcp_enabled: false
+
+      node_4.vm.provider :libvirt do |libvirt|
+        libvirt.storage :file, :device => :cdrom, :path => altlinux_iso_path_w
+        
+      end
+      node_4.vm.provision "shell", inline: "echo 'altlinux_w1 VM created.'", run: "never"
+    end
+end

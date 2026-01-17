@@ -2,9 +2,11 @@
 cache/
 .vagrant/
 __pycache__/
-mysql_D/
-.vscode/
+.terraform/
+collections/
+galaxy_cache/
 tmp/
+.vscode/
 
 # игнорировать расширения и файлы:
 passwd
@@ -14,11 +16,10 @@ passwd
 *.deb
 authorized_key.json
 .terraform.lock.hcl
-*tfplan
-*terraform.tfstate
-*terraform.tfstate.backup
 tfplan
 terraform.tfstate
 terraform.tfstate.backup
 cloud-init.yml
-*cloud-init.yml
+.terraform.*
+
+# Исключения
