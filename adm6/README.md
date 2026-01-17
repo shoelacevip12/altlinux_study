@@ -548,7 +548,7 @@ nftables
 
 nft list ruleset
 ```
-![](img/4.png)
+![](img/5.png)
 ##### Промежуточное сохранение(snapshot) машины
 ```bash
 # выключение машины
@@ -569,10 +569,6 @@ sudo virsh snapshot-create-as \
 --domain adm6_altlinux_s1 \
 --name 1 \
 --description "before_dhcp-server" --atomic
-
-# запуск ВМ alt-s-p11-route
-sudo virsh start \
---domain adm6_altlinux_s1
 ```
 ### Для github и gitflic
 ```bash
@@ -590,6 +586,171 @@ git add . .. \
 git remote -v
 
 git commit -am 'оформление для ADM6 развертка стенда, проброс интернета' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
+
+#### Создание пары ключей для работы по ssh стенда
+```bash
+# Поочередный запуск всех сетей libvirt со 2ого по списку
+sudo virsh net-list --all \
+| awk 'NR > 3 {print $1}' \
+| xargs -I {} sudo virsh net-start {}
+
+# запуск ВМ alt-s-p11-route
+sudo virsh start \
+--domain adm6_altlinux_s1
+
+# генерация ключа ssh для подключения на alt-s-p11-route через хост-Libvirt
+ssh-keygen -f \
+~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-t ed25519 -C "cours_alt-adm6"
+
+# генерация ключа ssh для подключения на ВМ стенда через alt-s-p11-route
+ssh-keygen -f \
+~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+-t ed25519 -C "cours_alt-adm6-VM"
+
+# Выставление прав на пары ключей
+## для приватных ключей
+chmod 600 \
+~/.ssh/id_alt-adm6_2026_*_ed25519
+
+## для публичных ключей
+chmod 644 \
+~/.ssh/id_alt-adm6_2026_*_ed25519.pub
+
+# проброс ключа до alt-s-p11-route
+> ~/.ssh/known_hosts \
+ssh-copy-id \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm6_2026_vm_ed25519.pub \
+sadmin@192.168.121.2
+
+# # проброс ключа до виртуальных машин через шлюз как прокси-сервер
+# ssh-copy-id \
+# -i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+# -o "ProxyJump sadmin@192.168.121.2" \
+# sadmin@10.10.10.241
+
+# Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
+eval $(ssh-agent) \
+&& ssh-add ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+&& ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519
+
+# вход на bastion хост по ключу по ssh
+> ~/.ssh/known_hosts \
+&& ssh -t -o StrictHostKeyChecking=accept-new \
+sadmin@192.168.121.2 \
+"su -"
+```
+#### настройка DHCP на узле стенда alt-s-p11-route
+##### обновление системы и установка пакетов для DHCP-server
+```bash
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y \
+dhcp-server
+```
+##### Редактирование dhcpd конфига
+```bash
+cat > /etc/dhcp/dhcpd.conf << 'EOF'
+# Глобальные параметры
+## Предоставляется аренда IP-адреса на 2 дня
+default-lease-time 172800;
+# Максимально возможный срок аренды IP-адреса 3 дня
+max-lease-time 259200;
+# Доменные суффиксы
+option domain-name "skv.dv";
+## внешние DNS
+option domain-name-servers 77.88.8.8, 77.88.8.1;
+
+# Subnet для ens6 (10.0.0.254/24) s_internet
+subnet 10.0.0.0 netmask 255.255.255.0 {
+    # Шлюз по умолчанию
+    option routers 10.0.0.254;
+    option subnet-mask 255.255.255.0;
+    option broadcast-address 10.0.0.255;
+    # Определение диапазона
+    range 10.0.0.10 10.0.0.20;
+}
+
+# Резервирование 2х серверов
+host alt-s-p11-2 {
+  hardware ethernet 52:54:00:0b:4a:8d;
+  fixed-address 10.0.0.9;
+}
+
+host alt-s-p11-4 {
+  hardware ethernet 52:54:00:5e:ef:61;
+  fixed-address 10.0.0.8;
+}
+
+# Subnet для ens7 (10.1.1.254/28) s_internal
+subnet 10.1.1.240 netmask 255.255.255.240 {
+    # Шлюз по умолчанию
+    option routers 10.1.1.254;
+    option subnet-mask 255.255.255.240;
+    option broadcast-address 10.1.1.255;
+    # Определение диапазона
+    range 10.1.1.245 10.1.1.253;
+}
+
+# Резервирование alt workstation
+host alt-w-p11-1 {
+  hardware ethernet 52:54:00:6a:37:66;
+  fixed-address 10.1.1.244;
+}
+
+# Subnet для ens8 (10.20.20.254/28) s_DMZ
+subnet 10.20.20.240 netmask 255.255.255.240 {
+    option routers 10.20.20.254;
+    option subnet-mask 255.255.255.240;
+    option broadcast-address 10.20.20.255;
+    range 10.20.20.245 10.20.20.253;
+}
+
+# Резервирование alt-s-p11-3
+host alt-s-p11-3 {
+  hardware ethernet 52:54:00:34:42:5b;
+  fixed-address 10.20.20.244;
+}
+EOF
+```
+##### проверка конфига и запуск DHCP
+```bash
+# проверка конфига
+dhcpd -t
+
+systemctl enable --now dhcpd
+
+systemctl status dhcpd | grep Active
+```
+![](img/6.png)
+
+### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6 развертка стенда, DHCP' \
 && git push \
 --set-upstream \
 altlinux \
