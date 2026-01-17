@@ -500,3 +500,102 @@ main \
 altlinux_gf \
 main
 ```
+##### настройка nftables для узла стенда
+```bash
+# вход на bastion хост по паролю по ssh
+> ~/.ssh/known_hosts \
+&& ssh -t -o StrictHostKeyChecking=accept-new \
+sadmin@192.168.121.2 \
+"su -"
+
+# включение внутренней маршрутизации пакетов между интерфейсами
+sed -i 's/rd\ =\ 0/rd\ =\ 1/' \
+/etc/net/sysctl.conf
+
+systemctl restart network
+
+# обновление системы и установка пакетов для nat-маршрутизации
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y \
+nftables \
+tree
+
+# Включаем и добавляем в автозагрузку службу nftables:
+systemctl enable --now \
+nftables
+
+# Создаём необходимую структуру для nftables (семейство, таблица, цепочка) для настройки NAT:
+## где ens5 это интерфейс s_host-libvirt с выходом в реальную WAN сеть 
+nft add table ip nat
+nft add chain ip nat postrouting '{ type nat hook postrouting priority 0; }'
+nft add rule ip nat postrouting ip saddr 10.1.1.240/28 oifname "ens5" counter masquerade
+nft add rule ip nat postrouting ip saddr 10.0.0.0/24 oifname "ens5" counter masquerade
+nft add rule ip nat postrouting ip saddr 10.20.20.240/28 oifname "ens5" counter masquerade
+
+# Сохраняем правила nftables
+nft list ruleset \
+| tail -n8 \
+| tee -a /etc/nftables/nftables.nft
+
+systemctl reboot
+
+su -
+
+systemctl status \
+nftables
+
+nft list ruleset
+```
+![](img/4.png)
+##### Промежуточное сохранение(snapshot) машины
+```bash
+# выключение машины
+systemctl poweroff
+
+# вывод списка snapshot хоста
+sudo virsh snapshot-list \
+adm6_altlinux_s1
+
+# удаление снимка
+sudo virsh snapshot-delete \
+--domain adm6_altlinux_s1 \
+--snapshotname 1
+
+# Создание snapshot
+### Основного сервера сети
+sudo virsh snapshot-create-as \
+--domain adm6_altlinux_s1 \
+--name 1 \
+--description "before_dhcp-server" --atomic
+
+# запуск ВМ alt-s-p11-route
+sudo virsh start \
+--domain adm6_altlinux_s1
+```
+### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6 развертка стенда, проброс интернета' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
