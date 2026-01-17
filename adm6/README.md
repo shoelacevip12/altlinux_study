@@ -862,7 +862,7 @@ git add . .. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6 развертка стенда, проброс ключей' \
+git commit -am 'оформление для ADM6 развертка стенда, проброс ключей update_1' \
 && git push \
 --set-upstream \
 altlinux \
@@ -894,8 +894,24 @@ sudo bash -c \
 | awk '/nux/ {print \$2}') ; do \
 virsh start --domain \$i; done"
 
-# вход на bastion хост по ключу по ssh
-ssh -t -o StrictHostKeyChecking=accept-new \
+# вход на bastion-хост по ключу по ssh
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
 sadmin@192.168.121.2 \
+"su -"
+
+# Памятка входа на хосты через alt-s-p11-1 по ключу по ssh
+## хосты:
+### 10.0.0.9 - alt-s-p11-2
+### 10.0.0.8 - alt-s-p11-4
+### 10.20.20.244 - alt-s-p11-3
+### 10.1.1.244 - alt-w-p11-1.den.skv
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@ХОСТ \
 "su -"
 ```
