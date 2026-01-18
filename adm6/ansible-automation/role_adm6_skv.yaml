@@ -8,9 +8,9 @@
   vars:
     # включаем(true)\выключаем(false)
     dist_upd: true # Обновление кеша пакетов
-    dist_upgrd: false # обновление установленных приложений
-    kernel_upd: false # обновление ядра
-    install_bind: true # установка и настройка кеширующего bind
+    dist_upgrd: true # обновление установленных приложений
+    kernel_upd: true # обновление ядра
+    install_bind: false # установка и настройка кеширующего bind
 
   roles:
     - adm6_skv

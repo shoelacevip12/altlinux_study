@@ -667,7 +667,7 @@ subnet 10.0.0.0 netmask 255.255.255.0 {
     option subnet-mask 255.255.255.0;
     option broadcast-address 10.0.0.255;
     # Локальный DNS для этой сети
-    option domain-name-servers 10.0.0.254;
+    # option domain-name-servers 10.0.0.254;
     # Определение диапазона
     range 10.0.0.10 10.0.0.20;
 }
@@ -676,14 +676,13 @@ subnet 10.0.0.0 netmask 255.255.255.0 {
 host alt-s-p11-2 {
   hardware ethernet 52:54:00:0b:4a:8d;
   fixed-address 10.0.0.9;
-  # Явное указание DNS для резервированных хостов
-  option domain-name-servers 10.0.0.254;
+  # option domain-name-servers 10.0.0.254;
 }
 
 host alt-s-p11-4 {
   hardware ethernet 52:54:00:5e:ef:61;
   fixed-address 10.0.0.8;
-  option domain-name-servers 10.0.0.254;
+  # option domain-name-servers 10.0.0.254;
 }
 
 # Subnet для ens7 (10.1.1.254/28) s_internal
@@ -693,7 +692,7 @@ subnet 10.1.1.240 netmask 255.255.255.240 {
     option subnet-mask 255.255.255.240;
     option broadcast-address 10.1.1.255;
     # Локальный DNS для этой сети
-    option domain-name-servers 10.1.1.254;
+    # option domain-name-servers 10.1.1.254;
     # Определение диапазона
     range 10.1.1.245 10.1.1.253;
 }
@@ -702,7 +701,7 @@ subnet 10.1.1.240 netmask 255.255.255.240 {
 host alt-w-p11-1 {
   hardware ethernet 52:54:00:6a:37:66;
   fixed-address 10.1.1.244;
-  option domain-name-servers 10.1.1.254;
+  # option domain-name-servers 10.1.1.254;
 }
 
 # Subnet для ens8 (10.20.20.254/28) s_DMZ
@@ -711,7 +710,7 @@ subnet 10.20.20.240 netmask 255.255.255.240 {
     option subnet-mask 255.255.255.240;
     option broadcast-address 10.20.20.255;
     # Локальный DNS для этой сети
-    option domain-name-servers 10.20.20.254;
+    # option domain-name-servers 10.20.20.254;
     range 10.20.20.245 10.20.20.253;
 }
 
@@ -719,7 +718,7 @@ subnet 10.20.20.240 netmask 255.255.255.240 {
 host alt-s-p11-3 {
   hardware ethernet 52:54:00:34:42:5b;
   fixed-address 10.20.20.244;
-  option domain-name-servers 10.20.20.254;
+  # option domain-name-servers 10.20.20.254;
 }
 EOF
 ```
