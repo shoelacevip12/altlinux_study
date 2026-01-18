@@ -1,0 +1,16 @@
+---
+- name: Установки и обновление Для ОС Альт
+  hosts: all
+  become: yes
+  become_method: su
+  become_user: root
+  gather_facts: yes
+  vars:
+    # включаем(true)\выключаем(false)
+    dist_upd: true # Обновление кеша пакетов и установка обязательных пакетов
+    dist_upgrd: true # обновление установленных приложений
+    kernel_upd: true # обновление ядра
+    # install_soft: false # установку софта
+
+  roles:
+    - adm6_skv

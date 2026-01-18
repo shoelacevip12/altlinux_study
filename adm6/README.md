@@ -607,15 +607,10 @@ sudo virsh net-list --all \
 sudo virsh start \
 --domain adm6_altlinux_s1
 
-# генерация ключа ssh для подключения на alt-s-p11-route через хост-Libvirt
+# генерация ключа ssh для подключения на ВМ
 ssh-keygen -f \
 ~/.ssh/id_alt-adm6_2026_host_ed25519 \
 -t ed25519 -C "cours_alt-adm6"
-
-# генерация ключа ssh для подключения на ВМ стенда через alt-s-p11-route
-ssh-keygen -f \
-~/.ssh/id_alt-adm6_2026_vm_ed25519 \
--t ed25519 -C "cours_alt-adm6-VM"
 
 # Выставление прав на пары ключей
 ## для приватных ключей
@@ -630,18 +625,11 @@ chmod 644 \
 > ~/.ssh/known_hosts \
 && ssh-copy-id \
 -o StrictHostKeyChecking=accept-new \
--i ~/.ssh/id_alt-adm6_2026_vm_ed25519.pub \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519.pub \
 sadmin@192.168.121.2
-
-# # проброс ключа до виртуальных машин через шлюз как прокси-сервер
-# ssh-copy-id \
-# -i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
-# -o "ProxyJump sadmin@192.168.121.2" \
-# sadmin@10.10.10.241
 
 # Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
 eval $(ssh-agent) \
-&& ssh-add ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
 && ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519
 
 # вход на bastion хост по ключу по ssh
@@ -798,54 +786,67 @@ virsh start --domain \$i; done"
 # Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
 > ~/.ssh/known_hosts
 eval $(ssh-agent) \
-&& ssh-add ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
 && ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519
 
-# проверка подключения
+# проверка подключения на alt-s-p11-1
 ssh -t \
 -i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
 sadmin@192.168.121.2 \
 "ping ya.ru -c 3"
 
-# на alt-s-p11-4 в зоне сети s_internet
+# на все сервера по ip списку цикла
+for copyssh in 10.0.0.9 10.0.0.8 10.20.20.244 10.1.1.244; do
 ssh-copy-id \
--i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
 -o "ProxyJump sadmin@192.168.121.2" \
 -o StrictHostKeyChecking=accept-new \
-sadmin@10.0.0.8
-
-# на alt-s-p11-2 в зоне сети s_internet
-ssh-copy-id \
--i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
--o "ProxyJump sadmin@192.168.121.2" \
--o StrictHostKeyChecking=accept-new \
-sadmin@10.0.0.9
-
-# на alt-s-p11-3 в зоне сети s_DMZ
-ssh-copy-id \
--i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
--o "ProxyJump sadmin@192.168.121.2" \
--o StrictHostKeyChecking=accept-new \
-sadmin@10.20.20.244
-
-# на alt-w-p11-1 в зоне сети s_internal
-ssh-copy-id \
--i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
--o "ProxyJump sadmin@192.168.121.2" \
--o StrictHostKeyChecking=accept-new \
-sadmin@10.1.1.244
+sadmin@$copyssh
+done
 
 # тест работы proxyjump
 for test in 10.0.0.9 10.0.0.8 10.20.20.244 10.1.1.244; do
 ssh -t \
 -i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
 -J sadmin@192.168.121.2 \
--i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
 -o StrictHostKeyChecking=accept-new \
 sadmin@$test \
 hostnamectl
 done
+```
+##### подготовка для работы с ansible
+```bash
+# на bastion-хосте alt-s-p11-1 вход под суперпользователем
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@192.168.121.2 \
+"su -"
+
+# Установка пакетов для работы с ansible
+apt-get update \
+&& apt-get install \
+python3 \
+python3-module-yaml \
+python3-module-jinja2 \
+python3-module-json5 -y \
+
+# на остальных хостах вход под суперпользователем
+for ans in 10.0.0.9 10.0.0.8 10.20.20.244 10.1.1.244; do
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@$ans \
+"su -"
+done
+
+apt-get update \
+&& apt-get install \
+python3 \
+python3-module-yaml \
+python3-module-jinja2 \
+python3-module-json5 -y \
+&& systemctl reboot
 ```
 ### Для github и gitflic
 ```bash
@@ -862,7 +863,7 @@ git add . .. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6 развертка стенда, проброс ключей update_1' \
+git commit -am 'оформление для ADM6 развертка стенда, проброс ключей update_2' \
 && git push \
 --set-upstream \
 altlinux \
@@ -872,11 +873,11 @@ main \
 altlinux_gf \
 main
 ```
+## Памятка входа
 ```bash
 # Включаем агента в текущей оснастке
 > ~/.ssh/known_hosts
 eval $(ssh-agent) \
-&& ssh-add ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
 && ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519
 
 # Поочередный запуск всех сетей libvirt со 2ого по списку
@@ -910,8 +911,113 @@ sadmin@192.168.121.2 \
 ssh -t \
 -i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
 -J sadmin@192.168.121.2 \
--i ~/.ssh/id_alt-adm6_2026_vm_ed25519 \
 -o StrictHostKeyChecking=accept-new \
 sadmin@ХОСТ \
 "su -"
+
+# скриптом поочередно на указанные хосты
+for enter in 10.0.0.9 10.0.0.8 10.20.20.244 10.1.1.244; do
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@$enter \
+"su -"
+done
+```
+### Запуск ansible для стенда
+```bash
+# права на папку чтобы применились конфиги ansible и права на редактирования кешируемого файла ansible-vault
+chmod o-w ansible-automation/
+chmod g+w ansible-automation/tmp
+
+# Вход в папку ansible для стенда
+pushd ansible-automation/
+
+# редактирование файла хранилища с чувствительными переменными для всех хостов
+EDITOR=nano ansible-vault edit \
+group_vars/all/vault.yml
+
+# Запуск ansible-playbook согласно роли
+> ~/.ssh/known_hosts
+eval $(ssh-agent) \
+&& ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+&& ansible-playbook *.yaml --syntax-check \
+&& ansible-playbook role_adm6_skv.yaml \
+&& popd
+```
+### сохранение промежуточного состояния стенда
+```bash
+# Вход на все машины и выключение из-под самой ОС
+for enter in 10.0.0.9 10.0.0.8 10.20.20.244 10.1.1.244; do
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@$enter \
+"su -"
+done
+
+systemctl poweroff
+
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+sadmin@192.168.121.2 \
+"su -"
+
+systemctl poweroff
+```
+```bash
+# Выводим список снэпшотов ВМ стенда
+sudo bash -c \
+"for i in \$(virsh list --all \
+| awk '/nux/ {print \$2}') ; do \
+echo "\$i" && \
+virsh snapshot-list --domain \$i; done"
+
+# Удаляем снэпшот цепочки сервера alt-s-p11-2 после настройки DNS службы
+sudo virsh snapshot-delete \
+--domain adm6_altlinux_s1 \
+--snapshotname 2
+
+# Создание snapshot
+### Основного сервера сети стенда
+sudo virsh snapshot-create-as \
+--domain adm6_altlinux_s1 \
+--name 2 \
+--description "ansible_integration" --atomic
+
+# Для остальных создание snapshot
+for snap in s2 s3 s4 w1; do
+sudo virsh snapshot-create-as \
+--domain adm6_altlinux_$snap \
+--name 2 \
+--description "ansible_integration" --atomic
+done
+```
+### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6 развертка стенда, Ansible role ready' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
 ```
