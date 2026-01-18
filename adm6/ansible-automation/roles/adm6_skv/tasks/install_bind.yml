@@ -1,0 +1,49 @@
+---
+- name: Установка bind
+  apt_rpm:
+    name:
+      - bind
+      - bind-utils
+    state: installed
+
+- name: Изменение файла запуска службы только на IPv4
+  lineinfile:
+    path: "/etc/sysconfig/bind"
+    regexp: '^S='
+    line: 'S="-4"'
+    state: present
+
+- name: Первый Запуск bind
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+    masked: no
+    daemon_reload: yes
+  loop:
+    - bind
+
+- name: Остановка bind
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: yes
+    masked: no
+    daemon_reload: yes
+  loop:
+    - bind
+
+- name: Даем доступ на dump кеша
+  file:
+    path: "/var/lib/bind/var"
+    mode: "0751"
+    state: directory
+
+- name: Конфигурация BIND файла options
+  template:
+    src: bind_options.conf.j2
+    dest: "/var/lib/bind/etc/options.conf"
+    owner: "named"
+    group: "named"
+    mode: "0644"
+  notify: restart_bind

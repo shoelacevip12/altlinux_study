@@ -1,0 +1,16 @@
+options {
+    version "unknown";
+    directory "/etc/bind/zone";
+    dump-file "/var/run/named/named_dump.db";
+    statistics-file "/var/run/named/named.stats";
+    recursing-file "/var/run/named/named.recursing";
+    secroots-file "/var/run/named/named.secroots";
+    pid-file none;
+    
+    listen-on { 127.0.0.1; {% for network in bind_allowed_networks %}{{ network }}; {% endfor %}};
+    listen-on-v6 { ::1; };
+    
+    allow-query { 127.0.0.1; {% for network in bind_allowed_networks %}{{ network }}; {% endfor %}};
+    allow-recursion { 127.0.0.1; {% for network in bind_allowed_networks %}{{ network }}; {% endfor %}};
+    max-cache-ttl 86400;
+};

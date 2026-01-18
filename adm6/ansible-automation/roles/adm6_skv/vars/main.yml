@@ -3,3 +3,9 @@ ansible_python_interpreter: "/usr/bin/python3"
 ansible_user: "{{ su_wheel_user }}"
 ansible_become_password: "{{ su_password }}"
 ansible_ssh_private_key_file: "~/.ssh/id_alt-adm6_2026_host_ed25519"
+
+# Сети, которым разрешен доступ к DNS
+bind_allowed_networks:
+  - "10.0.0.0/24"
+  - "10.1.1.240/28"
+  - "10.20.20.240/28"

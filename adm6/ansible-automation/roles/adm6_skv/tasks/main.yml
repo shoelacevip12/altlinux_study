@@ -4,6 +4,12 @@
     update_cache: true
   when: dist_upd | bool
 
+- name: Установка и настройка BIND
+  include_tasks: install_bind.yml
+  when:
+    - install_bind | bool
+    - inventory_hostname in groups['alt_p11_bastion']
+
 - name: Обновление пакетов
   apt_rpm:
     dist_upgrade: true

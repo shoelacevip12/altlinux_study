@@ -7,10 +7,10 @@
   gather_facts: yes
   vars:
     # включаем(true)\выключаем(false)
-    dist_upd: true # Обновление кеша пакетов и установка обязательных пакетов
-    dist_upgrd: true # обновление установленных приложений
-    kernel_upd: true # обновление ядра
-    # install_soft: false # установку софта
+    dist_upd: true # Обновление кеша пакетов
+    dist_upgrd: false # обновление установленных приложений
+    kernel_upd: false # обновление ядра
+    install_bind: true # установка и настройка кеширующего bind
 
   roles:
     - adm6_skv

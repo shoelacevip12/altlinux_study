@@ -1,1 +1,11 @@
 ---
+- name: Перезапуск bind обработчиком
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+    masked: no
+    daemon_reload: yes
+  loop:
+    - bind
+  listen: restart_bind
