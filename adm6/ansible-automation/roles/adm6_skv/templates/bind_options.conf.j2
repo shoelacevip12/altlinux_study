@@ -11,6 +11,7 @@ options {
     listen-on-v6 { ::1; };
     
     allow-query { 127.0.0.1; {% for network in bind_allowed_networks %}{{ network }}; {% endfor %}};
+    allow-query-cache { 127.0.0.1; {% for network in bind_allowed_networks %}{{ network }}; {% endfor %}};
     allow-recursion { 127.0.0.1; {% for network in bind_allowed_networks %}{{ network }}; {% endfor %}};
     max-cache-ttl 86400;
 };

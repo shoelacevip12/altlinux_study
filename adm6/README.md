@@ -667,7 +667,7 @@ subnet 10.0.0.0 netmask 255.255.255.0 {
     option subnet-mask 255.255.255.0;
     option broadcast-address 10.0.0.255;
     # Локальный DNS для этой сети
-    # option domain-name-servers 10.0.0.254;
+    option domain-name-servers 10.0.0.254;
     # Определение диапазона
     range 10.0.0.10 10.0.0.20;
 }
@@ -692,7 +692,7 @@ subnet 10.1.1.240 netmask 255.255.255.240 {
     option subnet-mask 255.255.255.240;
     option broadcast-address 10.1.1.255;
     # Локальный DNS для этой сети
-    # option domain-name-servers 10.1.1.254;
+    option domain-name-servers 10.1.1.254;
     # Определение диапазона
     range 10.1.1.245 10.1.1.253;
 }
@@ -710,7 +710,7 @@ subnet 10.20.20.240 netmask 255.255.255.240 {
     option subnet-mask 255.255.255.240;
     option broadcast-address 10.20.20.255;
     # Локальный DNS для этой сети
-    # option domain-name-servers 10.20.20.254;
+    option domain-name-servers 10.20.20.254;
     range 10.20.20.245 10.20.20.253;
 }
 
