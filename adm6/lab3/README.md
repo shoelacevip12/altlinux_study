@@ -77,7 +77,7 @@ sudo bash -c \
 done
 ```
 ## Выполнение работы
-### на узле alt-w-p11-1 - internal
+### на узле alt-s-p11-1 (`bastion`)
 #### чистка конфигурации nftables
 ```bash
 # вход на bastion-хост по ключу по ssh
@@ -170,9 +170,11 @@ all             all         DROP        $LOG_LEVEL
 EOF
 
 # Вывод описания политик по умолчанию
-tail -n13 /etc/shorewall/policy
+tail -n13 \
+/etc/shorewall/policy
 ```
-##### Промежуточное сохранение(snapshot) машины
+![](img/2.png)
+## Промежуточное сохранение(snapshot) машины
 ```bash
 # выключение машины
 systemctl poweroff
@@ -188,8 +190,6 @@ sudo virsh snapshot-create-as \
 --name 3 \
 --description "shorewall_policy" --atomic
 ```
-
-![](img/2.png)
 ### Для github и gitflic
 ```bash
 git log --oneline
@@ -205,7 +205,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab3 shorewall _1' \
+git commit -am 'оформление для ADM6, lab3 shorewall Upd_2' \
 && git push \
 --set-upstream \
 altlinux \
@@ -214,6 +214,19 @@ main \
 --set-upstream \
 altlinux_gf \
 main
+```
+#### Настройка правил трафика
+```bash
+# запуск ВМ alt-s-p11-route
+sudo virsh start \
+--domain adm6_altlinux_s1
+
+# вход на bastion-хост по ключу по ssh
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@192.168.121.2 \
+"su -"
 ```
 ```bash
 # Поочередная остановка запущенных ВМ
