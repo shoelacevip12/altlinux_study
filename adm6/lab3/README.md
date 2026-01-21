@@ -112,19 +112,19 @@ grep "rd = " \
 #### Описание зон сетей
 ```bash
 # Описание зоны реального выхода в интернет
-echo "s_host-libvirt        ip" \
+echo "s_libvirt       ip" \
 >> /etc/shorewall/zones
 
 # Описание зоны имитации интернет
-echo "s_internet        ip" \
+echo "s_internet      ip" \
 >> /etc/shorewall/zones
 
 # Описание локальной сети
-echo "s_internal       ip" \
+echo "s_internal      ip" \
 >> /etc/shorewall/zones
 
 # Описание сети DMZ
-echo "s_dmz       ip" \
+echo "s_dmz           ip" \
 >> /etc/shorewall/zones
 
 # Вывод описания зон
@@ -139,7 +139,7 @@ grep -A6 "ZONE" /etc/shorewall/zones
 # ens8 # - 10.20.20.244 - "s_dmz" - сеть DMZ
 cat >> /etc/shorewall/interfaces <<'EOF'
 -               lo            ignore
-s_host-libvirt  ens5
+s_libvirt       ens5
 s_internet      ens6
 s_internal      ens7
 s_dmz           ens8
@@ -151,7 +151,9 @@ grep -A6 "ZONE" /etc/shorewall/zones
 # Вывод описания привязки зон к интерфейсам
 grep -A6 "ZONE" /etc/shorewall/interfaces
 ```
+
 ![](img/1.png)
+
 #### Описание политик хождения трафика относительно зон и самого shorewall
 ```bash
 cat >> /etc/shorewall/policy <<'EOF'
@@ -162,7 +164,7 @@ s_internal      all         REJECT      $LOG_LEVEL
 # Блокировать c ответом соединение из сети dmz ко всеми сетями
 s_dmz           all         REJECT      $LOG_LEVEL
 # Блокировать соединение из реального WAN со всеми сетями
-s_host-libvirt  all         DROP        $LOG_LEVEL
+s_libvirt  all         DROP        $LOG_LEVEL
 # Блокировать соединение из имитирующего WAN со всеми сетями
 s_internet      all         DROP        $LOG_LEVEL
 # Массовое блокирование всего, что не разрешено
@@ -173,8 +175,10 @@ EOF
 tail -n13 \
 /etc/shorewall/policy
 ```
+
 ![](img/2.png)
-## Промежуточное сохранение(snapshot) машины
+
+##### Промежуточное сохранение(snapshot) машины
 ```bash
 # выключение машины
 systemctl poweroff
@@ -190,7 +194,7 @@ sudo virsh snapshot-create-as \
 --name 3 \
 --description "shorewall_policy" --atomic
 ```
-### Для github и gitflic
+##### Для github и gitflic
 ```bash
 git log --oneline
 
@@ -227,12 +231,115 @@ ssh -t \
 -o StrictHostKeyChecking=accept-new \
 sadmin@192.168.121.2 \
 "su -"
+
+cat >> /etc/shorewall/rules <<'EOF'
+# Правила из зоны локальной сети
+## ssh
+SSH(ACCEPT)         s_internal      all
+## http\https
+HTTP(ACCEPT)        s_internal      s_libvirt
+HTTPS(ACCEPT)       s_internal      s_libvirt
+HTTP(ACCEPT)        s_internal      s_internet
+HTTPS(ACCEPT)       s_internal      s_internet
+HTTP(ACCEPT)        s_internal      s_dmz:10.20.20.244
+HTTPS(ACCEPT)       s_internal      s_dmz:10.20.20.244
+## icmp
+Ping(ACCEPT)        s_internal      s_libvirt
+Ping(ACCEPT)        s_internal      s_internet
+## dns
+DNS(ACCEPT)         s_internal      s_libvirt
+# Привила доступа из сетей WAN
+### разрешенное общение между имитируемой и реальной сетью
+Web(ACCEPT)         s_libvirt  s_internet:10.0.0.9
+Web(ACCEPT)         s_internet      s_libvirt
+## dns
+DNS(ACCEPT)         s_internet      s_libvirt
+#№ для доступа по SSH с хоста libvirt через общий хост-бастион на все сети
+SSH(ACCEPT)         s_libvirt       all
+# Привила доступа из DMZ
+Web(ACCEPT)         s_dmz           s_libvirt
+DNS(ACCEPT)         s_dmz           s_libvirt
+EOF
+
+# Вывод описания правил
+grep -A33 "#ACTION" \
+/etc/shorewall/rules
+```
+#### Настройка правил NAT
+```bash
+# SNAT из контролируемых зон
+cat >> /etc/shorewall/snat <<'EOF'
+# Трансляция nat до реальной сети интернет сетей s_internal и s_dmz
+MASQUERADE          ens7        ens5
+MASQUERADE          ens8        ens5
+# Трансляция nat до имитируемой сети интернет из локальной сети и dmz
+MASQUERADE          ens7        ens6
+MASQUERADE          ens8        ens6
+EOF
+
+# вывод правил snat 
+tail -7 \
+/etc/shorewall/snat
+
+# Организация трансляции из вне до DMZ по http\s
+cat >> /etc/shorewall/rules <<'EOF'
+### DNAT 
+Web(DNAT)           s_internet      s_dmz:10.20.20.244
+Web(DNAT)           s_libvirt       s_dmz:10.20.20.244
+EOF
+
+# Вывод описания правил и DNAT
+grep -A36 "#ACTION" \
+/etc/shorewall/rules
+```
+
+![](img/3.png)
+
+#### Запуск службы shorewall с прописанными правилами и политиками
+```bash
+# Включаем через конфигурацию постоянное состояние net.ipv4.ip_forward = 1
+sed -i '/IP_FORWARDING/s/Keep/On/' \
+/etc/shorewall/shorewall.conf
+
+# Включаем разрешение на запуск службы
+sed -i '/STARTUP_E/s/No/Yes/' \
+/etc/shorewall/shorewall.conf
+
+# Включаем запуск службы
+systemctl enable \
+--now \
+shorewall
 ```
 ```bash
 # Поочередная остановка запущенных ВМ
-for l1 in s{1,2} w1; do \
+for l1 in s{1..4} w1; do \
 sudo bash -c \
 "virsh destroy --graceful \
 --domain adm6_altlinux_$l1"
 done
+```
+##### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6, lab3 shorewall ready' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
 ```
