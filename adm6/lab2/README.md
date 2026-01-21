@@ -80,7 +80,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab1 nginx' \
+git commit -am 'оформление для ADM6, lab2 iptables' \
 && git push \
 --set-upstream \
 altlinux \
