@@ -70,7 +70,7 @@ sudo virsh start \
 --domain adm6_altlinux_s1
 
 # Поочередный запуск для лабораторной работы ВМ alt-s-p11-2 - internet и alt-w-p11-1.den.skv - internal
-for l1 in s2 w1; do \
+for l1 in s{2,3} w1; do \
 sudo bash -c \
 "virsh start \
 --domain adm6_altlinux_$l1"
@@ -163,16 +163,12 @@ $FW             all         ACCEPT
 s_internal      all         REJECT      $LOG_LEVEL
 # Блокировать c ответом соединение из сети dmz ко всеми сетями
 s_dmz           all         REJECT      $LOG_LEVEL
-# Блокировать соединение из реального WAN со всеми сетями
-s_libvirt  all         DROP        $LOG_LEVEL
-# Блокировать соединение из имитирующего WAN со всеми сетями
-s_internet      all         DROP        $LOG_LEVEL
 # Массовое блокирование всего, что не разрешено
 all             all         DROP        $LOG_LEVEL
 EOF
 
 # Вывод описания политик по умолчанию
-tail -n13 \
+tail \
 /etc/shorewall/policy
 ```
 
@@ -233,32 +229,20 @@ sadmin@192.168.121.2 \
 "su -"
 
 cat >> /etc/shorewall/rules <<'EOF'
-# Правила из зоны локальной сети
 ## ssh
-SSH(ACCEPT)         s_internal      all
+SSH(ACCEPT)         s_internal,s_libvirt      all
 ## http\https
-HTTP(ACCEPT)        s_internal      s_libvirt
-HTTPS(ACCEPT)       s_internal      s_libvirt
-HTTP(ACCEPT)        s_internal      s_internet
-HTTPS(ACCEPT)       s_internal      s_internet
-HTTP(ACCEPT)        s_internal      s_dmz:10.20.20.244
 HTTPS(ACCEPT)       s_internal      s_dmz:10.20.20.244
+Web(ACCEPT)         s_internal      fw,s_libvirt,s_internet
+Web(ACCEPT)         s_internet      fw,s_libvirt
 ## icmp
-Ping(ACCEPT)        s_internal      s_libvirt
-Ping(ACCEPT)        s_internal      s_internet
+Ping(ACCEPT)        s_internal      fw,s_libvirt,s_internet
 ## dns
-DNS(ACCEPT)         s_internal      s_libvirt
-# Привила доступа из сетей WAN
-### разрешенное общение между имитируемой и реальной сетью
-Web(ACCEPT)         s_libvirt  s_internet:10.0.0.9
-Web(ACCEPT)         s_internet      s_libvirt
-## dns
-DNS(ACCEPT)         s_internet      s_libvirt
-#№ для доступа по SSH с хоста libvirt через общий хост-бастион на все сети
-SSH(ACCEPT)         s_libvirt       all
-# Привила доступа из DMZ
-Web(ACCEPT)         s_dmz           s_libvirt
-DNS(ACCEPT)         s_dmz           s_libvirt
+DNS(ACCEPT)         s_internal,s_internet   fw,s_libvirt
+DNS(ACCEPT)         s_libvirt               fw
+### для обновления пакетов хостов в dmz
+DNS(ACCEPT)         s_dmz                   fw,s_libvirt
+Web(ACCEPT)         s_dmz                   fw,s_libvirt
 EOF
 
 # Вывод описания правил
@@ -269,24 +253,20 @@ grep -A33 "#ACTION" \
 ```bash
 # SNAT из контролируемых зон
 cat >> /etc/shorewall/snat <<'EOF'
+# ens5 # - 192.168.121.0/24 - "s_host-libvirt" - сеть реального выхода в интернет
+# ens6 # - 10.0.0.0/24 - "s_internet" - сеть имитации интернет
+# ens7 # - 10.1.1.244 - "s_internal" - сеть локальной сети
+# ens8 # - 10.20.20.244 - "s_dmz" - сеть DMZ
 # Трансляция nat до реальной сети интернет сетей s_internal и s_dmz
 MASQUERADE          ens7        ens5
 MASQUERADE          ens8        ens5
-# Трансляция nat до имитируемой сети интернет из локальной сети и dmz
-MASQUERADE          ens7        ens6
+# Трансляция nat до имитируемой сети интернет из dmz
 MASQUERADE          ens8        ens6
 EOF
 
 # вывод правил snat 
-tail -7 \
+tail \
 /etc/shorewall/snat
-
-# Организация трансляции из вне до DMZ по http\s
-cat >> /etc/shorewall/rules <<'EOF'
-### DNAT 
-Web(DNAT)           s_internet      s_dmz:10.20.20.244
-Web(DNAT)           s_libvirt       s_dmz:10.20.20.244
-EOF
 
 # Вывод описания правил и DNAT
 grep -A36 "#ACTION" \
@@ -310,6 +290,8 @@ systemctl enable \
 --now \
 shorewall
 ```
+![](img/GIF.gif)
+
 ```bash
 # Поочередная остановка запущенных ВМ
 for l1 in s{1..4} w1; do \
@@ -333,7 +315,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab3 shorewall ready' \
+git commit -am 'оформление для ADM6, lab3 shorewall ready _update2' \
 && git push \
 --set-upstream \
 altlinux \
