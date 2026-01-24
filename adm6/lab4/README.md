@@ -1,10 +1,11 @@
-# Лабораторная работа 3 «`Межсетевой экран(shorewall)`» 
+# Лабораторная работа 3 «`Прокси-сервер SQUID`» 
 ## Памятка входа
 ```bash
 # Включаем агента в текущей оснастке
 > ~/.ssh/known_hosts
 eval $(ssh-agent) \
-&& ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519
+&& ssh-add  \
+~/.ssh/id_alt-adm6_2026_host_ed25519
 
 # вход на bastion-хост по ключу по ssh
 ssh -t \
@@ -42,23 +43,34 @@ done
 ## Предварительно
 ### Запуск стенда
 ```bash
-cd adm6/lab3
+cd adm6/lab4
 
 # Отображение списка snapshot машин стенда
 for snap in s{1..4} w1; do \
 sudo bash -c \
 "virsh snapshot-list adm6_altlinux_$snap"; 
-done 
+done
 
-# откат прошлых изменений на alt-w-p11-1
+# откат прошлых изменений на alt-w-p11-1 в сети s_internal
 sudo virsh snapshot-revert \
 --snapshotname 2 \
 --domain adm6_altlinux_w1
 
+# откат прошлых изменений на alt-s-p11-2 в сети s_internet
+sudo virsh snapshot-revert \
+--snapshotname 2 \
+--domain adm6_altlinux_s2
+
+# откат прошлых изменений на alt-s-p11-1(bastion)
+sudo virsh snapshot-revert \
+--snapshotname 2 \
+--domain adm6_altlinux_s1
+
 # Включаем агента в текущей оснастке
 > ~/.ssh/known_hosts
 eval $(ssh-agent) \
-&& ssh-add  ~/.ssh/id_alt-adm6_2026_host_ed25519
+&& ssh-add  \
+~/.ssh/id_alt-adm6_2026_host_ed25519
 
 # Поочередный запуск всех сетей libvirt со 2ого по списку
 sudo virsh net-list --all \
@@ -70,7 +82,7 @@ sudo virsh start \
 --domain adm6_altlinux_s1
 
 # Поочередный запуск для лабораторной работы ВМ alt-s-p11-2 - internet и alt-w-p11-1.den.skv - internal
-for l1 in s{2,3} w1; do \
+for l1 in w1 s2; do \
 sudo bash -c \
 "virsh start \
 --domain adm6_altlinux_$l1"
@@ -78,7 +90,7 @@ done
 ```
 ## Выполнение работы
 ### на узле alt-s-p11-1 (`bastion`)
-#### чистка конфигурации nftables
+#### конфигурация nat через nftables 
 ```bash
 # вход на bastion-хост по ключу по ssh
 ssh -t \
@@ -87,109 +99,133 @@ ssh -t \
 sadmin@192.168.121.2 \
 "su -"
 
-# чистка ранее развернутого nftables в режиме nat для всех внутренних сетей стенда
-nft flush ruleset \
-&& nft list ruleset
+nft flush ruleset
 
-# Выключаем и исключаем из автозагрузки службу nftables:
-systemctl disable --now \
+apt-get remove \
+nftables -y --purge
+
+apt-get update \
+&& apt-get install -y \
 nftables
 
-# Перезапуск службы сети
-systemctl restart network
+# Создаём необходимую структуру для nftables (семейство, таблица, цепочка) для настройки postrouting NAT:
+## где ens5 это интерфейс s_host-libvirt с выходом в реальную WAN сеть 
+nft add table ip nat
+nft add chain ip nat postrouting '{ type nat hook postrouting priority 0; }'
+nft add rule ip nat postrouting oifname "ens5" counter masquerade
+# nft add rule ip nat postrouting ip saddr 10.1.1.240/28 oifname "ens5" counter masquerade
+# nft add rule ip nat postrouting ip saddr 10.0.0.0/24 oifname "ens5" counter masquerade
+# nft add rule ip nat postrouting ip saddr 10.20.20.240/28 oifname "ens5" counter masquerade
+
+# Включаем и добавляем в автозагрузку службу nftables:
+systemctl enable --now \
+nftables
+
+# Сохраняем правила nftables
+nft list ruleset \
+| tee -a /etc/nftables/nftables.nft
+
+systemctl reboot
+
+# Проверка что конфиг применяется
+cat /etc/nftables/nftables.nft \
+&& systemctl status nftables
 ```
-#### Установка и предварительная настройка shorewall
+#### Установка и предварительная настройка squid
 ```bash
 # обновление списка пакетов и установка пакетов для shorewall
 apt-get update \
 && apt-get install -y \
-shorewall
+squid
 
-# Проверка состояния net.ipv4.ip_forward = 1
-grep "rd = " \
-/etc/net/sysctl.conf 
+# backup конфига
+cp -f /etc/squid/squid.conf{,.bak}
+
+# чистка конфига от комментариев
+sed -i \
+-e '/^[[:space:]]*#/d' \
+-e '/^[[:space:]]*$/d' \
+/etc/squid/squid.conf
+
+# запуск службы
+systemctl enable --now \
+squid
+
+systemctl status \
+squid
 ```
-#### Описание зон сетей
+#### Своя предварительная настройка squid
+##### создаем свои acl списки сетей
 ```bash
-# Описание зоны реального выхода в интернет
-echo "s_libvirt       ip" \
->> /etc/shorewall/zones
+# Добавляем acl локальной сети стенда
+sed -i '/deny to_linklocal/a acl s_internal src 10.1.1.240\/28' \
+/etc/squid/squid.conf
 
-# Описание зоны имитации интернет
-echo "s_internet      ip" \
->> /etc/shorewall/zones
+# Добавляем acl dmz сети стенда
+sed -i '/deny to_linklocal/a acl s_dmz src 10.20.20.240\/28' \
+/etc/squid/squid.conf
 
-# Описание локальной сети
-echo "s_internal      ip" \
->> /etc/shorewall/zones
+# Добавляем acl имитации сети WAN (s_intenret) сети стенда
+sed -i '/deny to_linklocal/a acl s_internet src 10.0.0.0\/24' \
+/etc/squid/squid.conf
 
-# Описание сети DMZ
-echo "s_dmz           ip" \
->> /etc/shorewall/zones
-
-# Вывод описания зон
-grep -A6 "ZONE" /etc/shorewall/zones
+squid -k reconfigure
 ```
-#### Привязка зон к интерфейсам
+##### Добавляем к acl спискам правило http_access 
 ```bash
-# где:
-# ens5 # - 192.168.121.0/24 - "s_host-libvirt" - сеть реального выхода в интернет
-# ens6 # - 10.0.0.0/24 - "s_internet" - сеть имитации интернет
-# ens7 # - 10.1.1.244 - "s_internal" - сеть локальной сети
-# ens8 # - 10.20.20.244 - "s_dmz" - сеть DMZ
-cat >> /etc/shorewall/interfaces <<'EOF'
--               lo            ignore
-s_libvirt       ens5
-s_internet      ens6
-s_internal      ens7
-s_dmz           ens8
+sed -i '/acl s_internal/a http_access allow s_internal' \
+/etc/squid/squid.conf
+
+sed -i '/acl s_internet/a http_access allow s_internet' \
+/etc/squid/squid.conf
+
+sed -i '/acl s_dmz/a http_access allow s_dmz' \
+/etc/squid/squid.conf
+
+squid -k reconfigure
+```
+##### настройка режима кеширования
+```bash
+cat >> /etc/squid/squid.conf <<'EOF'
+cache_mem 1024 MB
+cache_dir ufs /var/spool/squid 2048 16 256
+maximum_object_size 100 MB
+maximum_object_size_in_memory 1 MB
 EOF
 
-# Вывод описания зон
-grep -A6 "ZONE" /etc/shorewall/zones
+squid -k reconfigure
 
-# Вывод описания привязки зон к интерфейсам
-grep -A6 "ZONE" /etc/shorewall/interfaces
+squid -z
 ```
 
 ![](img/1.png)
 
-#### Описание политик хождения трафика относительно зон и самого shorewall
+##### перенастройка для работы только в сквозном режиме
 ```bash
-cat >> /etc/shorewall/policy <<'EOF'
-# Разрешение shorewall взаимодействовать со всеми сетями
-$FW             all         ACCEPT
-# Блокировать c ответом соединение из локальной сети ко всеми сетями
-s_internal      all         REJECT      $LOG_LEVEL
-# Блокировать c ответом соединение из сети dmz ко всеми сетями
-s_dmz           all         REJECT      $LOG_LEVEL
-# Массовое блокирование всего, что не разрешено
-all             all         DROP        $LOG_LEVEL
-EOF
+## Перенаправление prerouting для squid в прозрачном режиме
+### HTTP\https
+nft add chain ip nat prerouting '{ type nat hook prerouting priority 0; }'
+nft add rule ip nat prerouting iifname "ens6" ip daddr != 10.0.0.254 tcp dport { 80, 443 } counter redirect to :3129
+nft add rule ip nat prerouting iifname "ens7" ip daddr != 10.1.1.254 tcp dport { 80, 443 } counter redirect to :3129
+nft add rule ip nat prerouting iifname "ens8" ip daddr != 10.20.20.254 tcp dport { 80, 443 } counter redirect to :3129
 
-# Вывод описания политик по умолчанию
-tail \
-/etc/shorewall/policy
+# Сохраняем правила nftables
+nft list ruleset \
+| tee -a /etc/nftables/nftables.nft
+
+# Проверка что конфиг применяется
+cat /etc/nftables/nftables.nft \
+&& systemctl status nftables
+
+# Перенастройка работы squid в только в сквозном режиме
+sed -i 's/3128/3129 intercept/' \
+/etc/squid/squid.conf
+
+squid -k reconfigure
 ```
 
-![](img/2.png)
+![](img/GIF.gif) ![](img/2.png)
 
-##### Промежуточное сохранение(snapshot) машины
-```bash
-# выключение машины
-systemctl poweroff
-
-# вывод списка snapshot хоста
-sudo virsh snapshot-list \
-adm6_altlinux_s1
-
-# Создание snapshot
-### Основного сервера сети
-sudo virsh snapshot-create-as \
---domain adm6_altlinux_s1 \
---name 3 \
---description "shorewall_policy" --atomic
-```
 ##### Для github и gitflic
 ```bash
 git log --oneline
@@ -205,7 +241,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab3 shorewall Upd_2' \
+git commit -am 'оформление для ADM6, lab4 squid' \
 && git push \
 --set-upstream \
 altlinux \
@@ -261,6 +297,7 @@ cat >> /etc/shorewall/snat <<'EOF'
 MASQUERADE          ens7        ens5
 MASQUERADE          ens8        ens5
 # Трансляция nat до имитируемой сети интернет из dmz
+MASQUERADE          ens7        ens6
 MASQUERADE          ens8        ens6
 EOF
 
@@ -315,7 +352,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab3 shorewall ready _update2' \
+git commit -am 'оформление для ADM6, lab4 squid' \
 && git push \
 --set-upstream \
 altlinux \

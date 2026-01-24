@@ -119,9 +119,9 @@ iptables -A INPUT -p tcp --dport 22 -s 10.1.1.254/32 -m state --state NEW,ESTABL
 iptables -A OUTPUT -p tcp --sport 22 -d 10.1.1.254/32 -m state --state ESTABLISHED -m comment --comment "Allow ssh" -j ACCEPT
 
 # DNS
-iptables -A OUTPUT -p udp --dport 53 -m state --state NEW,ESTABLISHED -m comment --comment "Allow ssh" -j ACCEPT
+iptables -A OUTPUT -p udp --dport 53 -m state --state NEW,ESTABLISHED -m comment --comment "Allow dns" -j ACCEPT
 
-iptables -A INPUT -p udp --sport 53 -m state --state ESTABLISHED -m comment --comment "Allow ssh" -j ACCEPT
+iptables -A INPUT -p udp --sport 53 -m state --state ESTABLISHED -m comment --comment "Allow dns" -j ACCEPT
 
 # HTTP
 iptables -A OUTPUT -p tcp --dport 80 -m state --state NEW,ESTABLISHED -m comment --comment "Allow http" -j ACCEPT

@@ -530,9 +530,13 @@ nftables
 ## где ens5 это интерфейс s_host-libvirt с выходом в реальную WAN сеть 
 nft add table ip nat
 nft add chain ip nat postrouting '{ type nat hook postrouting priority 0; }'
-nft add rule ip nat postrouting ip saddr 10.1.1.240/28 oifname "ens5" counter masquerade
-nft add rule ip nat postrouting ip saddr 10.0.0.0/24 oifname "ens5" counter masquerade
-nft add rule ip nat postrouting ip saddr 10.20.20.240/28 oifname "ens5" counter masquerade
+nft add rule ip nat postrouting oifname "ens5" counter masquerade
+# nft add rule ip nat postrouting ip saddr 10.1.1.240/28 oifname "ens5" counter masquerade
+# nft add rule ip nat postrouting ip saddr 10.0.0.0/24 oifname "ens5" counter masquerade
+# nft add rule ip nat postrouting ip saddr 10.20.20.240/28 oifname "ens5" counter masquerade
+
+# 
+cat /etc/nftables/nftables.nft
 
 # Сохраняем правила nftables
 nft list ruleset \
