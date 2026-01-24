@@ -1,4 +1,4 @@
-# Лабораторная работа 3 «`Прокси-сервер SQUID`» 
+# Лабораторная работа 4 «`Прокси-сервер SQUID`» 
 ## Памятка входа
 ```bash
 # Включаем агента в текущей оснастке
@@ -352,7 +352,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab4 squid' \
+git commit -am 'оформление для ADM6, lab4 squid_update1' \
 && git push \
 --set-upstream \
 altlinux \
