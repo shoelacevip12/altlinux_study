@@ -299,6 +299,12 @@ sudo bash -c \
 "virsh destroy --graceful \
 --domain adm6_altlinux_$l1"
 done
+
+# Создание snapshot bastion-хоста
+sudo virsh snapshot-create-as \
+--domain adm6_altlinux_s1 \
+--name 3 \
+--description "nat+squid-proxy-cacher" --atomic
 ```
 ##### Для github и gitflic
 ```bash
