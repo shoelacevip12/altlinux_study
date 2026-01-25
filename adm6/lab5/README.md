@@ -897,7 +897,7 @@ postfix
 #### Настройка postfix в режиме сервера для домена den-ext.skv
 ```bash
 # вход на
-### 10.0.0.9 - alt-s-p11-2 - DMZ
+### 10.0.0.9 - alt-s-p11-2 - internet
 ssh -t \
 -i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
 -J sadmin@192.168.121.2 \
@@ -969,12 +969,22 @@ mail -s 'MAIL TEST2' sadmin@den-ext.skv
 Это он,
 Ленинградский почтальон.
 ^d
+
+# просмотр почтовых ящиков на серверах для sadmin@den-lan.skv и sadmin@den-ext.skv
+cat /var/mail/sadmin
 ```
 
-![](img/6.png) ![](img/7.png)
+![](img/6.png) ![](img/7.png) ![](img/4.png)
 
 ##### Для github и gitflic
 ```bash
+# Выключение стенда
+for l1 in s{1..4} w1; do \
+sudo bash -c \
+"virsh destroy --graceful \
+--domain adm6_altlinux_$l1";
+done
+
 git log --oneline
 
 git branch -v
@@ -988,7 +998,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab5 mailed' \
+git commit -am 'оформление для ADM6, lab5 mailed_upd1' \
 && git push \
 --set-upstream \
 altlinux \
