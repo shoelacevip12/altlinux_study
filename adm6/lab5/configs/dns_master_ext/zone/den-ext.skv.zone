@@ -1,0 +1,19 @@
+$TTL 1w
+@           IN      SOA     den-ext.skv. sadmin.den-ext.skv. (
+                              2026012501         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
+                              2d                 ; Refresh (2 дня)
+                              1h                 ; Retry (2 часа)
+                              1w                 ; Expire (1 неделя)
+                              1w )               ; Negative Cache TTL (1 неделя)
+
+; Определение серверов имён (NS)
+            IN      NS      alt-s-p11-4.den-ext.skv.
+; Записи A для серверов имён
+alt-s-p11-4 IN      A       10.0.0.8
+; Записи A для хостов
+alt-s-p11-2 IN      A       10.0.0.9
+alt-s-p11-1 IN      A       10.0.0.254
+; A-запись на сам сервер домена
+@           IN      A       10.0.0.8
+; MX-запись на сам сервер домена
+@           MX      10      alt-s-p11-4.den-ext.skv.

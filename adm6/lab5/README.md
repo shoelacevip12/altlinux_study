@@ -378,7 +378,7 @@ bind \
 bind-utils
 
 # запуск и и остановка службы для генерации rndc-key
-systemctl stop bind.service \
+systemctl start bind.service \
 && systemctl stop bind.service
 
 # Указываем на работ BIND только на IPv4
@@ -556,6 +556,221 @@ git add . .. ../.. \
 git remote -v
 
 git commit -am 'оформление для ADM6, lab5 dns_master_lan' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
+### на узле alt-s-p11-4 (`s_internet`)
+#### Настройка службы BIND мастер зоны den-ext.skv
+```bash
+# вход на
+### 10.0.0.8 - alt-s-p11-4 - DMZ
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.0.0.8 \
+"su -"
+
+# установка имени узла с доменным суффиксом 
+hostnamectl hostname \
+alt-s-p11-4.den-ext.skv
+
+# Назначение переменной domainname на доменный суффикс
+domainname \
+den-ext.skv
+
+# Установка пакетов для Bind сервера
+apt-get update \
+&& apt-get install -y \
+bind \
+bind-utils
+
+# запуск и и остановка службы для генерации rndc-key
+systemctl start bind.service \
+&& systemctl stop bind.service
+
+# Указываем на работ BIND только на IPv4
+sed -i 's/S=""/S="-4"/' \
+/etc/sysconfig/bind
+
+# правки в каталоге службы
+pushd /var/lib/bind
+
+# Даем доступ службе Bind до созданной зоны
+chown named:named -R zone/
+
+# даем доступ на dump кеша согласно пути по умолчанию в ./etc/options.conf
+chmod g+x var 
+
+# сохраняем оригинальный конфиг options
+cp /var/lib/bind/etc/options.conf{,.bak}
+
+# формирование своего конфига options bind
+cat > etc/options.conf <<'EOF'
+options {
+    version "unknown";
+    directory "/etc/bind/zone";
+    dump-file "/var/run/named/named_dump.db";
+    statistics-file "/var/run/named/named.stats";
+    recursing-file "/var/run/named/named.recursing";
+    secroots-file "/var/run/named/named.secroots";
+    pid-file none;
+
+    # Прослушивать только локальный порт и Loopback интерфейс
+    listen-on { 127.0.0.1; 10.0.0.0/24; };
+    listen-on-v6 { ::1; };
+    
+    # Разрешение запросов только с локальных s_internet IP и IP Loopback интерфейса
+    allow-query { 127.0.0.1; 10.0.0.0/24; };
+    allow-query-cache { 127.0.0.1; 10.0.0.0/24; };
+    # Ограничиваем рекурсию запросов
+    allow-recursion { 127.0.0.1; 10.0.0.0/24; };
+    max-cache-ttl 86400;
+};
+EOF
+
+# проверка конфига на корректность
+named-checkconf -p
+```
+#### Создание зоны den-ext.skv
+##### зона прямого просмотра
+```bash
+# зона прямого просмотра
+cat > zone/den-ext.skv.zone<<'EOF'
+$TTL 1w
+@           IN      SOA     den-ext.skv. sadmin.den-ext.skv. (
+                              2026012501         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
+                              2d                 ; Refresh (2 дня)
+                              1h                 ; Retry (2 часа)
+                              1w                 ; Expire (1 неделя)
+                              1w )               ; Negative Cache TTL (1 неделя)
+
+; Определение серверов имён (NS)
+            IN      NS      alt-s-p11-4.den-ext.skv.
+; Записи A для серверов имён
+alt-s-p11-4 IN      A       10.0.0.8
+; Записи A для хостов
+alt-s-p11-2 IN      A       10.0.0.9
+alt-s-p11-1 IN      A       10.0.0.254
+; A-запись на сам сервер домена
+@           IN      A       10.0.0.8
+; MX-запись на сам сервер домена
+@           MX      10      alt-s-p11-4.den-ext.skv.
+EOF
+```
+##### Зоны обратного просмотра
+```bash
+# зона обратного просмотра сети s_internet 10.0.0.0/24
+cat > zone/0.0.10.zone<<'EOF'
+$TTL 1w
+0.0.10.in-addr.arpa.        IN      SOA     alt-s-p11-4.den-ext.skv. sadmin.den-ext.skv. (
+                              2026012502         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
+                              2d                 ; Refresh (2 дня)
+                              1h                 ; Retry (2 часа)
+                              1w                 ; Expire (1 неделя)
+                              1w )               ; Negative Cache TTL (1 неделя)
+; Определение серверов имён (NS)
+                               IN      NS      alt-s-p11-4.den-ext.skv.
+; Записи PTR для хоста
+254                            IN      PTR     alt-s-p11-1.den-ext.skv. ; 10.0.0.254 = 254-0=254
+EOF
+
+rsync -vP /var/lib/bind/zone/*.zone \
+shoel@192.168.121.1:~/nfs_git/adm/adm6/lab5/configs/dns_master_ext/zone
+```
+#### Назначение мастера зоны den-ext.skv
+```bash
+# присваиваем данному серверу роль мастера зоны прямого просмотра
+cat >>./etc/local.conf<<'EOF'
+zone "den-ext.skv" {
+    type master;
+    file "den-ext.skv.zone";
+};
+
+EOF
+
+# присваиваем данному серверу роль мастера зон обратного просмотра
+cat >>./etc/local.conf<<'EOF'
+zone "0.0.10.in-addr.arpa" {
+    type master;
+    file "0.0.10.zone";
+};
+
+EOF
+
+# Даем доступ службе Bind после созданной зоны
+chown named:named -R zone/
+
+# проверка конфига на корректность
+named-checkconf -p
+
+# Проверка зоны на корректность
+named-checkzone den-ext.skv. zone/den-ext.skv.zone
+
+named-checkzone 0.0.10.in-addr.arpa zone/0.0.10.zone
+
+# Запуск службы
+systemctl enable --now \
+bind.service
+
+systemctl status \
+bind.service
+```
+
+![](img/2.png)
+
+##### /var/lib/bind/etc/local.conf
+```bash
+rsync -vP /var/lib/bind/etc/local.conf \
+shoel@192.168.121.1:~/nfs_git/adm/adm6/lab5/configs/dns_master_ext/etc/
+```
+##### /var/lib/bind/etc/options.conf
+```bash
+rsync -vP /var/lib/bind/etc/options.conf \
+shoel@192.168.121.1:~/nfs_git/adm/adm6/lab5/configs/dns_master_ext/etc/
+```
+### на узле alt-w-p11-1 (`s_internal`)
+#### Настройка hostname
+```bash
+# вход на
+### 10.1.1.244 - alt-w-p11-1 - internal
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.1.1.244 \
+"su -"
+
+# установка имени узла с доменным суффиксом 
+hostnamectl hostname \
+alt-w-p11-1.den-lan.skv
+
+# Назначение переменной domainname на доменный суффикс
+domainname \
+den-lan.skv
+```
+##### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6, lab5 dns_master_ext' \
 && git push \
 --set-upstream \
 altlinux \
