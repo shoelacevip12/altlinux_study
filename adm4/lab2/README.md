@@ -280,7 +280,7 @@ mkdir zone/ddns
 # зона прямого просмотра
 cat >>zone/ddns/den.skv.zone<<'EOF'
 $TTL 1w
-@           IN      SOA     alt-s-p11-1.den.skv. ya.den.skv. (
+@           IN      SOA     den.skv. ya.den.skv. (
                               2025110901         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
                               2d                 ; Refresh (2 дня)
                               1h                 ; Retry (2 часа)
@@ -796,7 +796,7 @@ $TTL 3600	; 1 hour
 ```ini
 $ORIGIN .
 $TTL 604800	; 1 week
-den.skv			IN SOA	alt-s-p11-1.den.skv. ya.den.skv. (
+den.skv			IN SOA	den.skv. ya.den.skv. (
 				2025110906 ; serial
 				172800     ; refresh (2 days)
 				3600       ; retry (1 hour)

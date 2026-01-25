@@ -1,0 +1,12 @@
+$TTL 1w
+240.1.1.10.in-addr.arpa.        IN      SOA     alt-s-p11-3.den-lan.skv. sadmin.den-lan.skv. (
+                              2026012502         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
+                              2d                 ; Refresh (2 дня)
+                              1h                 ; Retry (2 часа)
+                              1w                 ; Expire (1 неделя)
+                              1w )               ; Negative Cache TTL (1 неделя)
+; Определение серверов имён (NS)
+                              IN      NS      alt-s-p11-3.den-lan.skv.
+; Записи PTR для хоста
+4                             IN      PTR     alt-w-p11-1.den-lan.skv. ; 10.1.1.244 = 244-240=4
+14                            IN      PTR     alt-s-p11-1.den-lan.skv. ; 10.1.1.254 = 254-240=14

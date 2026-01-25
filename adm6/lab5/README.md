@@ -19,7 +19,7 @@ sadmin@192.168.121.2 \
 ### 10.0.0.9 - alt-s-p11-2 - internet
 ### 10.0.0.8 - alt-s-p11-4 - internet
 ### 10.20.20.244 - alt-s-p11-3 - DMZ
-### 10.1.1.244 - alt-w-p11-1.den.skv - internal
+### 10.1.1.244 - alt-w-p11-1.den-lan.skv - internal
 ssh -t \
 -i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
 -J sadmin@192.168.121.2 \
@@ -245,13 +245,13 @@ zone "0.0.10.in-addr.arpa" {
     forwarders { 10.0.0.8; };
 };
 
-zone "20.20.10.in-addr.arpa" {
+zone "240.20.20.10.in-addr.arpa" {
     type forward;
     forward only;
     forwarders { 10.20.20.244; };
 };
 
-zone "1.1.10.in-addr.arpa" {
+zone "240.1.1.10.in-addr.arpa" {
     type forward;
     forward only;
     forwarders { 10.20.20.244; };
@@ -289,13 +289,13 @@ zone "0.0.10.in-addr.arpa" {
     forwarders { 10.0.0.8; };
 };
 
-zone "20.20.10.in-addr.arpa" {
+zone "240.20.20.10.in-addr.arpa" {
     type forward;
     forward only;
     forwarders { 10.20.20.244; };
 };
 
-zone "1.1.10.in-addr.arpa" {
+zone "240.1.1.10.in-addr.arpa" {
     type forward;
     forward only;
     forwarders { 10.20.20.244; };
@@ -328,10 +328,6 @@ options {
 ```
 ##### Для github и gitflic
 ```bash
-rsync -vP \
-/etc/squid/squid.conf \
-shoel@192.168.121.1:~/nfs_git/adm/adm6/lab4
-
 git log --oneline
 
 git branch -v
@@ -346,6 +342,220 @@ git add . .. ../.. \
 git remote -v
 
 git commit -am 'оформление для ADM6, lab5 dns_cahcer_DHCP' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
+### на узле alt-s-p11-3 (`s_dmz`)
+#### Настройка службы BIND мастер зоны den-lan.skv
+```bash
+# вход на
+### 10.20.20.244 - alt-s-p11-3 - DMZ
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.20.20.244 \
+"su -"
+
+# установка имени узла с доменным суффиксом 
+hostnamectl hostname \
+alt-s-p11-3.den-lan.skv
+
+# Назначение переменной domainname на доменный суффикс
+domainname \
+den-lan.skv
+
+# Установка пакетов для Bind сервера
+apt-get update \
+&& apt-get install -y \
+bind \
+bind-utils
+
+# запуск и и остановка службы для генерации rndc-key
+systemctl stop bind.service \
+&& systemctl stop bind.service
+
+# Указываем на работ BIND только на IPv4
+sed -i 's/S=""/S="-4"/' /etc/sysconfig/bind
+
+# правки в каталоге службы
+pushd /var/lib/bind
+
+# Даем доступ службе Bind до созданной зоны
+chown named:named -R zone/
+
+# даем доступ на dump кеша согласно пути по умолчанию в ./etc/options.conf
+chmod g+x var 
+
+# сохраняем оригинальный конфиг options
+cp /var/lib/bind/etc/options.conf{,.bak}
+
+# формирование своего конфига options bind
+cat > etc/options.conf <<'EOF'
+options {
+    version "unknown";
+    directory "/etc/bind/zone";
+    dump-file "/var/run/named/named_dump.db";
+    statistics-file "/var/run/named/named.stats";
+    recursing-file "/var/run/named/named.recursing";
+    secroots-file "/var/run/named/named.secroots";
+    pid-file none;
+
+    # Прослушивать только локальный порт и Loopback интерфейс
+    listen-on { 127.0.0.1; 10.20.20.240/28; };
+    listen-on-v6 { ::1; };
+    
+    # Разрешение запросов только с локальных s_internal, s_dmz IP и IP Loopback интерфейса
+    allow-query { 127.0.0.1; 10.1.1.240/28; 10.20.20.240/28; };
+    allow-query-cache { 127.0.0.1; 10.1.1.240/28; 10.20.20.240/28; };
+    # Ограничиваем рекурсию запросов
+    allow-recursion { 127.0.0.1; 10.1.1.240/28; 10.20.20.240/28; };
+    max-cache-ttl 86400;
+};
+EOF
+
+# проверка конфига на корректность
+named-checkconf -p
+```
+#### Создание зоны den-lan.skv
+##### зона прямого просмотра
+```bash
+# зона прямого просмотра
+cat > zone/den-lan.skv.zone<<'EOF'
+$TTL 1w
+@           IN      SOA     den-lan.skv. sadmin.den-lan.skv. (
+                              2026012501         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
+                              2d                 ; Refresh (2 дня)
+                              1h                 ; Retry (2 часа)
+                              1w                 ; Expire (1 неделя)
+                              1w )               ; Negative Cache TTL (1 неделя)
+
+; Определение серверов имён (NS)
+            IN      NS      alt-s-p11-3.den-lan.skv.
+; Записи A для серверов имён
+alt-s-p11-3 IN      A       10.20.20.244
+; Записи A для хостов
+alt-w-p11-1 IN      A       10.1.1.244
+alt-s-p11-1 IN      A       10.20.20.254
+alt-s-p11-1 IN      A       10.1.1.254
+; A-запись на сам сервер домена
+@           IN      A       10.20.20.244
+; MX-запись на сам сервер домена
+@           MX      10      alt-s-p11-3.den-lan.skv.
+EOF
+```
+##### Зоны обратного просмотра
+```bash
+# зона обратного просмотра сети s_dmz 10.20.20.240/28
+cat > zone/240.20.20.10.zone<<'EOF'
+$TTL 1w
+240.20.20.10.in-addr.arpa.       IN      SOA     alt-s-p11-3.den-lan.skv. sadmin.den-lan.skv. (
+                              2026012502         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
+                              2d                 ; Refresh (2 дня)
+                              1h                 ; Retry (2 часа)
+                              1w                 ; Expire (1 неделя)
+                              1w )               ; Negative Cache TTL (1 неделя)
+
+; Определение серверов имён (NS)
+                              IN      NS      alt-s-p11-3.den-lan.skv.
+; Записи PTR для сервера имён
+4                             IN      PTR     alt-s-p11-3.den-lan.skv. ; 10.20.20.244 = 254-240=4
+; Записи PTR для хоста
+14                            IN      PTR     alt-s-p11-1.den-lan.skv. ; 10.20.20.254 = 254-240=14
+EOF
+
+# зона обратного просмотра сети s_internal 10.1.1.240/28
+cat > zone/240.1.1.10.zone<<'EOF'
+$TTL 1w
+240.1.1.10.in-addr.arpa.        IN      SOA     alt-s-p11-3.den-lan.skv. sadmin.den-lan.skv. (
+                              2026012502         ; формат Serial: YYYYMMDDNN, NN - номер ревизии
+                              2d                 ; Refresh (2 дня)
+                              1h                 ; Retry (2 часа)
+                              1w                 ; Expire (1 неделя)
+                              1w )               ; Negative Cache TTL (1 неделя)
+; Определение серверов имён (NS)
+                              IN      NS      alt-s-p11-3.den-lan.skv.
+; Записи PTR для хоста
+4                             IN      PTR     alt-w-p11-1.den-lan.skv. ; 10.1.1.244 = 244-240=4
+14                            IN      PTR     alt-s-p11-1.den-lan.skv. ; 10.1.1.254 = 254-240=14
+EOF
+
+rsync -vP /var/lib/bind/zone/*.zone \
+shoel@192.168.121.1:~/nfs_git/adm/adm6/lab5/configs/dns_master_lan/zone
+```
+#### Назначение мастера зоны den-lan.skv
+```bash
+# присваиваем данному серверу роль мастера зоны прямого просмотра
+cat >>./etc/local.conf<<'EOF'
+zone "den-lan.skv" {
+    type master;
+    file "den-lan.skv.zone";
+};
+
+EOF
+
+# присваиваем данному серверу роль мастера зон обратного просмотра
+cat >>./etc/local.conf<<'EOF'
+zone "240.1.1.10.in-addr.arpa" {
+    type master;
+    file "240.1.1.10.zone";
+};
+
+zone "240.20.20.10.in-addr.arpa" {
+    type master;
+    file "240.20.20.10.zone";
+};
+
+EOF
+
+# проверка конфига на корректность
+named-checkconf -p
+
+# Проверка зоны на корректность
+named-checkzone den-lan.skv. zone/den-lan.skv.zone
+
+named-checkzone 240.1.1.10.in-addr.arpa zone/240.1.1.10.zone
+
+named-checkzone 240.20.20.10.in-addr.arpa zone/240.20.20.10.zone
+
+# Запуск службы
+systemctl enable --now \
+bind.service
+```
+![](img/1.png)
+
+##### /var/lib/bind/etc/local.conf
+```bash
+rsync -vP /var/lib/bind/etc/local.conf \
+shoel@192.168.121.1:~/nfs_git/adm/adm6/lab5/configs/dns_master_lan/etc/
+```
+##### /var/lib/bind/etc/options.conf
+```bash
+rsync -vP /var/lib/bind/etc/options.conf \
+shoel@192.168.121.1:~/nfs_git/adm/adm6/lab5/configs/dns_master_lan/etc/
+```
+##### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6, lab5 dns_master_lan' \
 && git push \
 --set-upstream \
 altlinux \
