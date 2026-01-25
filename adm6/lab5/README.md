@@ -755,7 +755,16 @@ alt-w-p11-1.den-lan.skv
 # Назначение переменной domainname на доменный суффикс
 domainname \
 den-lan.skv
+
+# проверка с клиентского хоста alt-w-p11-1
+cat /etc/resolv.conf
+host den-ext.skv
+host den-lan.skv
+host ya.ru
 ```
+
+![](img/3.png)
+
 ##### Для github и gitflic
 ```bash
 git log --oneline
@@ -771,7 +780,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab5 dns_master_ext' \
+git commit -am 'оформление для ADM6, lab5 dns_master_ext_upd2' \
 && git push \
 --set-upstream \
 altlinux \
