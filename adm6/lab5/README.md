@@ -751,7 +751,9 @@ sadmin@10.1.1.244 \
 
 apt-get update \
 && apt-get install -y \
-bind-utils
+bind-utils \
+postfix \
+mailx
 
 # установка имени узла с доменным суффиксом 
 hostnamectl hostname \
@@ -772,7 +774,7 @@ host ya.ru
 #### Настройка hostname
 ```bash
 # вход на
-### 10.0.0.9 - alt-w-p11-1 - internal
+### 10.0.0.9 - alt-s-p11-2 - s_internet
 ssh -t \
 -i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
 -J sadmin@192.168.121.2 \
@@ -790,9 +792,11 @@ den-ext.skv
 
 apt-get update \
 && apt-get install -y \
-bind-utils
+bind-utils \
+postfix \
+mailx
 
-# проверка с клиентского хоста alt-w-p11-1
+# проверка с клиентского хоста alt-s-p11-2
 cat /etc/resolv.conf
 host den-ext.skv
 host den-lan.skv
@@ -817,6 +821,174 @@ git add . .. ../.. \
 git remote -v
 
 git commit -am 'оформление для ADM6, lab5 dns_master_ext_upd3' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
+
+### на узле alt-s-p11-3 (`s_dmz`) 
+#### Настройка postfix в режиме сервера для домена den-lan.skv
+```bash
+# вход на
+### 10.20.20.244 - alt-s-p11-3 - DMZ
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.20.20.244 \
+"su -"
+
+apt-get update \
+&& apt-get install -y \
+bind-utils \
+postfix \
+mailx
+
+# первый запуск службы для инициализации службы
+systemctl start \
+postfix \
+&& systemctl stop \
+postfix
+
+# перевод в режим сервера
+control postfix \
+server
+
+# Включаем  и запускам службу
+systemctl enable --now \
+postfix
+
+#  Проверки запуска
+## ищем по конфигу разрешение на запуск smtpd
+grep -v "^#" /etc/postfix/master.cf \
+| grep "smtpd"
+
+## ищем слушающий порт запущенной службы
+ss -tulpn \
+| grep 0:25
+
+## сверяемся что для alt-s-p11-3 выводит den-lan.skv домен
+postconf mydomain
+
+postconf mynetworks
+
+# добавляем для отработки с переменной $mydomain 
+echo 'mydestination = $mydomain, $myhostname, localhost.$mydomain, localhost, $config_directory/mydestination' \
+>> /etc/postfix/main.cf
+
+postconf mydestination
+
+echo 'myorigin = $mydomain' \
+>> /etc/postfix/main.cf
+
+postconf myorigin
+
+# первый запуск службы для инициализации службы
+systemctl restart \
+postfix
+```
+
+### на узле alt-s-p11-2 (`s_internet`) 
+#### Настройка postfix в режиме сервера для домена den-ext.skv
+```bash
+# вход на
+### 10.0.0.9 - alt-s-p11-2 - DMZ
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.0.0.9 \
+"su -"
+
+apt-get update \
+&& apt-get install -y \
+bind-utils \
+postfix \
+mailx
+
+# первый запуск службы для инициализации службы
+systemctl start \
+postfix \
+&& systemctl stop \
+postfix
+
+# перевод в режим сервера
+control postfix \
+server
+
+# Включаем  и запускам службу
+systemctl enable --now \
+postfix
+
+#  Проверки запуска
+## ищем по конфигу разрешение на запуск smtpd
+grep -v "^#" /etc/postfix/master.cf \
+| grep "smtpd"
+
+## ищем слушающий порт запущенной службы
+ss -tulpn \
+| grep 0:25
+
+## сверяемся что для alt-s-p11-2 выводит den-ext.skv домен
+postconf mydomain
+
+postconf mynetworks
+
+# добавляем для отработки с переменной $mydomain 
+echo 'mydestination = $mydomain, $myhostname, localhost.$mydomain, localhost, $config_directory/mydestination' \
+>> /etc/postfix/main.cf
+
+postconf mydestination
+
+echo 'myorigin = $mydomain' \
+>> /etc/postfix/main.cf
+
+postconf myorigin
+
+# первый запуск службы для инициализации службы
+systemctl restart \
+postfix
+```
+
+![](img/5.png)
+
+#### Проверка отправки почты
+```bash
+mail -s 'MAIL TEST2' sadmin@den-ext.skv
+
+Кто стучится в дверь ко мне
+С толстой сумкой на ремне,
+С цифрой 5 на медной бляшке,
+В синей форменной фуражке?
+Это он,
+Это он,
+Ленинградский почтальон.
+^d
+```
+
+![](img/6.png) ![](img/7.png)
+
+##### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM6, lab5 mailed' \
 && git push \
 --set-upstream \
 altlinux \
