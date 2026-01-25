@@ -83,9 +83,10 @@ sudo virsh start \
 
 # Поочередный запуск для лабораторной работы ВМ:
 ## alt-s-p11-4 - internet
+## alt-s-p11-2 - internet
 ## alt-s-p11-3 - dmz
 ## alt-w-p11-1 - internal
-for l1 in w1 s{3,4}; do \
+for l1 in w1 s{2..4}; do \
 sudo bash -c \
 "virsh start \
 --domain adm6_altlinux_$l1"
@@ -660,7 +661,7 @@ alt-s-p11-1 IN      A       10.0.0.254
 ; A-запись на сам сервер домена
 @           IN      A       10.0.0.8
 ; MX-запись на сам сервер домена
-@           MX      10      alt-s-p11-4.den-ext.skv.
+@           MX      10      alt-s-p11-2.den-ext.skv.
 EOF
 ```
 ##### Зоны обратного просмотра
@@ -748,6 +749,10 @@ ssh -t \
 sadmin@10.1.1.244 \
 "su -"
 
+apt-get update \
+&& apt-get install -y \
+bind-utils
+
 # установка имени узла с доменным суффиксом 
 hostnamectl hostname \
 alt-w-p11-1.den-lan.skv
@@ -755,6 +760,37 @@ alt-w-p11-1.den-lan.skv
 # Назначение переменной domainname на доменный суффикс
 domainname \
 den-lan.skv
+
+# проверка с клиентского хоста alt-w-p11-1
+cat /etc/resolv.conf
+host den-ext.skv
+host den-lan.skv
+host ya.ru
+```
+
+### на узле alt-s-p11-2 (`s_internet`)
+#### Настройка hostname
+```bash
+# вход на
+### 10.0.0.9 - alt-w-p11-1 - internal
+ssh -t \
+-i ~/.ssh/id_alt-adm6_2026_host_ed25519 \
+-J sadmin@192.168.121.2 \
+-o StrictHostKeyChecking=accept-new \
+sadmin@10.0.0.9 \
+"su -"
+
+# установка имени узла с доменным суффиксом 
+hostnamectl hostname \
+alt-s-p11-2.den-ext.skv
+
+# Назначение переменной domainname на доменный суффикс
+domainname \
+den-ext.skv
+
+apt-get update \
+&& apt-get install -y \
+bind-utils
 
 # проверка с клиентского хоста alt-w-p11-1
 cat /etc/resolv.conf
@@ -780,7 +816,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab5 dns_master_ext_upd2' \
+git commit -am 'оформление для ADM6, lab5 dns_master_ext_upd3' \
 && git push \
 --set-upstream \
 altlinux \
