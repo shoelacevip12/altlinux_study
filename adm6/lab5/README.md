@@ -113,7 +113,7 @@ sed -i '/-servers 10.0.0.254;/a\    option domain-name "den-ext.skv";' \
 /etc/dhcp/dhcpd.conf
 
 # Добавляем будущий DNS сервер сети subnet s_internet домена den-ext.skv впереди кеширующего
-sed -i 's|-servers 10.0.0.254;|-servers 10.0.0.8, 10.0.0.254;|' \
+sed -i 's|-servers 10.0.0.254;|-servers 10.0.0.254, 10.0.0.8;|' \
 /etc/dhcp/dhcpd.conf
 ```
 ##### конфигурация DHCP для DNS s_internet,s_dmz den-lan.skv
@@ -126,16 +126,11 @@ sed -i '/-servers 10.20.20.254;/a\    option domain-name "den-lan.skv";' \
 /etc/dhcp/dhcpd.conf
 
 # Добавляем будущий DNS сервер сетей subnet s_internet,s_dmz домена den-lan.skv впереди кеширующего
-sed -i 's|-servers 10.1.1.254;|-servers 10.20.20.244, 10.1.1.254;|' \
+sed -i 's|-servers 10.1.1.254;|-servers 10.1.1.254, 10.20.20.244;|' \
 /etc/dhcp/dhcpd.conf
 
-sed -i 's|-servers 10.20.20.254;|-servers 10.20.20.244, 10.20.20.254;|' \
+sed -i 's|-servers 10.20.20.254;|-servers 10.20.20.254, 10.20.20.244;|' \
 /etc/dhcp/dhcpd.conf
-```
-```bash
-rsync -vP \
-/etc/dhcp/dhcpd.conf \
-shoel@192.168.121.1:~/nfs_git/adm/adm6/lab5
 ```
 ##### /etc/dhcp/dhcpd.conf
 ```bash
@@ -161,7 +156,7 @@ subnet 10.0.0.0 netmask 255.255.255.0 {
     option subnet-mask 255.255.255.0;
     option broadcast-address 10.0.0.255;
     # Локальный DNS для этой сети
-    option domain-name-servers 10.0.0.8, 10.0.0.254;
+    option domain-name-servers 10.0.0.254, 10.0.0.8;
     option domain-name "den-ext.skv";
     # Определение диапазона
     range 10.0.0.10 10.0.0.20;
@@ -185,7 +180,7 @@ subnet 10.1.1.240 netmask 255.255.255.240 {
     option subnet-mask 255.255.255.240;
     option broadcast-address 10.1.1.255;
     # Локальный DNS для этой сети
-    option domain-name-servers 10.20.20.244, 10.1.1.254;
+    option domain-name-servers 10.1.1.254, 10.20.20.244;
     option domain-name "den-lan.skv";
     # Определение диапазона
     range 10.1.1.245 10.1.1.253;
@@ -203,7 +198,7 @@ subnet 10.20.20.240 netmask 255.255.255.240 {
     option subnet-mask 255.255.255.240;
     option broadcast-address 10.20.20.255;
     # Локальный DNS для этой сети
-    option domain-name-servers 10.20.20.244, 10.20.20.254;
+    option domain-name-servers 10.20.20.254, 10.20.20.244;
     option domain-name "den-lan.skv";
     range 10.20.20.245 10.20.20.253;
 }
@@ -260,7 +255,7 @@ EOF
 ```
 ##### /var/lib/bind/etc/local.conf
 ```bash
-rsync -vP /var/lib/bind/etc/local.conf\
+rsync -vP /var/lib/bind/etc/local.conf \
 shoel@192.168.121.1:~/nfs_git/adm/adm6/lab5/configs/dns_chacher
 ```
 ```ini
@@ -316,12 +311,15 @@ options {
     recursing-file "/var/run/named/named.recursing";
     secroots-file "/var/run/named/named.secroots";
     pid-file none;
+
+    validate-except { "den-ext.skv"; "den-lan.skv"; };
     
     listen-on { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
     listen-on-v6 { ::1; };
     
     allow-query { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
     allow-query-cache { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
+    recursion yes;
     allow-recursion { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
     max-cache-ttl 86400;
 };
@@ -407,15 +405,14 @@ options {
     secroots-file "/var/run/named/named.secroots";
     pid-file none;
 
-    # Прослушивать только локальный порт и Loopback интерфейс
-    listen-on { 127.0.0.1; 10.20.20.240/28; };
+    validate-except { "den-ext.skv"; "den-lan.skv"; };
+
+    listen-on { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
     listen-on-v6 { ::1; };
     
-    # Разрешение запросов только с локальных s_internal, s_dmz IP и IP Loopback интерфейса
-    allow-query { 127.0.0.1; 10.1.1.240/28; 10.20.20.240/28; };
-    allow-query-cache { 127.0.0.1; 10.1.1.240/28; 10.20.20.240/28; };
-    # Ограничиваем рекурсию запросов
-    allow-recursion { 127.0.0.1; 10.1.1.240/28; 10.20.20.240/28; };
+    allow-query { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
+    allow-query-cache { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
+    allow-recursion { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
     max-cache-ttl 86400;
 };
 EOF
@@ -496,6 +493,7 @@ cat >>./etc/local.conf<<'EOF'
 zone "den-lan.skv" {
     type master;
     file "den-lan.skv.zone";
+    notify yes;
 };
 
 EOF
@@ -505,11 +503,13 @@ cat >>./etc/local.conf<<'EOF'
 zone "240.1.1.10.in-addr.arpa" {
     type master;
     file "240.1.1.10.zone";
+    notify yes;
 };
 
 zone "240.20.20.10.in-addr.arpa" {
     type master;
     file "240.20.20.10.zone";
+    notify yes;
 };
 
 EOF
@@ -555,7 +555,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab5 dns_master_lan' \
+git commit -am 'оформление для ADM6, lab5 dns_master_lan_upd2' \
 && git push \
 --set-upstream \
 altlinux \
@@ -622,15 +622,14 @@ options {
     secroots-file "/var/run/named/named.secroots";
     pid-file none;
 
-    # Прослушивать только локальный порт и Loopback интерфейс
-    listen-on { 127.0.0.1; 10.0.0.0/24; };
+    validate-except { "den-ext.skv"; "den-lan.skv"; };
+
+    listen-on { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
     listen-on-v6 { ::1; };
     
-    # Разрешение запросов только с локальных s_internet IP и IP Loopback интерфейса
-    allow-query { 127.0.0.1; 10.0.0.0/24; };
-    allow-query-cache { 127.0.0.1; 10.0.0.0/24; };
-    # Ограничиваем рекурсию запросов
-    allow-recursion { 127.0.0.1; 10.0.0.0/24; };
+    allow-query { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
+    allow-query-cache { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
+    allow-recursion { 127.0.0.1; 10.0.0.0/24; 10.1.1.240/28; 10.20.20.240/28; };
     max-cache-ttl 86400;
 };
 EOF
@@ -691,6 +690,7 @@ cat >>./etc/local.conf<<'EOF'
 zone "den-ext.skv" {
     type master;
     file "den-ext.skv.zone";
+    notify yes;
 };
 
 EOF
@@ -700,6 +700,7 @@ cat >>./etc/local.conf<<'EOF'
 zone "0.0.10.in-addr.arpa" {
     type master;
     file "0.0.10.zone";
+    notify yes;
 };
 
 EOF
