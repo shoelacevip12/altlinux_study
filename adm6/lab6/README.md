@@ -395,7 +395,7 @@ trust list \
 | grep -A2 "Dovecot CA den-ext"
 ```
 
-![](img/8.png) ![](img/GIF.gif) 
+![](img/8.png) ![](img/GIF.gif) ![](img/9.png)
 
 ##### Для github и gitflic
 ```bash
@@ -419,7 +419,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM6, lab6 mta_devecot' \
+git commit -am 'оформление для ADM6, lab6 mta_devecot_update2' \
 && git push \
 --set-upstream \
 altlinux \
