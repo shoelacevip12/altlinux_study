@@ -325,7 +325,7 @@ git add . \
 
 git remote -v
 
-git commit -am "оформление для ADM7 Подготовка upd1" \
+git commit -am "оформление для ADM7 Подготовка upd2" \
 && git push \
 --set-upstream \
 altlinux \
@@ -337,3 +337,105 @@ main
 
 popd
 ```
+
+## Рекомендации: WSL2 + Ubuntu (Windows 10)
+
+### Шаг 1: Включите WSL2 и установите Ubuntu
+
+```powershell
+# Откройте PowerShell от имени администратора и выполните:
+dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+```
+
+1. Перезагрузите компьютер
+2. Скачайте и установите [пакет ядра WSL2](https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi)
+3. Установите дистрибутив из Microsoft Store:
+   - Откройте **Microsoft Store** → найдите **"Ubuntu 22.04 LTS"** → установите
+4. Запустите Ubuntu из меню "Пуск", создайте пользователя и пароль
+
+### Шаг 2: Настройте WSL2 для работы с GUI-приложениями
+
+Для отображения графического интерфейса `virt-manager` потребуется X-сервер для Windows:
+
+1. Скачайте и установите **VcXsrv** (рекомендуется) или **Xming**:
+   - https://sourceforge.net/projects/vcxsrv/
+2. Запустите **XLaunch**:
+   - Multiple windows → Display number: 0
+   - Start no client
+   - Отключите "Native opengl" (галочка снята)
+   - Включите "Disable access control" (галочка установлена) ← **важно!**
+   - Сохраните конфигурацию на рабочий стол
+
+### Шаг 3: Установите virt-manager в Ubuntu/WSL2
+
+```bash
+# Обновите систему
+sudo apt update \
+&& sudo apt upgrade -y
+
+# Установите virt-manager и зависимости
+sudo apt install -y \
+virt-manager \
+libvirt-clients \
+qemu-kvm \
+ssh-askpass-gnome
+
+# Настройте переменные окружения для X11 (добавьте в ~/.bashrc)
+echo 'export DISPLAY=127.0.0.1:0' >> ~/.bashrc
+echo 'export LIBGL_ALWAYS_INDIRECT=1' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Шаг 4: Настройте подключение к удаленному libvirt-серверу
+
+1. **Создайте SSH-ключ** (если еще нет):
+   ```bash
+   ssh-keygen \
+   -f ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+   -t ed25519 \
+   -C "cours_alt-adm7"
+
+   chmod 600 \
+   ~/.ssh/id_alt-adm7_2026_*_ed25519
+   
+   chmod 644 \
+   ~/.ssh/id_alt-adm7_2026_*_ed25519.pub
+
+   ssh-copy-id \
+   -o StrictHostKeyChecking=accept-new \
+   -i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+   skvadmin@192.168.89.212
+   ```
+
+2. **Проверьте подключение по SSH**:
+   ```bash
+   > ~/.ssh/known_hosts
+
+   eval $(ssh-agent -s)
+
+   ssh-add ~/.ssh/id_alt-adm7_2026_host_ed25519
+
+   ssh -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+   skvadmin@192.168.89.212
+   # Должен входить без пароля
+   ```
+
+3. **Запустите virt-manager**:
+   ```bash
+   virt-manager
+   ```
+
+4. **Добавьте удаленное подключение**:
+   - File → Add Connection
+   - Hypervisor: **QEMU/KVM**
+   - Method: **SSH**
+   - Username: ваш пользователь на сервере
+   - Hostname: IP или домен удаленного сервера
+   - Нажмите **Connect**
+
+URI подключения будет выглядеть так:
+```
+qemu+ssh://skvadmin@192.168.89.212/system
+```
+![](./adm7.png)
