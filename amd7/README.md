@@ -304,6 +304,8 @@ chown skvadmin:skvadmin \
 
 ### Для github и gitflic
 ```bash
+exit
+
 git branch -v
 
 git log --oneline
@@ -323,7 +325,7 @@ git add . \
 
 git remote -v
 
-git commit -am "оформление для ADM7 Подготовка" \
+git commit -am "оформление для ADM7 Подготовка upd1" \
 && git push \
 --set-upstream \
 altlinux \
@@ -332,4 +334,6 @@ main \
 --set-upstream \
 altlinux_gf \
 main
+
+popd
 ```
