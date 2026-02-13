@@ -19,6 +19,7 @@ virt-install \
 libvirt-daemon-driver-storage-logical \
 nfs-server \
 rpcbind \
+bridge-utils \
 nfs-clients \
 nfs-server \
 glusterfs11-server \
@@ -30,12 +31,70 @@ nano-icinga2 \
 caddy \
 fail2ban
 
-systemctl enable --now \
-libvirtd.service
-
 usermod -a -G \
 vmusers \
 skvadmin
+
+systemctl enable --now \
+libvirtd.service
+```
+### Установка мостового интерфейса для физического хоста
+```bash
+cp -r \
+/etc/net/ifaces/{enp59s0,vmbr0}
+
+sed -i 's/eth/bri/' \
+/etc/net/ifaces/vmbr0/options
+
+sed -i '/bri/aHOST=enp59s0' \
+/etc/net/ifaces/vmbr0/options
+
+sed -i "s/dhcp/static/" \
+/etc/net/ifaces/enp59s0/options
+
+sed -i "s/static4/static/" \
+/etc/net/ifaces/enp59s0/options
+
+systemctl restart network
+
+mkdir \
+/mnt/isos
+
+chmod +s \
+/mnt/isos
+
+echo '192.168.89.246:/volume1/iso /mnt/isos nfs rw,soft,intr,noatime,nodev,nosuid 0 0' \
+>>/etc/fstab
+
+mount -a
+```
+![](./0.png)
+```bash
+cat /etc/net/ifaces/enp59s0/*
+
+BOOTPROTO=static
+TYPE=eth
+SYSTEMD_CONTROLLED=no
+DISABLED=no
+CONFIG_WIRELESS=no
+SYSTEMD_BOOTPROTO=static
+CONFIG_IPV4=yes
+NM_CONTROLLED=no
+ONBOOT=yes
+```
+```bash
+cat /etc/net/ifaces/vmbr0/*
+
+BOOTPROTO=dhcp
+TYPE=bri
+HOST=enp59s0
+SYSTEMD_CONTROLLED=no
+DISABLED=no
+CONFIG_WIRELESS=no
+SYSTEMD_BOOTPROTO=dhcp4
+CONFIG_IPV4=yes
+NM_CONTROLLED=no
+ONBOOT=yes
 ```
 ### Установка и настройка code-server
 ```bash
@@ -325,7 +384,7 @@ git add . \
 
 git remote -v
 
-git commit -am "оформление для ADM7 Подготовка upd2" \
+git commit -am "оформление для ADM7 Подготовка upd3" \
 && git push \
 --set-upstream \
 altlinux \
