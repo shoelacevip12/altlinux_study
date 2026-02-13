@@ -145,6 +145,8 @@ echo "\$i" \
 
 ![](img/15.png)
 ![](img/16.png)
+![](img/17.png)
+
 
 ### Для github и gitflic
 ```bash
@@ -161,7 +163,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab2 base_kvm' \
+git commit -am 'оформление для ADM7, lab2 base_kvm upd_1' \
 && git push \
 --set-upstream \
 altlinux \
