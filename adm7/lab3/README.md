@@ -19,6 +19,11 @@ ssh -t \
 -o StrictHostKeyChecking=accept-new \
 skvadmin@192.168.89.208 \
 "su -"
+
+# Вход под супер пользователем в контейнер lxc по ssh
+ssh -i \
+~/.ssh/id_alt-adm7_2026_host_ed25519 \
+root@192.168.89.200
 ```
 [>>>>>ПОДГОТОВКА ДЛЯ РАБОТЫ с модулем altvirt ADM7<<<<<](../README.md)
 
@@ -228,7 +233,251 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab3 nfs_kvm lxc-run_2' \
+git commit -am 'lab3 nfs_kvm lxc-run_2' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
+### Подключение клиентов к NFS серверу
+#### План инфраструктуры
+
+![](img/0.1.png)
+
+#### Установка и запуск служб
+```bash
+# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.208 \
+"su -"
+
+# Обновление системы и установка необходимых пакетов для клиента nfs
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y  \
+nfs-clients \
+nfs-utils
+
+# Запуск связанных служб клиента nfs 
+systemctl enable --now \
+nfs-client.target
+
+# Проверка доступности NFS ресурса с lxc контейнера
+showmount -e \
+192.168.89.200
+```
+#### Монтирование ресурсов NFS
+##### Монтирование хранилища для переноса виртуальных машин
+```bash
+# создание каталога точки монтирования
+mkdir /var/lib/libvirt/images_nfs
+
+# ручное Монтирование ресурса для проверки работы
+mount -t nfs \
+192.168.89.200:/mnt/nfs-store \
+/var/lib/libvirt/images_nfs
+
+# Просмотр примонтированного раздела
+findmnt \
+| grep -A2 images_nfs
+
+# тестовое Создание и удаление файлов в примонтированном разделе
+touch /var/lib/libvirt/images_nfs/{1..9}
+
+rm !$
+
+# Просмотр содержимого
+ll /var/lib/libvirt/images_nfs/
+
+# Добавление в автозагрузку системы
+echo '192.168.89.200:/mnt/nfs-store /var/lib/libvirt/images_nfs nfs rw,hard,intr,relatime,_netdev 0 0' \
+>>/etc/fstab
+
+# создание конфига подключения пула как файловую систему
+cat > ~/nfs_pool.xml <<'EOF'
+<pool type="dir">
+  <name>nfs-pool</name>
+  <target>
+    <path>/var/lib/libvirt/images_nfs</path>
+  </target>
+</pool>
+EOF
+
+# Определение пула из конфигурационного файла
+virsh pool-define \
+~/nfs_pool.xml
+
+# Подготовка и Построение пула
+virsh pool-build \
+nfs-pool
+
+# Запуск пула в работу libvirt
+virsh pool-start \
+nfs-pool
+
+# Автозапуск пула при перезапуске системы
+virsh pool-autostart \
+nfs-pool
+```
+##### Монтирование хранилища для ISO образов для установки
+```bash
+#Поиск ресурсов для монтирования образов
+showmount -e \
+192.168.89.246
+
+# создание каталога точки монтирования
+mkdir /var/lib/libvirt/images_iso
+
+# ручное Монтирование ресурса для проверки работы
+mount -t nfs \
+192.168.89.246:/volume1/iso \
+/var/lib/libvirt/images_iso
+
+# Просмотр примонтированного раздела
+findmnt \
+| grep -A2 images_iso
+
+# Просмотр содержимого
+ll /var/lib/libvirt/images_iso/
+
+# Добавление в автозагрузку системы
+echo '192.168.89.246:/volume1/iso /var/lib/libvirt/images_iso nfs ro,soft,fg,intr,noatime,_netdev 0 0' \
+>>/etc/fstab
+
+# создание конфига подключения пула как файловую систему
+cat > ~/iso_pool.xml <<'EOF'
+<pool type="dir">
+  <name>iso-pool</name>
+  <target>
+    <path>/var/lib/libvirt/images_iso</path>
+  </target>
+</pool>
+EOF
+
+# Определение пула из конфигурационного файла
+virsh pool-define \
+~/iso_pool.xml
+
+# Подготовка и Построение пула
+virsh pool-build \
+iso-pool
+
+# Запуск пула в работу libvirt
+virsh pool-start \
+iso-pool
+
+# Автозапуск пула при перезапуске системы
+virsh pool-autostart \
+iso-pool
+
+virsh pool-list \
+--all \
+--details
+```
+
+![](img/4.png)
+![](img/5.png)
+![](img/6.png)
+![](img/7.png)
+![](img/8.png)
+
+#### Создание ВМ для переноса на виртуальном Libvirt-хосте alt-p11-s1
+```bash
+# вход на на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.208 \
+"su -"
+
+# Отображение содержимого пула
+virsh vol-list iso-pool \
+| grep alt-server-
+
+# Создание ВМ сервера на виртуальном 
+virt-install --name alt-p11-s1-1 \
+--ram 3072 \
+--vcpus=1 \
+--disk pool=default,size=30,bus=virtio,format=qcow2 \
+--cdrom /var/lib/libvirt/images_iso/alt-server-11.0-x86_64.iso \
+--os-type=linux \
+--os-variant=alt.p11 \
+--graphics vnc
+```
+
+![](img/9.png)
+![](img/10.png)
+
+### Миграция в новый каталог
+```bash
+#  Расположение текущего диска на Виртуальной хостовой машине
+virsh domblklist \
+alt-p11-s1-1
+
+# Выясняем какой размер был выделен ВМ на Виртуальной хостовой машине
+virsh vol-list \
+--pool default \
+--details \
+| grep alt-p11-s1-1
+
+# Занимаемый размер созданной ВМ диска на Виртуальной хостовой машине
+du -h \
+/var/lib/libvirt/images/alt-p11-s1-1-1.qcow2
+
+# Создание в новом пуле nfs-pool диска система с такимже выделенным размером
+virsh vol-create-as \
+nfs-pool \
+alt-p11-s1-1-1.qcow2 \
+30G \
+--format qcow2
+
+# Запуск живого копирования в новый пул nfs-pool диска система ВМ
+virsh blockcopy \
+alt-p11-s1-1 vda \
+/var/lib/libvirt/images_nfs/alt-p11-s1-1-1.qcow2 \
+--wait \
+--verbose \
+--transient-job \
+--pivot
+
+#  Расположение текущего диска на Виртуальной хостовой машине
+virsh domblklist \
+alt-p11-s1-1
+
+# Часть конфига текущего расположения диска
+virsh dumpxml \
+alt-p11-s1-1 \
+| grep -A5 "<disk"
+
+# Удаление старого расположения
+rm /var/lib/libvirt/images/alt-p11-s1-1-1.qcow2
+```
+![](img/GIF.gif)
+![](img/11.png)
+
+### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'lab3 nfs' \
 && git push \
 --set-upstream \
 altlinux \
