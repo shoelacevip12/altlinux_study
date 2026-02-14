@@ -15,7 +15,7 @@ skvadmin@192.168.89.212 \
 ```
 [>>>>>ПОДГОТОВКА ДЛЯ РАБОТЫ с модулем altvirt ADM7<<<<<](../README.md)
 
-![](../0.png)
+![](../lab1/img/0.png)
 
 ## Выполнение работы
 ### Задание 1. Работа с ВМ средствами virt-manager
@@ -146,7 +146,15 @@ echo "\$i" \
 ![](img/15.png)
 ![](img/16.png)
 ![](img/17.png)
-
+![](img/18.png)
+![](img/19.png)
+![](img/20.png)
+![](img/21.png)
+![](img/22.png)
+![](img/23.png)
+![](img/24.png)
+![](img/25.png)
+![](img/26.png)
 
 ### Для github и gitflic
 ```bash
@@ -163,7 +171,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab2 base_kvm upd_1' \
+git commit -am 'оформление для ADM7, lab2 base_kvm upd_2' \
 && git push \
 --set-upstream \
 altlinux \
