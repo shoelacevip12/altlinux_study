@@ -20,22 +20,27 @@ skvadmin@192.168.89.212 \
 ## Выполнение работы
 ### Задание 1. Работа с ВМ средствами virt-manager
 ```bash
-exit
+# ЗАпуск агента ssh
 > ~/.ssh/known_hosts
 eval $(ssh-agent) \
 && ssh-add  ~/.ssh/id_alt-adm7_2026_host_ed25519
 
+# Установка контекста удаленного доступа, как подключение по умолчанию, для подключения утилитой virsh
 export LIBVIRT_DEFAULT_URI=qemu+ssh://skvadmin@192.168.89.212/system
 
+# Подключение и вы вод рабочего окружения
 virsh uri
 
+# Запуск GUI оснастки
 virt-manager
 
+# Подключение на Физический хост
 ssh \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
 skvadmin@192.168.89.212
 
+# Подключение на Виртуальный хост
 ssh -t \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
@@ -54,12 +59,24 @@ skvadmin@192.168.89.212 \
 
 ### Задание 2. Работа с ВМ средствами virt-manager
 ```bash
+# Подключение на Физический хост под супер пользователем
 ssh -t \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
 skvadmin@192.168.89.212 \
 "su -"
 
+# Утилитой командной строки развертывание ВМ с параметрами и автоматическим созданием дисков созданием дисков
+## 4 GB RAM изолированной памяти
+## 2 Виртуальных ядра CPU
+## Автоматическое создание дисков системы ВМ, если не существуют:
+### в пуле "ssd-pool" размером 25 GB
+### в пуле "default" размером в 100 GB
+## Подключение существующего образа ISO установщика ОС
+## Указание типа ОС ВМ "Linux"
+## Указание типа дистрибутива "alt.p11"
+## Указание возможности и протокола удаленного подключения "VNC"
+## Указание, вместо стандартного NAT, создание интерфейса моста привязанного к интерфейсу "vmbr0" физического хоста
 virt-install --name alt-p11-s1 \
 --ram 4096 \
 --vcpus=2 \
@@ -77,16 +94,19 @@ virt-install --name alt-p11-s1 \
 ![](img/11.png)
 
 ```bash
+# Проброс публичного Ключа ssh на новый Виртуальны узел
 ssh-copy-id \
 -o StrictHostKeyChecking=accept-new \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
 skvadmin@192.168.89.208
 
+# Подключение на Виртуальный хост под супер пользователем
 ssh -t \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 skvadmin@192.168.89.208 \
 "su -"
 
+# Обновление системы и установка пакетов для базовой виртуализации
 apt-get update \
 && update-kernel -y \
 && apt-get dist-upgrade -y \
@@ -106,10 +126,12 @@ nfs-clients \
 nfs-server \
 glusterfs11-server
 
+# Добавляем пользовательской Учетной записи работать с libvirt в сессионном режиме
 usermod -a -G \
 vmusers \
 skvadmin
 
+# Запуск службы libvirt для удаленного подключения
 systemctl enable --now \
 libvirtd.service
 
@@ -121,11 +143,13 @@ systemctl poweroff
 ![](img/14.png)
 
 ```bash
+# Подключение на Физический хост под супер пользователем
 ssh -t \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 skvadmin@192.168.89.212 \
 su -
 
+# Вывод списка всех виртуальных машин system контекста libvirt
 virsh list --all
 
 # Создание snapshot
@@ -135,6 +159,7 @@ virsh snapshot-create-as \
 --name 1 \
 --description "lab2" --atomic
 
+# Скрипт перебора вм c именем alt и показать имеющиеся у них снимки
 bash -c \
 "for i in \$(virsh list --all \
 | awk '/alt/ {print \$2}') ; do \
