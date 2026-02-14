@@ -431,13 +431,6 @@ virsh vol-list \
 du -h \
 /var/lib/libvirt/images/alt-p11-s1-1-1.qcow2
 
-# Создание в новом пуле nfs-pool диска система с такимже выделенным размером
-virsh vol-create-as \
-nfs-pool \
-alt-p11-s1-1-1.qcow2 \
-30G \
---format qcow2
-
 # Запуск живого копирования в новый пул nfs-pool диска система ВМ
 virsh blockcopy \
 alt-p11-s1-1 vda \
@@ -477,7 +470,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'lab3 nfs' \
+git commit -am 'lab3 nfs upd_1' \
 && git push \
 --set-upstream \
 altlinux \
