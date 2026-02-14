@@ -119,7 +119,6 @@ qemu-kvm \
 libvirt-lxc \
 virt-install \
 libvirt-daemon-driver-storage-logical \
-nfs-server \
 rpcbind \
 bridge-utils \
 nfs-clients \
