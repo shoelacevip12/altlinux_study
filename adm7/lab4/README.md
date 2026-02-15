@@ -431,6 +431,11 @@ virsh pool-list \
 ### Использование Glusterfs как общее хранилище файлов
 
 ```bash
+# Установка клиента для монтирования
+apt-get update \
+&& apt-get install -y  \
+glusterfs11-client
+
 # Создание конечной точки монтирования
 mkdir /mnt/iso_test
 
@@ -489,6 +494,9 @@ main
 
 ### Задание 4. Расширение тома GlusterFS
 #### Клонирование ВМ Альт Сервер
+
+![](img/0.3.png)
+
 ```bash
 # Запуск агента
 > ~/.ssh/known_hosts
@@ -535,7 +543,7 @@ exit
 ssh -t \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
-skvadmin@192.168.89.xxx \
+skvadmin@192.168.89.206 \
 "su -"
 
 # Смена имени хоста
@@ -543,6 +551,338 @@ hostnamectl \
 hostname \
 alt-p11-s4
 
+# Остановка настроенного gluster склонированной машины
+systemctl disable 
+--now \
+glusterd.service
+
+# Добавление в файл разрешение имен
+cat >> /etc/hosts <<'EOF'
+192.168.89.206       alt-p11-s4
+EOF
+
 # Перезагрузка
 systemctl reboot
+```
+![](img/12.png)
+![](img/13.png)
+
+#### Подготовка и Установка GlusterFS на узле alt-p11-s4
+##### Настройка сервера времени узле alt-p11-s4
+```bash
+# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.206 \
+"su -"
+
+# просмотр конфигурации
+cat /etc/chrony.conf
+
+# Бэкап конфигурации
+cp /etc/chrony.conf{,.bak2}
+
+# Добавляем как дополнительный сервер участника GlusterFS alt-p11-s3
+sed  -i '/s1 iburst/aserver alt-p11-s3 iburst' \
+/etc/chrony.conf
+
+# Перезапуск служб NTP
+systemctl restart \
+chrony-wait.service \
+chronyd.service \
+chrony.service
+
+# Проверка NTP с новым сервером
+chronyc tracking
+chronyc sources -v
+
+# Проверка открытого порта для клиентов
+ss -ulnp | grep :123
+```
+```
+server ntp3.vniiftri.ru iburst
+server alt-p11-s1 iburst
+server alt-p11-s3 iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+allow 192.168.89.0/24
+local stratum 10
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+```
+![](img/14.png)
+
+#### Расширение кластера и Проверка узлов GlusterFS
+##### Обновление конфигурации сервера времени и списка разрешения имен на alt-p11-s1
+```bash
+# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.208 \
+"su -"
+
+# Добавление в файл разрешение имен
+cat >> /etc/hosts <<'EOF'
+192.168.89.206       alt-p11-s4
+EOF
+
+# просмотр конфигурации
+cat /etc/chrony.conf
+
+# Бэкап конфигурации
+cp /etc/chrony.conf{,.bak2}
+
+# Добавляем как дополнительный сервер участника GlusterFS alt-p11-s4
+sed  -i '/s3 iburst/aserver alt-p11-s4 iburst' \
+/etc/chrony.conf
+
+# Перезапуск служб NTP
+systemctl restart \
+chrony-wait.service \
+chronyd.service \
+chrony.service
+
+# Проверка NTP с новым сервером
+chronyc tracking
+chronyc sources -v
+
+# Проверка открытого порта для клиентов
+ss -ulnp | grep :123
+```
+
+![](img/15.png)
+
+##### Обновление конфигурации сервера времени и списка разрешения имен на alt-p11-s3
+```bash
+# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.207 \
+"su -"
+
+# Добавление в файл разрешение имен
+cat >> /etc/hosts <<'EOF'
+192.168.89.206       alt-p11-s4
+EOF
+
+# просмотр конфигурации
+cat /etc/chrony.conf
+
+# Бэкап конфигурации
+cp /etc/chrony.conf{,.bak2}
+
+# Добавляем как дополнительный сервер участника GlusterFS alt-p11-s4
+sed  -i '/s1 iburst/aserver alt-p11-s4 iburst' \
+/etc/chrony.conf
+
+# Перезапуск служб NTP
+systemctl restart \
+chrony-wait.service \
+chronyd.service \
+chrony.service
+
+# Проверка NTP с новым сервером
+chronyc tracking
+chronyc sources -v
+
+# Проверка открытого порта для клиентов
+ss -ulnp | grep :123
+
+tail -n4 /etc/hosts
+```
+```
+server ntp3.vniiftri.ru iburst
+server alt-p11-s1 iburst
+server alt-p11-s4 iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+allow 192.168.89.0/24
+local stratum 10
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+```
+
+![](img/16.png)
+
+##### Расширение кластера со стороны Склонированного узла alt-p11-s4
+```bash
+# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.206 \
+"su -"
+
+# запуск службы
+systemctl enable \
+--now \
+glusterd.service
+
+gluster volume \
+remove-brick \
+replvol1 \
+replica \
+1 \
+alt-p11-s1:/var/GlusNode1 \
+force
+
+gluster \
+peer \
+detach \
+alt-p11-s1
+
+# команда проверки участвующих peer
+gluster peer \
+status
+
+# Удаление пакета с клонированного gluster
+apt-get --purge remove \
+glusterfs11-server
+
+# чистка файлов с текущим UUID и кэш пиров и участие файлов директории в Glusterfs
+rm -f /var/lib/glusterd/glusterd.info
+rm -rf /var/lib/glusterd/peers/*
+rm -rf /var/GlusNode1/.*
+
+apt-get -y install \
+glusterfs11-server
+
+# запуск службы
+systemctl enable \
+--now \
+glusterd.service
+```
+
+##### Расширение кластера со стороны Склонированного узла alt-p11-s1
+```bash
+# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.208 \
+"su -"
+
+gluster volume \
+remove-brick \
+replvol1 \
+replica \
+1 \
+alt-p11-s1:/var/GlusNode1 \
+force
+
+gluster \
+peer \
+detach \
+alt-p11-s3
+
+# команда проверки участвующих peer
+gluster peer \
+status
+
+systemctl stop \
+glusterd.service
+
+rm -rf /var/GlusNode1/.*
+
+systemctl start \
+glusterd.service
+```
+##### Расширение кластера со стороны Склонированного узла alt-p11-s3
+```bash
+# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.207 \
+"su -"
+
+gluster volume \
+remove-brick \
+replvol1 \
+replica \
+1 \
+alt-p11-s1:/var/GlusNode1 \
+force
+
+gluster \
+peer \
+detach \
+alt-p11-s1
+
+# Подключение участников Кластера
+gluster peer \
+probe \
+alt-p11-s4
+
+gluster peer \
+probe \
+alt-p11-s1
+
+gluster peer \
+status
+
+# Добавление в реплицируемый тома GlusterFS новых
+gluster volume \
+add-brick \
+replvol1 \
+replica \
+2 \
+alt-p11-s4:/var/GlusNode1 \
+force
+
+gluster volume \
+add-brick \
+replvol1 \
+replica \
+3 \
+alt-p11-s1:/var/GlusNode1 \
+force
+
+# Запуск в работу созданного тома
+gluster volume \
+start \
+replvol1
+
+# Просмотр информации о созданном томе GlusterFS
+gluster volume \
+info \
+replvol1
+
+# Синхронизация данных с указанного хоста
+gluster volume \
+sync \
+alt-p11-s3 replvol1
+```
+
+![](img/17.png)
+
+### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'lab4 glusterFS_expand' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
 ```
