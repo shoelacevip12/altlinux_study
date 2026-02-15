@@ -13,7 +13,7 @@ ssh -t \
 skvadmin@192.168.89.212 \
 "su -"
 
-# вход на на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
 ssh -t \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
