@@ -213,6 +213,21 @@ ifdown enp1s0 \
 
 ping ya.ru -c2
 ```
+```bash
+cat /etc/net/ifaces/vmbr0/*
+```
+```ini
+BOOTPROTO=dhcp
+TYPE=bri
+HOST=enp1s0
+SYSTEMD_CONTROLLED=no
+DISABLED=no
+CONFIG_WIRELESS=no
+SYSTEMD_BOOTPROTO=dhcp4
+CONFIG_IPV4=yes
+NM_CONTROLLED=no
+ONBOOT=yes
+```
 
 ![](img/1.png)
 ![](img/2.png)
@@ -233,7 +248,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab5 bridge_net' \
+git commit -am 'оформление для ADM7, lab5 bridge_net_upd1' \
 && git push \
 --set-upstream \
 altlinux \
