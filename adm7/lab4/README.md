@@ -13,21 +13,29 @@ ssh -t \
 skvadmin@192.168.89.212 \
 "su -"
 
-# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+# вход на виртуальный KVM-хост alt-p11-s1 по ключу по ssh и вход под суперпользователя
 ssh -t \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
 skvadmin@192.168.89.208 \
 "su -"
 
-# вход на виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+# вход на виртуальный KVM-хост alt-p11-s3 по ключу по ssh и вход под суперпользователя
 ssh -t \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
 skvadmin@192.168.89.207 \
 "su -"
 
-# Вход под супер пользователем в контейнер lxc по ssh
+# вход на виртуальный KVM-хост alt-p11-s4 по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.206 \
+"su -"
+
+
+# Вход под супер пользователем в контейнер lxc alt-p11-s2 по ssh
 ssh -i \
 ~/.ssh/id_alt-adm7_2026_host_ed25519 \
 root@192.168.89.200
