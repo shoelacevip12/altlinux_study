@@ -94,6 +94,8 @@ systemctl reboot
 ![](img/1.png)
 ![](img/2.png)
 
+![](img/0.1.png)![](img/0.2.png)
+
 ### Разрешение имен между хостами
 #### на узле alt-p11-s3
 ```bash
@@ -354,17 +356,193 @@ altlinux_gf \
 main
 ```
 
-#### 
+### Задание 3. Работа с томом GlusterFS
+#### Подключение к libvirt на alt-p11-s3
 ```bash
+# создание конфига подключения, указав как сервер GlusterFS самого себя
+cat > ~/glus_replvol1.xml <<'EOF'
+<pool type="gluster">
+  <name>glust_repl_pool_1</name>
+  <source>
+    <host name="alt-p11-s3"/>
+    <name>replvol1</name>
+  </source>
+</pool>
+EOF
 
+# Определение пула из конфигурационного файла
+virsh pool-define \
+~/glus_replvol1.xml
+
+# Подготовка и Построение пула
+virsh pool-build \
+glust_repl_pool_1
+
+# Запуск пула в работу libvirt
+virsh pool-start \
+glust_repl_pool_1
+
+# Автозапуск пула при перезапуске системы
+virsh pool-autostart \
+glust_repl_pool_1
+
+virsh pool-list \
+--all \
+--details
 ```
-#### 
-```bash
+![](img/9.png)
 
+#### Подключение к libvirt на alt-p11-s1
+```bash
+# создание конфига подключения, указав как сервер GlusterFS самого себя
+cat > ~/glus_replvol1.xml <<'EOF'
+<pool type="gluster">
+  <name>glust_repl_pool_1</name>
+  <source>
+    <host name="alt-p11-s1"/>
+    <name>replvol1</name>
+  </source>
+</pool>
+EOF
+
+# Определение пула из конфигурационного файла
+virsh pool-define \
+~/glus_replvol1.xml
+
+# Подготовка и Построение пула
+virsh pool-build \
+glust_repl_pool_1
+
+# Запуск пула в работу libvirt
+virsh pool-start \
+glust_repl_pool_1
+
+# Автозапуск пула при перезапуске системы
+virsh pool-autostart \
+glust_repl_pool_1
+
+virsh pool-list \
+--all \
+--details
+```
+![](img/10.png)
+
+
+### Использование Glusterfs как общее хранилище файлов
+
+```bash
+# Создание конечной точки монтирования
+mkdir /mnt/iso_test
+
+# Монтирование GlusterFS к точке монтирования 
+mount.glusterfs \
+alt-p11-s1:/replvol1 \
+/mnt/iso_test
+
+# Просмотр примонтированной точки
+findmnt \
+/mnt/iso_test
+
+df -h \
+/mnt/iso_test
+
+# Скачивание образа альт виртуализации в точку монтирования GlusterFS
+wget -P \
+/mnt/iso_test \
+https://download.basealt.ru/pub/distributions/ALTLinux/p11/images/virtualization/x86_64/virtualization-pve-11.0-x86_64.iso
+
+# отображение о скаченном файле
+ll -h /var/GlusNode1/virt*
+
+# Просмотр содержимого в добавленных пулах libvirt
+virsh vol-list \
+glust_repl_pool_1
 ```
 
+![](img/11.png)
 
-#### 
+### Для github и gitflic
 ```bash
+git log --oneline
 
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'lab4 glusterFS_usage' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
+
+### Задание 4. Расширение тома GlusterFS
+#### Клонирование ВМ Альт Сервер
+```bash
+# Запуск агента
+> ~/.ssh/known_hosts
+eval $(ssh-agent) \
+&& ssh-add  ~/.ssh/id_alt-adm7_2026_host_ed25519
+
+# Подключение на Физический хост под супер пользователем
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.212 \
+"su -"
+
+#  Расположение и порядок текущих дисков ВМ на Физической хостовой машине
+virsh domblklist \
+alt-p11-s3
+
+# Отключение машины
+virsh destroy \
+--graceful \
+alt-p11-s3
+
+# Клонирование ВМ, порядок указания соответствующих дисков определены в том же порядке, в котором были конфигурированы у оригинала
+virt-clone \
+--original alt-p11-s3 \
+--name alt-p11-s4 \
+--file /var/lib/libvirt/images2/alt-p11-s4.qcow2 \
+--file /var/lib/libvirt/images/alt-p11-s4.qcow2
+
+# запуск склонированной машины
+virsh start \
+--domain \
+alt-p11-s4
+
+# Вывод об интерфейсе склонированного хоста
+virsh domiflist \
+--domain \
+alt-p11-s4
+
+# Выход из Физической хостовой машины
+exit
+
+# вход на склонированный виртуальный KVM-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.xxx \
+"su -"
+
+# Смена имени хоста
+hostnamectl \
+hostname \
+alt-p11-s4
+
+# Перезагрузка
+systemctl reboot
 ```
