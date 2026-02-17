@@ -6,7 +6,35 @@
 
 ## Установка пакетов и включение модулей
 ```bash
-su -
+ssh-keygen \
+-f ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-t ed25519 \
+-C "cours_alt-adm7"
+
+chmod 600 \
+~/.ssh/id_alt-adm7_2026_*_ed25519
+
+chmod 644 \
+~/.ssh/id_alt-adm7_2026_*_ed25519.pub
+
+ssh-copy-id \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+skvadmin@192.168.89.212
+
+# чистка списка подключений после libvirt
+> ~/.ssh/known_hosts
+
+#запуск агента в текущей сессии терминала
+eval $(ssh-agent -s)
+# добавление агенту ключ ssh
+ssh-add ~/.ssh/id_alt-adm7_2026_host_ed25519
+
+# подключение по ключу и вход под суперпользователем
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+skvadmin@192.168.89.212 \
+"su -"
 
 # Установка пакетов
 apt-get update \
@@ -205,6 +233,131 @@ zpool-skv/working    96K  1.76T    96K  /srv/zfs0/working
 ```
 ![](./img/5.png)
 
+#### Настройка fail2ban Для proxmox
+```bash
+# Установка пакета 
+apt update
+apt install fail2ban -y
+
+# создание локального конфигурационного файла
+cp /etc/fail2ban/jail.{conf,local}
+
+# указываем список для игнорирования блоков ip
+sed -i 's/#ignoreip = 127.0.0.1\/8 ::1/ignoreip = 127.0.0.1\/8 ::1 192.168.89.0\/24/' \
+/etc/fail2ban/jail.local
+
+# Добавляем секцию для Proxmox
+cat >>/etc/fail2ban/jail.local<<'EOF'
+[proxmox]
+enabled = true
+port = 8006
+protocol = tcp
+filter = proxmox
+logpath = /var/log/pveproxy/access.log
+maxretry = 3
+bantime = 1h
+findtime = 10m
+EOF
+
+# Создание фильтра обоснования блокировки на основе логов и их содержимому
+cat > /etc/fail2ban/filter.d/proxmox.conf <<'EOF'
+[Definition]
+failregex = ^<HOST> -.*"POST /access/ticket HTTP/.*" 401
+            ^<HOST> -.*"POST /api2/json/access/ticket HTTP/.*" 401
+ignoreregex =
+EOF
+
+# Включение и запуск Службы
+systemctl enable --now \
+fail2ban.service
+```
+
+### Проверка и тестирование fail2ban
+```bash
+# Запуск теста по имеющему логу
+fail2ban-regex \
+/var/log/pveproxy/access.log \
+/etc/fail2ban/filter.d/proxmox.conf
+```
+```
+Running tests
+=============
+
+Use      filter file : proxmox, basedir: /etc/fail2ban
+Use         log file : /var/log/pveproxy/access.log
+Use         encoding : UTF-8
+
+ 
+Results
+=======
+
+Failregex: 3 total
+|-  #) [# of hits] regular expression
+|   2) [3] ^<HOST> -.*"POST /api2/json/access/ticket HTTP/.*" 401
+`-
+
+Ignoreregex: 0 total
+
+Date template hits:
+
+Lines: 26204 lines, 0 ignored, 3 matched, 26201 missed
+[processed in 6.92 sec]
+
+Missed line(s): too many to print.  Use --print-all-missed to print all 26201 lines
+```
+```bash
+# Вывод статуса активных фильтров для описанных правил
+fail2ban-client status
+```
+```
+Status
+|- Number of jail:      1
+`- Jail list:   proxmox
+```
+```bash
+# Вывод статистики забаненных
+fail2ban-client status \
+proxmox
+```
+```
+Status for the jail: proxmox
+|- Filter
+|  |- Currently failed: 0
+|  |- Total failed:     0
+|  `- File list:        /var/log/pveproxy/access.log
+`- Actions
+   |- Currently banned: 1
+   |- Total banned:     1
+   `- Banned IP list:   31.173.86.93
+```
+```bash
+# Вывод iptables со списком заблокированных
+iptables -L
+```
+```
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+f2b-proxmox  tcp  --  anywhere             anywhere             multiport dports 8006
+
+Chain FORWARD (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain f2b-proxmox (1 references)
+target     prot opt source               destination         
+REJECT     all  --  31.173.86.93         anywhere             reject-with icmp-port-unreachable
+RETURN     all  --  anywhere             anywhere
+```
+```bash
+# Снятие блокировки по ip
+fail2ban-client set \
+code-server \
+unbanip \
+31.173.86.93
+```
+
 ### Для github и gitflic
 ```bash
 exit
@@ -228,7 +381,7 @@ git add . \
 
 git remote -v
 
-git commit -am "оформление для ADM7 Подготовка Proxmox" \
+git commit -am "оформление для ADM7 Подготовка Proxmox upd1" \
 && git push \
 --set-upstream \
 altlinux \
