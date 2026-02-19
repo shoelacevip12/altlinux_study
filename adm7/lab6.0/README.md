@@ -22,6 +22,27 @@ ssh-copy-id \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
 skvadmin@192.168.89.212
 
+ssh-copy-id \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+skvadmin@192.168.89.208
+
+ssh-copy-id \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+skvadmin@192.168.89.207
+
+ssh-copy-id \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+skvadmin@192.168.89.206
+
+ssh-copy-id \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+skvadmin@192.168.89.200
+
+
 # чистка списка подключений после libvirt
 > ~/.ssh/known_hosts
 
@@ -382,6 +403,93 @@ git add . \
 git remote -v
 
 git commit -am "оформление для ADM7 Подготовка Proxmox upd1" \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+
+popd
+```
+## Развертывание стенда
+
+![](./img/0.png)
+
+### Создание сети для кластера
+#### Создаем сетевой мост
+
+![](./img/6.png)
+
+#### ВЫставляем только имя порта на хостовой машине
+
+![](./img/7.png)
+![](./img/8.png)
+
+### Создание Виртуальных машин стенда
+
+![](./img/9.png)
+![](./img/10.png)
+![](./img/11.png)
+
+#### для создания машины с типом UEFI биоса
+![](./img/12.png)
+
+![](./img/13.png)
+![](./img/14.png)
+![](./img/15.png)
+![](./img/16.png)
+![](./img/17.png)
+![](./img/18.png)
+![](./img/19.png)
+![](./img/20.png)
+![](./img/21.png)
+
+#### Установка Altlinux виртуализация 11 платформа PVE
+![](./img/22.png)
+![](./img/GIF.gif)
+![](./img/23.png)
+![](./img/24.png)
+![](./img/25.png)
+![](./img/26.png)
+
+
+#### Вход на PVE и базовая преднастройка
+
+![](./img/27.png)
+![](./img/28.png)
+![](./img/29.png)
+![](./img/30.png)
+![](./img/31.png)
+![](./img/32.png)
+![](./img/33.png)
+
+### Для github и gitflic
+```bash
+exit
+
+git branch -v
+
+git log --oneline
+
+git switch main
+
+git status
+
+pushd \
+../..
+
+git rm -r --cached \
+. 
+
+git add . \
+&& git status
+
+git remote -v
+
+git commit -am "оформление для ADM7 Подготовка Proxmox upd2" \
 && git push \
 --set-upstream \
 altlinux \
