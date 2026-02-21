@@ -40,7 +40,6 @@ skvadmin@192.168.89.206 \
 ![](../lab6.0//img/0.png)
 
 ## Выполнение работы
-### Со стороны первого узла alt-virt11-pve-1.lab
 #### загрузка образа установки
 
 ![](img/1.png)
@@ -49,9 +48,7 @@ skvadmin@192.168.89.206 \
 
 #### Создание ВМ
 
-![](img/GIF2.gif)
 ![](img/3.png)
-
 
 #### Настройка ВМ после создания
 ```bash
@@ -65,6 +62,81 @@ qm shutdown 100
 ```
 ![](img/4.png)
 ![](img/5.png)
+
+```bash
+cat /etc/pve/qemu-server/100.conf
+```
+```
+agent: 1
+balloon: 1024
+boot: order=scsi0;sata2;net0
+cores: 2
+cpu: x86-64-v2-AES
+kvm: 0
+memory: 2560
+meta: creation-qemu=10.1.2,ctime=1771685122
+name: simpl-alt11-test
+net0: virtio=BC:24:11:47:95:45,bridge=vmbr0
+numa: 0
+ostype: l26
+sata2: iso:iso/alt-p10-xfce-20240309-x86_64.iso,media=cdrom,size=1273880K
+scsi0: store-100g:100/vm-100-disk-0.qcow2,iothread=1,size=32G
+scsihw: virtio-scsi-single
+smbios1: uuid=3aa86298-2d04-4bd1-b24c-818e1c7b7c22
+sockets: 1
+vmgenid: 76915612-2fdc-476e-8d79-1a0102836a80
+```
+
+![](img/6.png)
+
+![](img/7.png)
+
+
+### Создание NFS сервера на lxc контейнере для PVE
+#### Создание контейнера
+
+![](img/GIF2.gif)
+
+### Развертывание службы NFS
+```bash
+# Установка пакетов для nfs сервера и обновление пакетов контейнера
+apt-get update \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y \
+rpcbind \
+nfs-clients \
+nfs-server
+
+# Создание каталога для сервера
+mkdir -p \
+/srv/nfs-store
+
+# Установка в режим сервера
+control rpcbind server
+
+# Запуск служб для сервера в системе инициализированной
+systemctl enable \
+--now \
+rpcbind nfs
+
+# Проверка служб
+systemctl is-active \
+rpcbind \
+nfs
+
+# Прослушивание портов
+rpcinfo -p
+
+# Пробрасывам экспортируемый каталог
+echo '/srv/nfs-store 192.168.89.0/24(rw,no_root_squash,sync,no_subtree_check,nohide)' \
+>> /etc/exports
+
+# проверка правильности и экспорт каталогов
+exportfs -vra
+```
+
+![](img/8.png)
+![](img/9.png)
 
 ### Для github и gitflic
 ```bash
@@ -81,7 +153,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab7 prox_base' \
+git commit -am 'оформление для ADM7, lab7 prox_base upd_1' \
 && git push \
 --set-upstream \
 altlinux \
