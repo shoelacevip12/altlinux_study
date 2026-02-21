@@ -757,6 +757,340 @@ local stratum 10
 ntsdumpdir /var/lib/chrony
 logdir /var/log/chrony
 ```
+### Создание кластера PVE
+#### Создание кластера с узла alt-virt11-pve-3.lab
+```bash
+# вход на виртуальный pve-хост alt-virt11-pve-3 по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.206 \
+"su -"
+
+# Создание Кластера с именем skvPVEclust
+pvecm create \
+skvPVEclust
+```
+```
+Corosync Cluster Engine Authentication key generator.
+Gathering 2048 bits for key from /dev/urandom.
+Writing corosync key to /etc/corosync/authkey.
+Writing corosync config to /etc/pve/corosync.conf
+Restart corosync and cluster filesystem
+```
+
+![](img/4.png)
+
+#### Проверка статуса текущего создания
+```bash
+# Проверка состояние получившихся настроек corosync с 1 узлом  в кластере
+cat /etc/pve/corosync.conf
+```
+```json
+logging {
+  debug: off
+  to_syslog: yes
+}
+
+nodelist {
+  node {
+    name: alt-virt11-pve-3
+    nodeid: 1
+    quorum_votes: 1
+    ring0_addr: fdd2:3918:5fad::3
+  }
+}
+
+quorum {
+  provider: corosync_votequorum
+}
+
+totem {
+  cluster_name: skvPVEclust
+  config_version: 1
+  interface {
+    linknumber: 0
+  }
+  ip_version: ipv4-6
+  link_mode: passive
+  secauth: on
+  version: 2
+}
+```
+```bash
+# вывод статуса кластера с 1 нодой
+pvecm status
+```
+```
+Cluster information
+-------------------
+Name:             skvPVEclust
+Config Version:   1
+Transport:        knet
+Secure auth:      on
+
+Quorum information
+------------------
+Date:             Sat Feb 21 15:30:21 2026
+Quorum provider:  corosync_votequorum
+Nodes:            1
+Node ID:          0x00000001
+Ring ID:          1.5
+Quorate:          Yes
+
+Votequorum information
+----------------------
+Expected votes:   1
+Highest expected: 1
+Total votes:      1
+Quorum:           1  
+Flags:            Quorate 
+
+Membership information
+----------------------
+    Nodeid      Votes Name
+0x00000001          1 fdd2:3918:5fad::3 (local)
+```
+
+![](img/5.png)
+![](img/6.png)
+
+#### Расширение созданного кластера с узла alt-virt11-pve-1.lab
+```bash
+# вход на виртуальный pve-хост alt-virt11-pve-1 по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.208 \
+"su -"
+
+# Подключаем к участию в Кластере на созданном кластере хостом alt-virt11-pve-3
+pvecm add \
+alt-virt11-pve-3
+```
+```
+Please enter superuser (root) password for 'alt-virt11-pve-3': ********    
+Establishing API connection with host 'alt-virt11-pve-3'
+The authenticity of host 'alt-virt11-pve-3' can't be established.
+X509 SHA256 key fingerprint is 0B:A3:F1:AF:44:1D:B2:91:39:25:53:D4:5F:BA:71:44:67:B8:2F:19:47:A6:A5:5D:4C:8E:92:64:0F:88:BF:6E.
+Are you sure you want to continue connecting (yes/no)? yes
+Login succeeded.
+check cluster join API version
+No cluster network links passed explicitly, fallback to local node IP 'fdd2:3918:5fad::1'
+Request addition of this node
+Join request OK, finishing setup locally
+stopping pve-cluster service
+backup old database to '/var/lib/pve-cluster/backup/config-1771678306.sql.gz'
+waiting for quorum...OK
+(re)generate node files
+generate new node certificate
+merge authorized SSH keys
+generated new node certificate, restart pveproxy and pvedaemon services
+successfully added node 'alt-virt11-pve-1' to cluster.
+```
+![](img/7.png)
+
+```bash
+# Проверка состояние получившихся настроек corosync с 2 узлами в кластере
+cat /etc/pve/corosync.conf
+```
+```json
+logging {
+  debug: off
+  to_syslog: yes
+}
+
+nodelist {
+  node {
+    name: alt-virt11-pve-1
+    nodeid: 2
+    quorum_votes: 1
+    ring0_addr: fdd2:3918:5fad::1
+  }
+  node {
+    name: alt-virt11-pve-3
+    nodeid: 1
+    quorum_votes: 1
+    ring0_addr: fdd2:3918:5fad::3
+  }
+}
+
+quorum {
+  provider: corosync_votequorum
+}
+
+totem {
+  cluster_name: skvPVEclust
+  config_version: 2
+  interface {
+    linknumber: 0
+  }
+  ip_version: ipv4-6
+  link_mode: passive
+  secauth: on
+  version: 2
+}
+```
+```bash
+# вывод статуса кластера с 2 нодами
+pvecm status
+```
+```
+Cluster information
+-------------------
+Name:             skvPVEclust
+Config Version:   2
+Transport:        knet
+Secure auth:      on
+
+Quorum information
+------------------
+Date:             Sat Feb 21 15:55:46 2026
+Quorum provider:  corosync_votequorum
+Nodes:            2
+Node ID:          0x00000001
+Ring ID:          1.9
+Quorate:          Yes
+
+Votequorum information
+----------------------
+Expected votes:   2
+Highest expected: 2
+Total votes:      2
+Quorum:           2  
+Flags:            Quorate 
+
+Membership information
+----------------------
+    Nodeid      Votes Name
+0x00000001          1 fdd2:3918:5fad::3 (local)
+0x00000002          1 fdd2:3918:5fad::1
+```
+
+![](img/8.png)
+![](img/9.png)
+
+#### Расширение созданного кластера с узла alt-virt11-pve-2.lab
+```bash
+# вход на виртуальный pve-хост alt-virt11-pve-2 по ключу по ssh и вход под суперпользователя
+ssh -t \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+skvadmin@192.168.89.207 \
+"su -"
+
+# Подключаем к участию в Кластере к любому участнику, как пример к alt-virt11-pve-1
+pvecm add \
+alt-virt11-pve-1
+```
+```
+alt-virt11-pve-1
+Please enter superuser (root) password for 'alt-virt11-pve-1': ********    
+Establishing API connection with host 'alt-virt11-pve-1'
+The authenticity of host 'alt-virt11-pve-1' can't be established.
+X509 SHA256 key fingerprint is 6F:96:34:68:2D:C4:F3:7B:C4:C7:9A:B3:FA:EA:2B:3B:FE:5F:6D:FC:E9:35:A2:D4:1C:68:FE:8B:58:10:CB:72.
+Are you sure you want to continue connecting (yes/no)? yes
+Login succeeded.
+check cluster join API version
+No cluster network links passed explicitly, fallback to local node IP 'fdd2:3918:5fad::2'
+Request addition of this node
+Join request OK, finishing setup locally
+stopping pve-cluster service
+backup old database to '/var/lib/pve-cluster/backup/config-1771679158.sql.gz'
+waiting for quorum...OK
+(re)generate node files
+generate new node certificate
+merge authorized SSH keys
+generated new node certificate, restart pveproxy and pvedaemon services
+successfully added node 'alt-virt11-pve-2' to cluster.
+```
+
+```bash
+# Проверка состояние получившихся настроек corosync с 3 узлами в кластере
+cat /etc/pve/corosync.conf
+```
+```json
+logging {
+  debug: off
+  to_syslog: yes
+}
+
+nodelist {
+  node {
+    name: alt-virt11-pve-1
+    nodeid: 2
+    quorum_votes: 1
+    ring0_addr: fdd2:3918:5fad::1
+  }
+  node {
+    name: alt-virt11-pve-2
+    nodeid: 3
+    quorum_votes: 1
+    ring0_addr: fdd2:3918:5fad::2
+  }
+  node {
+    name: alt-virt11-pve-3
+    nodeid: 1
+    quorum_votes: 1
+    ring0_addr: fdd2:3918:5fad::3
+  }
+}
+
+quorum {
+  provider: corosync_votequorum
+}
+
+totem {
+  cluster_name: skvPVEclust
+  config_version: 3
+  interface {
+    linknumber: 0
+  }
+  ip_version: ipv4-6
+  link_mode: passive
+  secauth: on
+  version: 2
+}
+```
+```bash
+# вывод статуса кластера с 3 нодами
+pvecm status
+```
+```
+Cluster information
+-------------------
+Name:             skvPVEclust
+Config Version:   3
+Transport:        knet
+Secure auth:      on
+
+Quorum information
+------------------
+Date:             Sat Feb 21 16:07:28 2026
+Quorum provider:  corosync_votequorum
+Nodes:            3
+Node ID:          0x00000003
+Ring ID:          1.d
+Quorate:          Yes
+
+Votequorum information
+----------------------
+Expected votes:   3
+Highest expected: 3
+Total votes:      3
+Quorum:           2  
+Flags:            Quorate 
+
+Membership information
+----------------------
+    Nodeid      Votes Name
+0x00000001          1 fdd2:3918:5fad::3
+0x00000002          1 fdd2:3918:5fad::1
+0x00000003          1 fdd2:3918:5fad::2 (local)
+```
+
+![](img/10.png)
+![](img/11.png)
 
 
 ### Для github и gitflic
@@ -774,7 +1108,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab6 prox_clus upd3' \
+git commit -am 'оформление для ADM7, lab6 prox_clus upd4' \
 && git push \
 --set-upstream \
 altlinux \
