@@ -40,6 +40,9 @@ skvadmin@192.168.89.206 \
 ![](../lab6.0//img/0.png)
 
 ## Выполнение работы
+
+![](img/0.png)
+
 #### загрузка образа установки
 
 ![](img/1.png)
@@ -185,7 +188,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab7 prox_base upd_3' \
+git commit -am 'оформление для ADM7, lab7 prox_base upd_4' \
 && git push \
 --set-upstream \
 altlinux \
