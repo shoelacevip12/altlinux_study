@@ -137,6 +137,38 @@ exportfs -vra
 
 ![](img/8.png)
 ![](img/9.png)
+![](img/10.png)
+
+### Перемещение и клонирование
+#### Миграция образа виртуальной машины в общее хранилище
+
+![](img/GIF3.gif)
+
+#### Выполнение полного клонирования
+
+![](img/GIF4.gif)
+
+#### Создание шаблона ВМ и Выполнение связанного клонирования
+
+![](img/GIF5.gif)
+
+```bash
+ll -sh \
+/mnt/pve/nfs-storage/images/10{3,2,1}/
+```
+![](img/11.png)
+
+#### Проведение живой миграции
+
+```bash
+qm migrate \
+100 \
+alt-virt11-pve-2 \
+--online
+```
+![](img/GIF6.gif)
+
+![](img/12.png)
 
 ### Для github и gitflic
 ```bash
@@ -153,7 +185,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab7 prox_base upd_1' \
+git commit -am 'оформление для ADM7, lab7 prox_base upd_3' \
 && git push \
 --set-upstream \
 altlinux \
