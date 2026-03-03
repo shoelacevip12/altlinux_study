@@ -23,9 +23,9 @@ skvadmin@192.168.89.191 \
 "su -"
 ```
 ## Подготовка
-![](img/0.png)
+![](img/0.1.png)
 ### Archlinux host libvirt kvm
-#### Создание сети моста средствами systemd
+#### Включение nested виртуализации
 ```bash
 # Включаем агента в текущей оснастке для подключения к KVM хост на archlinux
 > ~/.ssh/known_hosts
@@ -39,6 +39,31 @@ ssh -t \
 shoel@192.168.89.193 \
 "sudo su"
 
+# Проверка вложенной виртуализации компьютером на процессоре AMD 
+# (если intel заменить amd в команде ниже)
+cat /sys/module/kvm_amd/parameters/nested
+```
+```
+1
+```
+```bash
+# Предварительно выключить все виртуальные машины на хосте
+# и выгрузить модуль ядра kvm для процессора amd
+ sudo modprobe \
+ -r \
+ kvm_amd
+
+# Включение модуля kvm с включенной nested виртуализацией, работающей до перезапуска хоста
+options \
+kvm_amd \
+nested=1
+
+# Выставление опции загрузки nested виртуализации в автозапуск
+echo "options kvm_amd nested=1" \
+>> /etc/modprobe.d/kvm.conf
+```
+#### Создание сети моста средствами systemd
+```bash
 # отключаем и останавливаем NetworkManager и связанные службы
 systemctl \
 disable --now \
@@ -377,10 +402,13 @@ opennebula-gate \
 gem-http-cookie \
 bridge-utils \
 nfs-clients \
+rpcbind \
+nfs-server \
 mariadb \
-nfs-clients \
 kernel-modules-zfs-6.12 \
 zfs-utils
+
+
 
 # Перезагрузка для вступления в силу установленных модулей
 systemctl reboot
@@ -1615,6 +1643,61 @@ main
 ```
 ### Подключение узла и проверка
 
+```bash
+eval $(ssh-agent) \
+&& ssh-add  ~/.ssh/id_kvm_host \
+; ssh-add ~/.ssh/id_alt-adm7_2026_host_ed25519
+
+# вход на KVM-хост по ключу по ssh
+ssh -t \
+-i ~/.ssh/id_kvm_host \
+-o StrictHostKeyChecking=accept-new \
+shoel@192.168.89.193
+
+# Вывод списка всех виртуальных машин system контекста libvirt
+sudo virsh list --all
+```
+```
+[sudo] пароль для shoel:
+ ID   Имя               Состояние
+-----------------------------------
+ -    alt-p11-ON-cs-1   выключен
+ -    alt-p11-ON-cs-2   выключен
+```
+```bash
+# Создание snapshot
+sudo virsh start \
+--domain alt-p11-ON-cs-1
+
+
+sudo virsh start \
+--domain alt-p11-ON-cs-2
+
+# Вход на управляющий узел под учетной записью oneadmin 
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+skvadmin@192.168.89.212 \
+"su - oneadmin"
+
+# Подключение вычислительных хостов OpenNebula
+onehost create \
+alt-p11-ON-cs-1 \
+--im kvm \
+--vm kvm
+```
+```
+ID: 0
+```
+```bash
+onehost create \
+alt-p11-ON-cs-2 \
+--im kvm \
+--vm kvm
+```
+```
+ID: 1
+```
 ![](img/11.png)
 ![](img/12.png)
 ![](img/13.png)
@@ -1625,6 +1708,487 @@ main
 onehost list
 ```
 ```
-ID NAME             CLUSTER    TVM      ALLOCATED_CPU      ALLOCATED_MEM STAT
-0 alt-p11-on-cs-1. default      0       0 / 800 (0%)    0K / 31.3G (0%) on 
+ID NAME              CLUSTER    TVM      ALLOCATED_CPU      ALLOCATED_MEM STAT
+  1 alt-p11-ON-cs-2   default      0       0 / 400 (0%)     0K / 5.7G (0%) on  
+  0 alt-p11-ON-cs-1   default      0       0 / 400 (0%)     0K / 5.7G (0%) on
+```
+
+### Развертывание службы NFS на узле управления с zfs файловой системой
+```bash
+# Вход под суперпользователем
+su -
+
+# проверка наличия zfs dataset storage 
+du -h /srv/zfs0/
+```
+```
+512     /srv/zfs0/backup
+512     /srv/zfs0/working
+512     /srv/zfs0/storage
+2,0K    /srv/zfs0/
+```
+```bash
+# Установка в режим сервера
+control rpcbind server
+
+# Проверка выставленного параметра
+control rpcbind
+```
+```
+server
+```
+```bash
+# Запуск служб для сервера в системе инициализированной
+systemctl enable \
+--now \
+rpcbind nfs
+
+# Проверка служб
+systemctl is-active \
+rpcbind \
+nfs
+
+# Прослушивание портов
+rpcinfo -p
+```
+```
+   program vers proto   port  service
+    100000    4   tcp    111  portmapper
+    100000    3   tcp    111  portmapper
+    100000    2   tcp    111  portmapper
+    100000    4   udp    111  portmapper
+    100000    3   udp    111  portmapper
+    100000    2   udp    111  portmapper
+    100024    1   udp  41223  status
+    100024    1   tcp  58349  status
+    100005    1   udp  49221  mountd
+    100005    1   tcp  42979  mountd
+    100005    2   udp  38405  mountd
+    100005    2   tcp  42607  mountd
+    100005    3   udp  50316  mountd
+    100005    3   tcp  37133  mountd
+    100003    3   tcp   2049  nfs
+    100003    4   tcp   2049  nfs
+    100227    3   tcp   2049  nfs_acl
+    100021    1   udp  42063  nlockmgr
+    100021    3   udp  42063  nlockmgr
+    100021    4   udp  42063  nlockmgr
+    100021    1   tcp  36525  nlockmgr
+    100021    3   tcp  36525  nlockmgr
+    100021    4   tcp  36525  nlockmgr
+```
+```bash
+# Пробрасывам экспортируемый каталог только для 2х хостов
+cat > /etc/exports <<'EOF'
+/srv/zfs0/storage 192.168.89.190(rw,no_root_squash,sync,no_subtree_check,nohide)
+/srv/zfs0/storage 192.168.89.189(rw,no_root_squash,sync,no_subtree_check,nohide)
+/srv/zfs0/storage 127.0.0.1(rw,no_root_squash,sync,no_subtree_check,nohide)
+EOF
+
+# проверка правильности и экспорт каталогов
+exportfs -vra
+```
+```
+exporting 192.168.89.190:/srv/zfs0/storage
+exporting 192.168.89.189:/srv/zfs0/storage
+exporting 127.0.0.1:/srv/zfs0/storage
+```
+### Создание NFS-хранилищ для OpenNebula на всех узлах
+#### Монтирование раздела под образы Виртуальных машин
+```bash
+# Вход под пользователем Oneadmin
+su - oneadmin
+
+# Создаём точку монтирования на всех узлах
+mkdir -p \
+./datastores/100
+
+# проверяем чтобы каталоги были под владельцами и полными правами oneadmin oneadmin 
+ls -ld datastores/100
+```
+```
+drwxr-xr-x 2 oneadmin oneadmin 4096 Mar  3 21:41 datastores/100
+```
+```bash
+# Вход под суперпользователем на всех узлах
+su -
+
+# Добавляем в /etc/fstab для авто-монтирования на вычислительных узлах
+echo 'alt-p11-on-ms:/srv/zfs0/storage /var/lib/one/datastores/100 nfs rw,hard,intr,relatime,_netdev 0 0' \
+>> /etc/fstab
+
+# Монтирование на основе файла /etc/fstab на вычислительных узлах
+mount -a
+
+# отображение примонтированного на вычислительных узлах
+findmnt /var/lib/one/datastores/100
+```
+```
+TARGET                      SOURCE                          FSTYPE OPTIONS
+/var/lib/one/datastores/100 alt-p11-on-ms:/srv/zfs0/storage nfs4   rw,relatime,vers=4.2,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=192.168.89.190,local_lock=none,addr=192.168.89.212
+```
+```
+TARGET                      SOURCE                          FSTYPE OPTIONS
+/var/lib/one/datastores/100 alt-p11-on-ms:/srv/zfs0/storage nfs4   rw,relatime,vers=4.2,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=192.168.89.189,local_lock=none,addr=192.168.89.212
+```
+```bash
+# Добавляем в /etc/fstab для авто-монтирования на самого себя на управляющем узле
+echo '127.0.0.1:/srv/zfs0/storage /var/lib/one/datastores/100 nfs rw,hard,intr,relatime,_netdev 0 0' \
+>> /etc/fstab
+```
+```bash
+# Монтирование на основе файла /etc/fstab на управляющем узле
+mount -a
+
+# отображение примонтированного на управляющем узле
+findmnt /var/lib/one/datastores/100
+```
+```
+TARGET                      SOURCE                      FSTYPE OPTIONS
+/var/lib/one/datastores/100 127.0.0.1:/srv/zfs0/storage nfs4   rw,relatime,vers=4.2,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=127.0.0.1,local_lock=none,addr=127.0.0.1
+```
+#### Сброс счетчика при создании datastore OpenNebula 100,101,102 на управляющем узле
+```bash
+# вход под суперпользователем
+su -
+
+# Остановить службу
+systemctl stop \
+opennebula
+
+# Бэкап базы данных
+cp /var/lib/one/one.db{,.bak}
+
+# Вход в базу данных
+sqlite3 /var/lib/one/one.db
+```
+
+```sql
+-- Проверить текущее значение счетчика id datastore
+SELECT 'Before:' AS info, * FROM pool_control WHERE tablename = 'datastore_pool';
+```
+```
+Before:|datastore_pool|101
+```
+```sql
+-- Установить счетчик на 99 следующее ID создание datastore будет под ID 100
+UPDATE pool_control SET last_oid = 99 WHERE tablename = 'datastore_pool';
+```
+```sql
+-- Проверить результат
+SELECT 'After:' AS info, * FROM pool_control WHERE tablename = 'datastore_pool';
+```
+```
+After:|datastore_pool|99
+```
+#### Регистрация хранилища в OpenNebula на узле управления
+```bash
+# Выполнением под административно учетной записью OpenNebula
+su - oneadmin
+
+# Создаём конфигурацию хранилища
+# NAME = Имя пула
+# TYPE = Указания системного типа SYSTEM_DS 
+# DS_MAD = для системных хранилищ не используется
+# TM_MAD = shared позволяет ВМ мигрировать и работать с общими дисками
+# BASE_PATH = Путь расположения в /var/lib/one/datastores/
+# BRIDGE_LIST Перечисление всех хостов, которые будут использовать это хранилище 
+# SAFE_DIRS = (для NFS важно) Безопасные директории 
+cat > zfs_datastore.conf << 'EOF'
+NAME            = "nfs_zfs_storage"
+TYPE            = SYSTEM_DS
+TM_MAD          = shared
+BASE_PATH       = "/var/lib/one/datastores/100"
+BRIDGE_LIST     = "alt-p11-on-ms alt-p11-on-cs-1 alt-p11-on-cs-2"
+SAFE_DIRS       = "YES"
+EOF
+
+# Регистрируем хранилище
+onedatastore create \
+zfs_datastore.conf
+```
+```
+ID: 100
+```
+```bash
+# Узнаем Статус хранилища в OpenNebula
+onedatastore show \
+100
+```
+```
+DATASTORE 100 INFORMATION                                                       
+ID             : 100                 
+NAME           : nfs_zfs_storage     
+USER           : oneadmin            
+GROUP          : oneadmin            
+CLUSTERS       : 0                   
+TYPE           : SYSTEM              
+DS_MAD         : -                   
+TM_MAD         : shared              
+BASE PATH      : /var/lib/one//datastores/100
+DISK_TYPE      : FILE                
+STATE          : READY               
+
+DATASTORE CAPACITY                                                              
+TOTAL:         : 1.8T                
+FREE:          : 1.8T                
+USED:          : 1M                  
+LIMIT:         : -                   
+
+PERMISSIONS                                                                     
+OWNER          : um-                 
+GROUP          : u--                 
+OTHER          : ---                 
+
+DATASTORE TEMPLATE                                                              
+ALLOW_ORPHANS="FORMAT"
+BRIDGE_LIST="alt-p11-on-ms alt-p11-on-cs-1 alt-p11-on-cs-2"
+DISK_TYPE="FILE"
+DS_MIGRATE="YES"
+SAFE_DIRS="YES"
+SHARED="YES"
+TM_MAD="shared"
+TYPE="SYSTEM_DS"
+
+IMAGES
+```
+![](img/15.png)
+
+#### Монтирование раздела под ISO-образы
+```bash
+# Вход под пользователем Oneadmin
+su - oneadmin
+
+# Создаём точку монтирования на всех узлах
+mkdir -p \
+./datastores/101
+
+# проверяем чтобы каталоги были под владельцами и полными правами oneadmin oneadmin 
+ls -ld datastores/101
+```
+```
+drwxr-xr-x 2 oneadmin oneadmin 4096 Mar  3 23:07 datastores/101
+```
+```bash
+# Вход под суперпользователем  на всех узлах
+su -
+
+# Добавляем в /etc/fstab для авто-монтирования на всех узлах
+echo '192.168.89.246:/volume1/iso /var/lib/one/datastores/101 nfs rw,soft,intr,noatime,nodev,nosuid 0 0' \
+>> /etc/fstab
+
+# Монтирование на основе файла /etc/fstab на вычислительных узлах
+mount -a
+
+# отображение примонтированного на вычислительных узлах
+findmnt /var/lib/one/datastores/101
+```
+```
+TARGET                      SOURCE                      FSTYPE OPTIONS
+/var/lib/one/datastores/101 192.168.89.246:/volume1/iso nfs4   rw,nosuid,nodev,noatime,vers=4.1,rsize=131072,wsize=131072,namlen=255,soft,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=192.168.89.190,local_lock=none,addr=192.168.89.246
+```
+#### Регистрация хранилище для ISO в OpenNebula на узле управления
+```bash
+# Выполнением под административно учетной записью OpenNebula
+su - oneadmin
+
+# Создаём конфигурацию хранилища
+# NAME = Имя пула
+# TYPE = Указания системного типа SYSTEM_DS 
+# DS_MAD = для хранилищ c образами fs
+# TM_MAD = shared позволяет ВМ мигрировать и работать с общими дисками
+# BASE_PATH = Путь расположения в /var/lib/one/datastores/
+# BRIDGE_LIST Перечисление всех хостов, которые будут использовать это хранилище
+# SAFE_DIRS = (для NFS важно) Безопасные директории
+cat > iso_datastore.conf << 'EOF'
+NAME            = "nfs_iso"
+TYPE            = IMAGE_DS
+DS_MAD          = fs
+TM_MAD          = shared
+BASE_PATH       = "/var/lib/one/datastores/101"
+BRIDGE_LIST     = "alt-p11-on-ms alt-p11-on-cs-1 alt-p11-on-cs-2"
+SAFE_DIRS       = "YES"
+EOF
+
+# Регистрируем хранилище
+onedatastore create \
+iso_datastore.conf
+```
+```
+ID: 101
+```
+```bash
+# Узнаем Статус хранилища в OpenNebula
+onedatastore show \
+101
+```
+```
+DATASTORE 101 INFORMATION                                                       
+ID             : 101                 
+NAME           : nfs_iso             
+USER           : oneadmin            
+GROUP          : oneadmin            
+CLUSTERS       : 0                   
+TYPE           : IMAGE               
+DS_MAD         : fs                  
+TM_MAD         : shared              
+BASE PATH      : /var/lib/one//datastores/101
+DISK_TYPE      : FILE                
+STATE          : READY               
+
+DATASTORE CAPACITY                                                              
+TOTAL:         : 15.7T               
+FREE:          : 3.6T                
+USED:          : 12.1T               
+LIMIT:         : -                   
+
+PERMISSIONS                                                                     
+OWNER          : um-                 
+GROUP          : u--                 
+OTHER          : ---                 
+
+DATASTORE TEMPLATE                                                              
+ALLOW_ORPHANS="FORMAT"
+BRIDGE_LIST="alt-p11-on-ms alt-p11-on-cs-1 alt-p11-on-cs-2"
+CLONE_TARGET="SYSTEM"
+CLONE_TARGET_SSH="SYSTEM"
+DISK_TYPE="FILE"
+DISK_TYPE_SSH="FILE"
+DS_MAD="fs"
+LN_TARGET="NONE"
+LN_TARGET_SSH="SYSTEM"
+RESTRICTED_DIRS="/"
+SAFE_DIRS="/var/tmp"
+TM_MAD="shared"
+TM_MAD_SYSTEM="ssh"
+TYPE="IMAGE_DS"
+
+IMAGES
+```
+
+![](img/16.png)
+
+```bash
+# Проверка состояния хранилищ
+onedatastore list
+```
+```
+  ID NAME             SIZE  AVA CLUSTERS  IMAGES  TYPE DS  TM      STAT
+ 101 nfs_iso          15.7T 23% 0         0       img  fs  shared  on  
+ 100 nfs_zfs_storage  1.8T 100  0         0       sys  -   shared  on  
+   2 files            217.1G 93% 0        0       fil  fs  ssh     on  
+   1 default          217.1G 93% 0        0       img  fs  ssh     on  
+   0 system           -      -   0        0       sys  -   ssh     on
+```
+#### Регистрация отдельных iso образов на управляющем узле
+```bash
+# под oneadmin
+su - oneadmin
+
+# Проверка доступности iso файлов
+ls -lh \
+./datastores/101/ \
+| grep alt
+```
+```
+-rwxrwxrwx 1 1026 users 5,8G дек 28  2023 alt-kworkstation-10.1-install-x86_64.iso
+-rwxrwxrwx 1 1026 users 1,3G фев 21 18:55 alt-p10-xfce-20240309-x86_64.iso
+-rwxrwxrwx 1 1026 users 1,8G фев 21 18:38 alt-p11-xfce-latest-x86_64.iso
+-rwxrwxrwx 1 1026 users 5,1G окт 16  2023 alt-server-10.1-x86_64.iso
+-rwxrwxrwx 1 1026 users 3,9G сен  9 19:13 alt-server-11.0-aarch64.iso
+-rwxrwxrwx 1 1026 users 4,2G июн 12  2025 alt-server-11.0-x86_64.iso
+-rwxrwxrwx 1 1026 users 2,7G окт 16  2023 alt-server-v-10.1-x86_64.iso
+-rwxrwxrwx 1 1026 users 2,2G фев  7 10:42 alt-virtualization-pve-11.0-x86_64.iso
+-rwxrwxrwx 1 1026 users 6,9G окт 16  2023 alt-workstation-10.1-x86_64.iso
+-rwxrwxrwx 1 1026 users 6,1G июн 11  2025 alt-workstation-11.0-x86_64.iso
+-rwxrwxrwx 1 1024 users 6,4G сен  1  2025 alt-workstation-11.1-x86_64.iso
+```
+##### Обязательно указать хранилище как безопасное
+![](img/17.png)
+
+```bash
+# Регистрация образа
+oneimage create \
+-d 101 \
+--name "ALT Server 11.0 x86_64" \
+--path /var/lib/one/datastores/101/alt-server-11.0-x86_64.iso \
+--type CDROM
+```
+```
+ID: 2
+```
+![](img/18.png)
+
+### Создание Виртуальной сети Bridged без привязки выхода в реальную сеть
+```bash
+# Создание конфигурации сети на управляющем узле
+cat > virt-bridged.conf <<'EOF'
+NAME = "VirtNetwork"
+DESCRIPTION = "Сеть для внутренней коммуникации"
+VN_MAD = "bridge"
+BRIDGE = "vmbr0"
+NETWORK_ADDRESS = "10.100.1.0"
+NETWORK_MASK = "255.255.255.248"
+GATEWAY = "10.100.1.1"
+AR=[
+    TYPE = "IP4",
+    IP   = "10.100.1.2",
+    SIZE = "5"
+]
+EOF
+
+# Создание сети из созданного конфига
+onevnet create \
+virt-bridged.conf
+```
+```
+ID: 0
+```
+```bash
+# отображение сети
+ID USER     GROUP    NAME            CLUSTERS   BRIDGE   STATE  LEASES OUTD ERRO
+  0 oneadmin oneadmin VirtNetwork     0          vmbr0    rdy         0    0    0
+```
+
+![](img/19.png)
+![](img/20.png)
+
+### Для github и gitflic
+```bash
+# Выключение вычислительных узлов
+systemctl poweroff
+
+# Создание snapshot
+sudo virsh snapshot-create-as \
+--domain alt-p11-ON-cs-1 \
+--name 4 \
+--description "lab9_nfs_ready" --atomic
+
+sudo virsh snapshot-create-as \
+--domain alt-p11-ON-cs-2 \
+--name 4 \
+--description "lab9_nfs_ready" --atomic
+
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM7, lab9 opennebula_install' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
 ```
