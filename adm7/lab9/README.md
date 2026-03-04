@@ -754,7 +754,7 @@ IMAGE USAGE & QUOTAS
 > ~/.ssh/known_hosts
 eval $(ssh-agent) \
 && ssh-add  ~/.ssh/id_kvm_host \
-&& ssh-add ~/.ssh/id_alt-adm7_2026_host_ed25519
+; ssh-add ~/.ssh/id_alt-adm7_2026_host_ed25519
 
 # вход на KVM-хост по ключу по ssh
 ssh -t \
@@ -1783,12 +1783,18 @@ cat > /etc/exports <<'EOF'
 /srv/zfs0/storage 192.168.89.190(rw,no_root_squash,sync,no_subtree_check,nohide)
 /srv/zfs0/storage 192.168.89.189(rw,no_root_squash,sync,no_subtree_check,nohide)
 /srv/zfs0/storage 127.0.0.1(rw,no_root_squash,sync,no_subtree_check,nohide)
+/srv/zfs0/working 192.168.89.190(rw,no_root_squash,sync,no_subtree_check,nohide)
+/srv/zfs0/working 192.168.89.189(rw,no_root_squash,sync,no_subtree_check,nohide)
+/srv/zfs0/working 127.0.0.1(rw,no_root_squash,sync,no_subtree_check,nohide)
 EOF
 
 # проверка правильности и экспорт каталогов
 exportfs -vra
 ```
 ```
+exporting 192.168.89.190:/srv/zfs0/working
+exporting 192.168.89.189:/srv/zfs0/working
+exporting 127.0.0.1:/srv/zfs0/working
 exporting 192.168.89.190:/srv/zfs0/storage
 exporting 192.168.89.189:/srv/zfs0/storage
 exporting 127.0.0.1:/srv/zfs0/storage
@@ -1847,6 +1853,59 @@ findmnt /var/lib/one/datastores/100
 TARGET                      SOURCE                      FSTYPE OPTIONS
 /var/lib/one/datastores/100 127.0.0.1:/srv/zfs0/storage nfs4   rw,relatime,vers=4.2,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=127.0.0.1,local_lock=none,addr=127.0.0.1
 ```
+```bash
+# Вход под пользователем Oneadmin
+su - oneadmin
+
+# Создаём точку монтирования на всех узлах
+mkdir -p \
+./datastores/102
+
+# проверяем чтобы каталоги были под владельцами и полными правами oneadmin oneadmin 
+ls -ld datastores/102
+```
+```
+drwxr-xr-x 2 oneadmin oneadmin 4096 Mar  4 22:39 datastores/102
+```
+```bash
+# Вход под суперпользователем на всех узлах
+su -
+
+# Добавляем в /etc/fstab для авто-монтирования на вычислительных узлах
+echo 'alt-p11-on-ms:/srv/zfs0/working /var/lib/one/datastores/102 nfs rw,hard,intr,relatime,_netdev 0 0' \
+>> /etc/fstab
+
+# Монтирование на основе файла /etc/fstab на вычислительных узлах
+mount -a
+
+# отображение примонтированного на вычислительных узлах
+findmnt /var/lib/one/datastores/102
+```
+```
+TARGET                      SOURCE                          FSTYPE OPTIONS
+/var/lib/one/datastores/102 alt-p11-on-ms:/srv/zfs0/working nfs4   rw,relatime,vers=4.2,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=192.168.89.189,local_lock=none,addr=192.168.89.212
+```
+```
+TARGET                      SOURCE                          FSTYPE OPTIONS
+/var/lib/one/datastores/102 alt-p11-on-ms:/srv/zfs0/working nfs4   rw,relatime,vers=4.2,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=192.168.89.190,local_lock=none,addr=192.168.89.212
+```
+```bash
+# Добавляем в /etc/fstab для авто-монтирования на самого себя на управляющем узле
+echo '127.0.0.1:/srv/zfs0/working /var/lib/one/datastores/102 nfs rw,hard,intr,relatime,_netdev 0 0' \
+>> /etc/fstab
+```
+```bash
+# Монтирование на основе файла /etc/fstab на управляющем узле
+mount -a
+
+# отображение примонтированного на управляющем узле
+findmnt /var/lib/one/datastores/102
+```
+```
+TARGET                      SOURCE                      FSTYPE OPTIONS
+/var/lib/one/datastores/102 127.0.0.1:/srv/zfs0/working nfs4   rw,relatime,vers=4.2,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=127.0.0.1,local_lock=none,addr=127.0.0.1
+```
+
 #### Сброс счетчика при создании datastore OpenNebula 100,101,102 на управляющем узле
 ```bash
 # вход под суперпользователем
@@ -1952,7 +2011,85 @@ TYPE="SYSTEM_DS"
 
 IMAGES
 ```
+```bash
+# Выполнением под административно учетной записью OpenNebula
+su - oneadmin
+
+# Создаём конфигурацию хранилища
+# NAME = Имя пула
+# TYPE = Указания системного типа IMAGE_DS
+# DS_MAD = для системных хранилищ не используется
+# TM_MAD = shared позволяет ВМ мигрировать и работать с общими дисками
+# BASE_PATH = Путь расположения в /var/lib/one/datastores/
+# BRIDGE_LIST Перечисление всех хостов, которые будут использовать это хранилище 
+# SAFE_DIRS = (для NFS важно) Безопасные директории 
+cat > zfs_datastore_work.conf << 'EOF'
+NAME            = "nfs_zfs_storage_working"
+TYPE            = IMAGE_DS
+DS_MAD          = fs
+TM_MAD          = shared
+BASE_PATH       = "/var/lib/one/datastores/102"
+BRIDGE_LIST     = "alt-p11-on-ms alt-p11-on-cs-1 alt-p11-on-cs-2"
+SAFE_DIRS       = "YES"
+EOF
+
+# Регистрируем хранилище
+onedatastore create \
+zfs_datastore_work.conf
+```
+```
+ID: 102
+```
+```bash
+# Узнаем Статус хранилища в OpenNebula
+onedatastore show \
+102
+```
+```
+DATASTORE 102 INFORMATION                                                       
+ID             : 102                 
+NAME           : nfs_zfs_storage_working
+USER           : oneadmin            
+GROUP          : oneadmin            
+CLUSTERS       : 0                   
+TYPE           : IMAGE               
+DS_MAD         : fs                  
+TM_MAD         : shared              
+BASE PATH      : /var/lib/one//datastores/102
+DISK_TYPE      : FILE                
+STATE          : READY               
+
+DATASTORE CAPACITY                                                              
+TOTAL:         : 1.8T                
+FREE:          : 1.8T                
+USED:          : 0M                  
+LIMIT:         : -                   
+
+PERMISSIONS                                                                     
+OWNER          : um-                 
+GROUP          : u--                 
+OTHER          : ---                 
+
+DATASTORE TEMPLATE                                                              
+ALLOW_ORPHANS="FORMAT"
+BRIDGE_LIST="alt-p11-on-ms alt-p11-on-cs-1 alt-p11-on-cs-2"
+CLONE_TARGET="SYSTEM"
+CLONE_TARGET_SSH="SYSTEM"
+DISK_TYPE="FILE"
+DISK_TYPE_SSH="FILE"
+DS_MAD="fs"
+LN_TARGET="NONE"
+LN_TARGET_SSH="SYSTEM"
+SAFE_DIRS="YES"
+TM_MAD="shared"
+TM_MAD_SYSTEM="ssh"
+TYPE="IMAGE_DS"
+
+IMAGES
+```
+
 ![](img/15.png)
+![](img/23.png)
 
 #### Монтирование раздела под ISO-образы
 ```bash
@@ -2073,12 +2210,13 @@ IMAGES
 onedatastore list
 ```
 ```
-  ID NAME             SIZE  AVA CLUSTERS  IMAGES  TYPE DS  TM      STAT
- 101 nfs_iso          15.7T 23% 0         0       img  fs  shared  on  
- 100 nfs_zfs_storage  1.8T 100  0         0       sys  -   shared  on  
-   2 files            217.1G 93% 0        0       fil  fs  ssh     on  
-   1 default          217.1G 93% 0        0       img  fs  ssh     on  
-   0 system           -      -   0        0       sys  -   ssh     on
+  ID NAME                     SIZE  AVA CLUSTERS  IMAGES  TYPE DS  TM      STAT
+ 102 nfs_zfs_storage_working  1.8T  100 0         0       img  fs  shared  on
+ 101 nfs_iso                  15.7T 23% 0         0       img  fs  shared  on  
+ 100 nfs_zfs_storage          1.8T 100  0         0       sys  -   shared  on  
+   2 files                    217.1G 93% 0        0       fil  fs  ssh     on  
+   1 default                  217.1G 93% 0        0       img  fs  ssh     on  
+   0 system                   -      -   0        0       sys  -   ssh     on
 ```
 #### Регистрация отдельных iso образов на управляющем узле
 ```bash
@@ -2118,6 +2256,54 @@ oneimage create \
 ID: 2
 ```
 ![](img/18.png)
+
+#### Создание DATABLOCK для установки ОС 
+```bash
+# Создаем datablock для установки ОС на основном хранилище default
+oneimage create \
+-d 1 \
+--description "OS Alt installation" \
+--name "ALT Server p11 datablock" \
+--type DATABLOCK \
+--format qcow2 \
+--size 30G \
+--persistent
+```
+```
+ID: 14
+```
+```bash
+oneimage show \
+14
+```
+```
+IMAGE 14 INFORMATION                                                            
+ID             : 14                  
+NAME           : ALT Server p11 datablock
+USER           : oneadmin            
+GROUP          : oneadmin            
+LOCK           : None                
+DATASTORE      : default             
+TYPE           : DATABLOCK           
+REGISTER TIME  : 03/04 23:04:11      
+PERSISTENT     : Yes                 
+SOURCE         : /var/lib/one//datastores/1/d8421a0cb00be091a90d83a56a6288be
+FORMAT         : qcow2               
+SIZE           : 30G                 
+STATE          : rdy                 
+RUNNING_VMS    : 0                   
+
+PERMISSIONS                                                                     
+OWNER          : um-                 
+GROUP          : ---                 
+OTHER          : ---                 
+
+IMAGE TEMPLATE                                                                  
+DESCRIPTION="OS Alt installation"
+DEV_PREFIX="sd"
+```
+
+![](img/21.png)
 
 ### Создание Виртуальной сети Bridged без привязки выхода в реальную сеть
 ```bash
@@ -2183,6 +2369,140 @@ git add . .. ../.. \
 git remote -v
 
 git commit -am 'оформление для ADM7, lab9 opennebula_install' \
+&& git push \
+--set-upstream \
+altlinux \
+main \
+&& git push \
+--set-upstream \
+altlinux_gf \
+main
+```
+
+### Создание Шаблона виртуальной машины
+```bash
+# Создание конфигурации сети на управляющем узле
+cat > temlp_alt_p11_serv <<'EOF'
+NAME = "ALT Server P11 Template"
+CONTEXT=[
+  NETWORK="YES",
+  SSH_PUBLIC_KEY="$USER[SSH_PUBLIC_KEY]" ]
+CPU="2"
+DESCRIPTION="Создание ВМ на вычислительном кластере"
+DISK=[
+  IMAGE="ALT Server 11.0 x86_64",
+  IMAGE_UNAME="oneadmin" ]
+DISK=[
+  DEV_PREFIX="vd",
+  IMAGE="ALT Server p11 datablock",
+  IMAGE_UNAME="oneadmin" ]
+GRAPHICS=[
+  LISTEN="0.0.0.0",
+  TYPE="SPICE" ]
+HOT_RESIZE=[
+  CPU_HOT_ADD_ENABLED="NO",
+  MEMORY_HOT_ADD_ENABLED="NO" ]
+HYPERVISOR="kvm"
+LOGO="images/logos/alt.png"
+MEMORY="2048"
+MEMORY_RESIZE_MODE="BALLOONING"
+MEMORY_UNIT_COST="MB"
+NIC=[
+  NETWORK="VirtNetwork",
+  NETWORK_UNAME="oneadmin",
+  SECURITY_GROUPS="0" ]
+NIC_DEFAULT=[
+  MODEL="Virtio" ]
+OS=[
+  ARCH="x86_64" ]
+SCHED_REQUIREMENTS="ID=\"0\""
+EOF
+
+onetemplate create \
+temlp_alt_p11_serv
+```
+```
+ID: 6
+```
+```bash
+onetemplate show \
+6
+```
+```
+TEMPLATE 6 INFORMATION                                                          
+ID             : 6                   
+NAME           : ALT Server P11 Template
+USER           : oneadmin            
+GROUP          : oneadmin            
+LOCK           : None                
+REGISTER TIME  : 03/04 23:09:13      
+
+PERMISSIONS                                                                     
+OWNER          : um-                 
+GROUP          : ---                 
+OTHER          : ---                 
+
+TEMPLATE CONTENTS                                                               
+CONTEXT=[
+  NETWORK="YES",
+  SSH_PUBLIC_KEY="$USER[SSH_PUBLIC_KEY]" ]
+CPU="2"
+DESCRIPTION="Создание ВМ на вычислительном кластере"
+DISK=[
+  IMAGE="ALT Server 11.0 x86_64",
+  IMAGE_UNAME="oneadmin" ]
+DISK=[
+  DEV_PREFIX="vd",
+  IMAGE="ALT Server p11 datablock",
+  IMAGE_UNAME="oneadmin" ]
+GRAPHICS=[
+  LISTEN="0.0.0.0",
+  TYPE="SPICE" ]
+HOT_RESIZE=[
+  CPU_HOT_ADD_ENABLED="NO",
+  MEMORY_HOT_ADD_ENABLED="NO" ]
+HYPERVISOR="kvm"
+LOGO="images/logos/alt.png"
+MEMORY="2048"
+MEMORY_RESIZE_MODE="BALLOONING"
+MEMORY_UNIT_COST="MB"
+NIC=[
+  NETWORK="VirtNetwork",
+  NETWORK_UNAME="oneadmin",
+  SECURITY_GROUPS="0" ]
+NIC_DEFAULT=[
+  MODEL="Virtio" ]
+OS=[
+  ARCH="x86_64" ]
+SCHED_REQUIREMENTS="ID=\"0\""
+```
+
+![](img/22.png)
+
+### Создание виртуальной машины на основе шаблона с ID 5
+```bash
+onetemplate \
+instantiate 5
+```
+```
+VM ID: 2
+```
+### Для github и gitflic
+```bash
+git log --oneline
+
+git branch -v
+
+git switch main
+
+git status
+
+git add . .. ../.. \
+&& git status
+
+git remote -v
+
+git commit -am 'оформление для ADM7, lab9 _VM' \
 && git push \
 --set-upstream \
 altlinux \
