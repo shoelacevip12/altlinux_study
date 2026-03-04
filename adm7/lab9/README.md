@@ -1826,6 +1826,11 @@ echo 'alt-p11-on-ms:/srv/zfs0/storage /var/lib/one/datastores/100 nfs rw,hard,in
 # Монтирование на основе файла /etc/fstab на вычислительных узлах
 mount -a
 
+# Сена владельца для создания образов
+chown -R \
+oneadmin:oneadmin \
+/var/lib/one/datastores/100
+
 # отображение примонтированного на вычислительных узлах
 findmnt /var/lib/one/datastores/100
 ```
@@ -1897,6 +1902,11 @@ echo '127.0.0.1:/srv/zfs0/working /var/lib/one/datastores/102 nfs rw,hard,intr,r
 ```bash
 # Монтирование на основе файла /etc/fstab на управляющем узле
 mount -a
+
+# Сена владельца для создания образов
+chown -R \
+oneadmin:oneadmin \
+/var/lib/one/datastores/102
 
 # отображение примонтированного на управляющем узле
 findmnt /var/lib/one/datastores/102
@@ -2261,35 +2271,35 @@ ID: 2
 ```bash
 # Создаем datablock для установки ОС на основном хранилище default
 oneimage create \
--d 1 \
+-d 102 \
 --description "OS Alt installation" \
 --name "ALT Server p11 datablock" \
 --type DATABLOCK \
 --format qcow2 \
---size 30G \
+--size 100G \
 --persistent
 ```
 ```
-ID: 14
+ID: 19
 ```
 ```bash
 oneimage show \
-14
+19
 ```
 ```
-IMAGE 14 INFORMATION                                                            
-ID             : 14                  
+IMAGE 19 INFORMATION                                                            
+ID             : 19                  
 NAME           : ALT Server p11 datablock
 USER           : oneadmin            
 GROUP          : oneadmin            
 LOCK           : None                
-DATASTORE      : default             
+DATASTORE      : nfs_zfs_storage_working
 TYPE           : DATABLOCK           
-REGISTER TIME  : 03/04 23:04:11      
+REGISTER TIME  : 03/05 00:00:14      
 PERSISTENT     : Yes                 
-SOURCE         : /var/lib/one//datastores/1/d8421a0cb00be091a90d83a56a6288be
+SOURCE         : /var/lib/one//datastores/102/714d166dfd52a79f4d03aa0941ac039a
 FORMAT         : qcow2               
-SIZE           : 30G                 
+SIZE           : 100G                
 STATE          : rdy                 
 RUNNING_VMS    : 0                   
 
@@ -2313,6 +2323,8 @@ NAME = "VirtNetwork"
 DESCRIPTION = "Сеть для внутренней коммуникации"
 VN_MAD = "bridge"
 BRIDGE = "vmbr0"
+METHOD = "static"
+IP6_METHOD="disable"
 NETWORK_ADDRESS = "10.100.1.0"
 NETWORK_MASK = "255.255.255.248"
 GATEWAY = "10.100.1.1"
@@ -2414,28 +2426,31 @@ NIC=[
 NIC_DEFAULT=[
   MODEL="Virtio" ]
 OS=[
-  ARCH="x86_64" ]
-SCHED_REQUIREMENTS="ID=\"0\""
+  ARCH="x86_64",
+  BOOT="disk0,disk1" ]
+SCHED_REQUIREMENTS="CLUSTER_ID=\"0\""
 EOF
 
+# создание шаблона на основе файла temlp_alt_p11_serv
 onetemplate create \
 temlp_alt_p11_serv
 ```
 ```
-ID: 6
+ID: 8
 ```
 ```bash
+# информация о шаблоне с id 8
 onetemplate show \
-6
+8
 ```
 ```
-TEMPLATE 6 INFORMATION                                                          
-ID             : 6                   
+TEMPLATE 8 INFORMATION                                                          
+ID             : 8                   
 NAME           : ALT Server P11 Template
 USER           : oneadmin            
 GROUP          : oneadmin            
 LOCK           : None                
-REGISTER TIME  : 03/04 23:09:13      
+REGISTER TIME  : 03/05 00:17:33      
 
 PERMISSIONS                                                                     
 OWNER          : um-                 
@@ -2473,20 +2488,141 @@ NIC=[
 NIC_DEFAULT=[
   MODEL="Virtio" ]
 OS=[
-  ARCH="x86_64" ]
-SCHED_REQUIREMENTS="ID=\"0\""
+  ARCH="x86_64",
+  BOOT="disk0,disk1" ]
+SCHED_REQUIREMENTS="CLUSTER_ID=\"0\""
+```
+
+```bash
+# Обновление шаблона на основе heredoc
+onetemplate update 8 << 'EOF'
+NAME = "ALT Server P11 Template"
+CONTEXT=[
+  NETWORK="YES",
+  SSH_PUBLIC_KEY="$USER[SSH_PUBLIC_KEY]" ]
+CPU="2"
+DESCRIPTION="Создание ВМ на вычислительном кластере"
+DISK=[
+  IMAGE="ALT Server 11.0 x86_64",
+  IMAGE_UNAME="oneadmin" ]
+DISK=[
+  DEV_PREFIX="vd",
+  IMAGE="ALT Server p11 datablock",
+  IMAGE_UNAME="oneadmin" ]
+GRAPHICS=[
+  LISTEN="0.0.0.0",
+  TYPE="SPICE" ]
+HOT_RESIZE=[
+  CPU_HOT_ADD_ENABLED="NO",
+  MEMORY_HOT_ADD_ENABLED="NO" ]
+HYPERVISOR="kvm"
+LOGO="images/logos/alt.png"
+MEMORY="2048"
+MEMORY_RESIZE_MODE="BALLOONING"
+MEMORY_UNIT_COST="MB"
+NIC=[
+  NETWORK="VirtNetwork",
+  NETWORK_UNAME="oneadmin",
+  SECURITY_GROUPS="0" ]
+NIC_DEFAULT=[
+  MODEL="Virtio" ]
+OS=[
+  ARCH="x86_64",
+  BOOT="disk1,disk0" ]
+SCHED_REQUIREMENTS="CLUSTER_ID=\"0\""
+EOF
 ```
 
 ![](img/22.png)
 
-### Создание виртуальной машины на основе шаблона с ID 5
+### Создание виртуальной машины на основе шаблона с ID 8
 ```bash
 onetemplate \
-instantiate 5
+instantiate 8
 ```
 ```
-VM ID: 2
+VM ID: 6
 ```
+
+![](img/24.png)
+
+
+### Создание образа типа ОС из установленной ОС
+```bash
+# Удаляем виртуальную машину, оставляя созданный на основе шаблона для него образ диска с ОС
+onevm terminate \
+6
+
+# Ищем созданный образ
+oneimage list
+```
+```
+ID USER     GROUP    NAME                       DATASTORE     SIZE TYPE PER STAT RVMS
+19 oneadmin oneadmin ALT Server p11 datablock   nfs_zfs_st    100G DB   Yes rdy     0
+  2 oneadmin oneadmin ALT Server 11.0 x86_64     nfs_iso       4.2G CD    No rdy     0
+```
+
+```bash
+# Изменить тип блочного устройства на ОС
+oneimage chtype \
+19 \
+OS
+
+# И Еео состояние на Non Persistent
+oneimage nonpersistent \
+19
+```
+```bash
+# Просмотр информации о об образе с ОС
+oneimage show \
+19
+```
+```
+IMAGE 19 INFORMATION                                                            
+ID             : 19                  
+NAME           : ALT Server p11 datablock
+USER           : oneadmin            
+GROUP          : oneadmin            
+LOCK           : None                
+DATASTORE      : nfs_zfs_storage_working
+TYPE           : OS                  
+REGISTER TIME  : 03/05 00:00:14      
+PERSISTENT     : No                  
+SOURCE         : /var/lib/one//datastores/102/714d166dfd52a79f4d03aa0941ac039a
+FORMAT         : qcow2               
+SIZE           : 100G                
+STATE          : rdy                 
+RUNNING_VMS    : 0                   
+
+PERMISSIONS                                                                     
+OWNER          : um-                 
+GROUP          : ---                 
+OTHER          : ---                 
+
+IMAGE TEMPLATE                                                                  
+DESCRIPTION="OS Alt installation"
+DEV_PREFIX="sd"
+```
+
+![](img/25.png)
+
+
+#### Развертывание несколько машин на основе шаблона и Non Persistent диска
+```bash
+# Создание на основе шаблона и в количестве 2-х ВМ за раз
+onetemplate \
+instantiate 8 \
+--multiple 2
+```
+```
+VM ID: 7
+VM ID: 8
+```
+
+![](img/26.png)
+![](img/27.png)
+
+
 ### Для github и gitflic
 ```bash
 git log --oneline
@@ -2502,7 +2638,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab9 _VM' \
+git commit -am 'оформление для ADM7, lab9 clusters' \
 && git push \
 --set-upstream \
 altlinux \
