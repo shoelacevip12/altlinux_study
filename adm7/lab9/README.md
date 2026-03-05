@@ -5,7 +5,7 @@
 > ~/.ssh/known_hosts
 eval $(ssh-agent) \
 && ssh-add  ~/.ssh/id_kvm_host \
-&& ssh-add ~/.ssh/id_alt-adm7_2026_host_ed25519
+; ssh-add ~/.ssh/id_alt-adm7_2026_host_ed25519
 
 
 # вход на KVM-хост по ключу по ssh и вход под суперпользователя
@@ -19,11 +19,28 @@ shoel@192.168.89.193 \
 ssh -t \
 -o StrictHostKeyChecking=accept-new \
 -i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
-skvadmin@192.168.89.191 \
+skvadmin@192.168.89.190 \
+"su -"
+
+
+# вход на Виртуальны-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+skvadmin@192.168.89.189 \
+"su -"
+
+# вход на Управляющий-хост по ключу по ssh и вход под суперпользователя
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_alt-adm7_2026_host_ed25519.pub \
+skvadmin@192.168.89.212 \
 "su -"
 ```
 ## Подготовка
-![](img/0.1.png)
+
+![](img/0.png)
+
 ### Archlinux host libvirt kvm
 #### Включение nested виртуализации
 ```bash
@@ -340,6 +357,9 @@ altlinux_gf \
 main
 ```
 ## Выполнение задания
+
+![](img/0.1.png)
+
 ### Подготовка Управляющего узла
 ```bash
 # Проброс ранее сгенерированного ключа ssh
@@ -2622,6 +2642,67 @@ VM ID: 8
 ![](img/26.png)
 ![](img/27.png)
 
+### Живая миграция между узлами кластера
+```bash
+# Определяем нагруженность хостов из их списка до миграции
+onehost list
+```
+```
+ID NAME                         CLUSTER    TVM      ALLOCATED_CPU      ALLOCATED_MEM STAT
+1 alt-p11-ON-cs-2              default      0       0 / 400 (0%)     0K / 5.7G (0%) on  
+0 alt-p11-ON-cs-1              default      2   400 / 400 (100%)    4G / 5.7G (69%) on 
+```
+```bash
+# Список машин с информацией на каком узле они работают
+onevm list
+```
+```
+ID USER     GROUP    NAME                    STAT  CPU     MEM HOST                  TIME
+8 oneadmin oneadmin ALT Server P11 Template runn    2      2G alt-p11-ON-cs-1   0d 20h47
+7 oneadmin oneadmin ALT Server P11 Template runn    2      2G alt-p11-ON-cs-1   0d 20h47
+```
+```bash
+# Организовываем миграцию узла с ID 8 на хост ID 1 
+onevm migrate \
+8 \
+1 \
+--live
+```
+```
+ID USER     GROUP    NAME                    STAT  CPU     MEM HOST                  TIME
+8 oneadmin oneadmin ALT Server P11 Template migr    2      2G alt-p11-ON-cs-2   0d 20h48
+7 oneadmin oneadmin ALT Server P11 Template runn    2      2G alt-p11-ON-cs-2   0d 20h48
+```
+```
+ID USER     GROUP    NAME                    STAT  CPU     MEM HOST                  TIME
+8 oneadmin oneadmin ALT Server P11 Template runn    2      2G alt-p11-ON-cs-2   0d 20h48
+7 oneadmin oneadmin ALT Server P11 Template runn    2      2G alt-p11-ON-cs-2   0d 20h48
+```
+```
+ID NAME                         CLUSTER    TVM      ALLOCATED_CPU      ALLOCATED_MEM STAT
+1 alt-p11-ON-cs-2              default      2      400 / 400 (100%)    4G / 5.7G (69%) on  
+0 alt-p11-ON-cs-1              default      0       0 / 400 (0%)     0K / 5.7G (0%) on 
+```
+```bash
+# Организовываем миграцию узла с ID 7 на хост ID 1 
+onevm migrate \
+7 \
+1 \
+--live
+```
+```
+ID USER     GROUP    NAME                    STAT  CPU     MEM HOST                  TIME
+8 oneadmin oneadmin ALT Server P11 Template runn    2      2G alt-p11-ON-cs-1   0d 20h48
+7 oneadmin oneadmin ALT Server P11 Template migr    2      2G alt-p11-ON-cs-2   0d 20h48
+```
+```
+ID NAME                         CLUSTER    TVM      ALLOCATED_CPU      ALLOCATED_MEM STAT
+1 alt-p11-ON-cs-2              default      1    200 / 400 (50%)    2G / 5.7G (35%) on  
+0 alt-p11-ON-cs-1              default      1    200 / 200 (50%)    2G / 5.7G (35%) on  
+```
+
+
+![](img/GIF.gif)
 
 ### Для github и gitflic
 ```bash
@@ -2638,7 +2719,7 @@ git add . .. ../.. \
 
 git remote -v
 
-git commit -am 'оформление для ADM7, lab9 clusters' \
+git commit -am 'оформление для ADM7, lab9 clusters_upd1' \
 && git push \
 --set-upstream \
 altlinux \
