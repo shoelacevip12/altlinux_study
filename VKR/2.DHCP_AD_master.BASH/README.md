@@ -63,7 +63,7 @@ ssh -t \
 sysadmin@192.168.100.253 \
 'su -c \
 "grep -B10 altwks2 \
-/var/lib/dhcp/dhcpd/state/dhcpd.leases"'
+/var/lib/dhcp/dhcpd/state/dhcpd.leases" | grep lease'
 ```
 # `AD.BASH`
 
@@ -1438,7 +1438,7 @@ cat > /usr/local/bin/dhcp-dyndns.sh <<'EOT'
 #    You can optionally add the 'macAddress' to the Computers object.    #
 #    Add 'dhcpduser' to the 'Domain Admins' group if used                #
 #    Change the next line to 'yes' to make this happen                   #
-Add_macAddress='yes'
+Add_macAddress='no'
 #                                                                        #
 ##########################################################################
 
@@ -1979,7 +1979,7 @@ journalctl -efu dhcpd
 
 
 <details>
-<summary>Вывод журнала о регистрации DHCP и DNS</summary>
+<summary>Вывод журнала о регистрации DHCP и DNS НЕ доменной машины</summary>
 
 ```log
 Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: Dynamic and static leases present for 192.168.100.252.
@@ -2003,7 +2003,7 @@ Apr 03 15:26:51 altsrv2.den.skv dhcpd[4192]: DHCPACK on 192.168.100.252 to ae:49
 </details>
 
 ```bash
-# Вывод NS A записи хзоста
+# Вывод NS A записи хоста
 host altsrv3
 ```
 ```log
@@ -2017,23 +2017,661 @@ host 192.168.100.252
 252.100.168.192.in-addr.arpa domain name pointer altsrv3.den.skv.
 ```
 
-## Подключение хостов к домену
+## Настройка переключения failover-DHCP
+### Генерация случайного ключа OMAPI
+```bash
+tsig-keygen -a hmac-md5 omapi_key
+```
+```json
+key "omapi_key" {
+        algorithm hmac-md5;
+        secret "X1fpFP2WBXkOtsSj8kVwRw==";
+};
+```
+### Замена конфига с Добавлением ключа и failover опций в настройку DHCP сервера
+```bash
+cat > /etc/dhcp/dhcpd.conf <<'EOF'
+authoritative;
+ddns-update-style none;
 
-### Выясняем ip адреса клиентов DHCP
+omapi-port 7911;
+omapi-key omapi_key;
+key "omapi_key" {
+        algorithm hmac-md5;
+        secret "X1fpFP2WBXkOtsSj8kVwRw==";
+};
+
+failover peer "dhcp-failover" {
+  primary;
+  # Полное DNS-имя основного DHCP-сервера
+  address altsrv2.den.skv;
+  port 847;
+  # Полное DNS-имя имя резервного DHCP-сервера
+  peer address altsrv3.den.skv;
+  peer port 647;
+  max-response-delay 20;
+  max-unacked-updates 5;
+  mclt 1800;
+  split 255;
+  load balance max seconds 2;
+}
+
+subnet 192.168.100.0 netmask 255.255.255.0 {
+        option broadcast-address        192.168.100.255;
+        option time-offset              0;
+        option routers                  192.168.100.1;
+        option subnet-mask              255.255.255.0;
+
+        option nis-domain               "den.skv";
+        option domain-name              "den.skv";
+        option domain-name-servers      192.168.100.253, 192.168.100.252;
+        option ntp-servers              192.168.100.253, 192.168.100.252;
+
+        pool {
+            failover peer "dhcp-failover";
+            default-lease-time 172800;
+            max-lease-time 259200;
+            range 192.168.100.50 192.168.100.254;
+        }
+}
+
+on commit {
+set noname = concat("dhcp-", binary-to-ascii(10, 8, "-", leased-address));
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+set ClientName = pick-first-value(option host-name, config-option host-name, client-name, noname);
+log(concat("Commit: IP: ", ClientIP, " DHCID: ", ClientDHCID, " Name: ", ClientName));
+execute("/usr/local/bin/dhcp-dyndns.sh", "add", ClientIP, ClientDHCID, ClientName);
+}
+
+on release {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+log(concat("Release: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
+}
+
+on expiry {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+log(concat("Expired: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, "", "0");
+}
+
+host altsrv1.den.skv {
+  hardware ethernet ee:a8:71:80:72:45;
+  infinite-is-reserved on;
+  fixed-address 192.168.100.254;
+}
+
+host altsrv2.den.skv {
+  hardware ethernet 36:dd:7b:0c:81:2d;
+  infinite-is-reserved on;
+  fixed-address 192.168.100.253;
+}
+
+host altsrv3.den.skv {
+  hardware ethernet ae:49:e7:f8:62:2d;
+  infinite-is-reserved on;
+  fixed-address 192.168.100.252;
+}
+
+host altsrv4.den.skv {
+  hardware ethernet ce:94:fd:b4:54:40;
+  infinite-is-reserved on;
+  fixed-address 192.168.100.251;
+}
+EOF
+
+cp  /etc/dhcp/dhcpd.conf{,.working_failover}
 ```
 
+### Создание failback конфига без failover опций на случай падения партнера
+```bash
+cat > /etc/dhcp/dhcpd-fallback.conf <<'EOF'
+authoritative;
+ddns-update-style none;
+
+omapi-port 7911;
+omapi-key omapi_key;
+key "omapi_key" {
+        algorithm hmac-md5;
+        secret "X1fpFP2WBXkOtsSj8kVwRw==";
+};
+
+# failover peer "dhcp-failover" {
+#   primary;
+#   # Полное DNS-имя основного DHCP-сервера
+#   address altsrv2.den.skv;
+#   port 847;
+#   # Полное DNS-имя имя резервного DHCP-сервера
+#   peer address altsrv3.den.skv;
+#   peer port 647;
+#   max-response-delay 20;
+#   max-unacked-updates 5;
+#   mclt 1800;
+#   split 255;
+#   load balance max seconds 2;
+# }
+
+subnet 192.168.100.0 netmask 255.255.255.0 {
+        option broadcast-address        192.168.100.255;
+        option time-offset              0;
+        option routers                  192.168.100.1;
+        option subnet-mask              255.255.255.0;
+
+        option nis-domain               "den.skv";
+        option domain-name              "den.skv";
+        option domain-name-servers      192.168.100.253, 192.168.100.252;
+        option ntp-servers              192.168.100.253, 192.168.100.252;
+
+        pool {
+            # failover peer "dhcp-failover";
+            default-lease-time 172800;
+            max-lease-time 259200;
+            range 192.168.100.50 192.168.100.254;
+        }
+}
+
+on commit {
+set noname = concat("dhcp-", binary-to-ascii(10, 8, "-", leased-address));
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+set ClientName = pick-first-value(option host-name, config-option host-name, client-name, noname);
+log(concat("Commit: IP: ", ClientIP, " DHCID: ", ClientDHCID, " Name: ", ClientName));
+execute("/usr/local/bin/dhcp-dyndns.sh", "add", ClientIP, ClientDHCID, ClientName);
+}
+
+on release {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+log(concat("Release: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
+}
+
+on expiry {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+log(concat("Expired: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, "", "0");
+}
+
+host altsrv1.den.skv {
+  hardware ethernet ee:a8:71:80:72:45;
+  infinite-is-reserved on;
+  fixed-address 192.168.100.254;
+}
+
+host altsrv2.den.skv {
+  hardware ethernet 36:dd:7b:0c:81:2d;
+  infinite-is-reserved on;
+  fixed-address 192.168.100.253;
+}
+
+host altsrv3.den.skv {
+  hardware ethernet ae:49:e7:f8:62:2d;
+  infinite-is-reserved on;
+  fixed-address 192.168.100.252;
+}
+
+host altsrv4.den.skv {
+  hardware ethernet ce:94:fd:b4:54:40;
+  infinite-is-reserved on;
+  fixed-address 192.168.100.251;
+}
+EOF
+```
+### Скрипт проверки и восстановления в случае сбоя DHCP-failover
+```bash
+cat > /usr/local/bin/dhcp-fallback.sh <<'EOF'
+#!/bin/bash
+
+if ! ping -c 2 -W 5 altsrv3.den.skv &>/dev/null; then
+    logger "DHCP failover: partner unreachable, switching to fallback mode"
+    
+    # Перезапуск, только если нет бэкапа рабочего конфига
+    if [ ! -f /etc/dhcp/dhcpd.conf.bak ]; then
+        # Сохранить текущий конфиг
+        rsync /etc/dhcp/dhcpd.conf{,.bak}
+        # Заменяем на fallback-конфиг
+        rsync /etc/dhcp/dhcpd{-fallback,}.conf
+        # Перезапускаем службу
+        systemctl restart dhcpd
+    fi
+
+else
+    # Партнёр доступен
+    logger "DHCP: partner is reachable, normal working"
+
+    # Восстанавление конфига, только если есть бэкап
+    if [ -f /etc/dhcp/dhcpd.conf.bak ]; then
+        logger "DHCP: restoring original config from backup"
+        mv -f /etc/dhcp/dhcpd.conf{.bak,}
+        systemctl restart dhcpd
+    fi
+fi
+EOF
+
+chmod 755 /usr/local/bin/dhcp-fallback.sh
+```
+### Создание timer systemd Для отслеживания
+```bash
+# таймер
+cat > /etc/systemd/system/dhcp-fallback.timer <<'EOF'
+[Unit]
+Description=Проверка DHCP failover партнера каждые 2 минуты
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+Unit=dhcp-fallback.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# One-shot служба запускаемая таймером
+cat > /etc/systemd/system/dhcp-fallback.service <<'EOF'
+[Unit]
+Description=DHCP Fallback Check
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/dhcp-fallback.sh
+EOF
+```
+### Запуск созданного таймера проверки
+```bash
+systemctl \
+enable --now \
+dhcp-fallback.timer
+```
+```log
+Created symlink /etc/systemd/system/timers.target.wants/dhcp-fallback.timer → /etc/systemd/system/dhcp-fallback.timer.
 ```
 
+### проверка корректности конфига
+```bash
+dhcpd -t
+```
 
 <details>
-<summary>xxxx</summary>
+<summary>вывод о корректности конфигурации DHCP</summary>
 
-```bash
-
+```log
+Internet Systems Consortium DHCP Server 4.4.3-P1
+Copyright 2004-2022 Internet Systems Consortium.
+All rights reserved.
+For info, please visit https://www.isc.org/software/dhcp/
+Config file: /etc/dhcp/dhcpd.conf
+Database file: /state/dhcpd.leases
+PID file: /var/run/dhcpd.pid
 ```
 
 </details>
 
+### Перезапуск службы
+```bash
+systemctl \
+restart \
+dhcpd
+```
+```bash
+# вывод журнала службы
+journalctl -efu dhcpd
+```
+
+## Подключение хостов к домену
+### Выясняем ip адреса клиентов DHCP
+```bash
+# Вывод у dhcp сервера об аренде ip на примере у хоста altwks2
+ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.253 \
+'su -c \
+"grep -B10 altwks2 \
+/var/lib/dhcp/dhcpd/state/dhcpd.leases" \
+| grep lease'
+```
+
+<details>
+<summary>Ищим хост для ввода в домен</summary>
+
+```log
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+Password: 
+lease 192.168.100.51 {
+Connection to 192.168.100.253 closed
+```
+
+</details>
+
+### Подключение к найденому хосту
+```bash
+ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.51 \
+"su -"
+```
+
+<details>
+<summary>подключение с удаленного хоста</summary>
+
+```bash
+[shoel@shoellin adm]$ ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.51 \
+"su -"
+Warning: Permanently added '192.168.100.51' (ED25519) to the list of known hosts.
+sysadmin@192.168.100.51's password: 
+Password: 
+[root@altwks2 ~]# 
+```
+
+</details>
+
+### Проверка связи через внешние и локальные DNS
+```bash
+resolvconf -l
+```
+
+<details>
+<summary>вывод reolvconf</summary>
+
+```log
+# resolv.conf from NetworkManager
+# Generated by NetworkManager
+search den.skv
+nameserver 192.168.100.253
+nameserver 192.168.100.252
+
+# resolv.conf from ens19.dhcp
+# Generated by dhcpcd from ens19.dhcp
+domain den.skv
+search den.skv
+nameserver 192.168.100.253
+nameserver 192.168.100.252
+```
+
+</details>
+
+
+
+```bash
+ping pub.ru -c 2; \
+ping den.skv -c 2
+```
+
+<details>
+<summary>PING</summary>
+
+```log
+PING pub.ru (62.122.170.171) 56(84) bytes of data.
+64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=1 ttl=53 time=39.8 ms
+64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=2 ttl=53 time=40.1 ms
+
+--- pub.ru ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1002ms
+rtt min/avg/max/mdev = 39.844/39.983/40.122/0.139 ms
+PING den.skv (192.168.100.253) 56(84) bytes of data.
+64 bytes from 192.168.100.253 (192.168.100.253): icmp_seq=1 ttl=64 time=0.350 ms
+64 bytes from 192.168.100.253 (192.168.100.253): icmp_seq=2 ttl=64 time=0.465 ms
+
+--- den.skv ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.350/0.407/0.465/0.057 ms
+```
+
+</details>
+
+
+### Переименовываем имя хоста согласно FQDN имени домена
+```bash
+hostnamectl set-hostname \
+altwks2.den.skv
+```
+### Обновление системы и Установка пакетов для авторизации машины в Домен
+```bash
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get -y install \
+task-auth-ad-sssd
+```
+### проверяем синхронизацию под сервера времени Домена полученные по DHCP
+```bash
+# чистка конфига от комментариев
+sed -i \
+-e '/^[[:space:]]*#/d' \
+-e '/^[[:space:]]*$/d' \
+/etc/chrony.conf
+```
+```bash
+# вывод конфига клиента
+cat /etc/chrony.conf
+```
+
+<details>
+<summary>Конфиг клиента времени chrony</summary>
+
+```log
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+pool 192.168.100.1 iburst
+server 192.168.100.253
+server 192.168.100.252
+```
+
+</details>
+
+
+### Ввод в домен через командную строку 
+```bash
+# altwks2 имя вводимого хоста
+## smaba_u1 имеет права "Domain Admins"
+system-auth write ad \
+den.skv \
+altwks2 \
+den \
+'smaba_u1' \
+'1qaz@WSX'
+```
+```log
+Using short domain name -- DEN
+Joined 'ALTWKS2' to dns domain 'den.skv'
+Successfully registered hostname with DNS
+```
+### Проверка подсоединенного узла
+```bash
+net ads testjoin
+```
+```log
+Join is OK
+```
+```bash
+ls -lhd /etc/krb5*
+```
+
+<details>
+<summary>Соджержимое каталога с kerberos</summary>
+
+```log
+-rw-r--r-- 1 root root     538 Apr  3 19:51 /etc/krb5.conf
+drwxr-xr-x 2 root root    4.0K Apr  3 19:31 /etc/krb5.conf.d
+-rw-r----- 1 root _keytab 2.3K Apr  3 19:51 /etc/krb5.keytab
+```
+
+</details>
+
+```bash
+# чистка конфига от комментариев
+sed -i \
+-e '/^[[:space:]]*#/d' \
+-e '/^[[:space:]]*$/d' \
+/etc/krb5.conf
+
+cat /etc/krb5.conf
+```
+
+<details>
+<summary>Настройки клиентского kerberos в домене</summary>
+
+```ini
+includedir /etc/krb5.conf.d/
+[logging]
+[libdefaults]
+default_realm = DEN.SKV
+ dns_lookup_kdc = true
+ dns_lookup_realm = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+ rdns = false
+ default_ccache_name = KEYRING:persistent:%{uid}
+[realms]
+[domain_realm]
+```
+
+</details>
+
+```bash
+id smaba_u{1..3}
+```
+
+<details>
+<summary>Вывод информации о пользователях домена id</summary>
+
+```log
+uid=1048801103(smaba_u1) gid=1048800513(domain users) groups=1048800513(domain users),1048800512(domain admins),1048800572(denied rodc password replication group),1048801106(вымышленные_герои),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf),101(localadmins),10(wheel)
+uid=1048801104(smaba_u2) gid=1048800513(domain users) groups=1048800513(domain users),1048801106(вымышленные_герои),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf)
+uid=1048801105(smaba_u3) gid=1048800513(domain users) groups=1048800513(domain users),1048801106(вымышленные_герои),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf
+```
+
+</details>
+
+```bash
+getent passwd smaba_u{1..3}
+```
+
+<details>
+<summary>Вывод информации о пользователях домена passwd</summary>
+
+```log
+smaba_u1:*:1048801103:1048800513:Василий Иванович Чапаев:/home/DEN.SKV/smaba_u1:/bin/bash
+smaba_u2:*:1048801104:1048800513:Моледцев Владимир Александрович:/home/DEN.SKV/smaba_u2:/bin/bash
+smaba_u3:*:1048801105:1048800513:Колкин Павел Сергеевич:/home/DEN.SKV/smaba_u3:/bin/bash
+```
+
+</details>
+
+```bash
+# Проверка работы ролей на хосте введённого в домен
+control libnss-role
+```
+```log
+enabled
+```
+```bash
+# Вывод списка ролей хоста
+rolelst
+```
+
+<details>
+<summary>Список ролей после ввода в домен</summary>
+
+```log
+users:vmusers,usershares,cdwriter,cdrom,audio,video,proc,radio,camera,floppy,xgrp,scanner,uucp,vboxusers,fuse,vboxadd
+domain admins:localadmins
+domain users:users
+localadmins:wheel,vboxadd,vboxusers
+powerusers:remote,vboxadd,vboxusers
+vboxadd:vboxsf
+```
+
+</details>
+
+## Процедура перезагрузки хоста после ввода в домен
+```bash
+systemctl reboot
+```
+## Тестовый вход под учетной записью пользователя smaba_u1
+```bash
+ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+smaba_u1@192.168.100.50
+```
+
+<details>
+<summary>Лог входа</summary>
+
+```log
+smaba_u1@192.168.100.50's password: 
+Last login: Fri Apr  3 21:40:54 2026 from 192.168.100.1
+```
+
+</details>
+
+```bash
+pwd
+```
+```log
+/home/DEN.SKV/smaba_u1
+```
+```bash
+id
+```
+
+<details>
+<summary>Вывод информации о текущем пользователе</summary>
+
+```log
+uid=1048801103(smaba_u1) gid=1048800513(domain users) группы=1048800513(domain users),10(wheel),14(uucp),19(proc),22(cdrom),36(vmusers),71(floppy),80(cdwriter),81(audio),83(radio),100(users),101(localadmins),450(usershares),471(camera),476(vboxusers),478(fuse),481(video),491(vboxsf),492(vboxadd),498(xgrp),499(scanner),1048800512(domain admins),1048800572(denied rodc password replication group),1048801106(вымышленные_герои)
+```
+
+</details>
 
 ### Для github и gitflic
 ```bash
@@ -2058,7 +2696,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd1]ДЛЯ ВКР AD SAMBA_INTERNAL DHCP" \
+git commit -am "[upd2]ДЛЯ ВКР AD SAMBA_INTERNAL DHCP" \
 && git push \
 --set-upstream \
 altlinux \
