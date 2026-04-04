@@ -81,13 +81,7 @@ sysadmin@192.168.100.12 \
 <summary>Успешность проброса</summary>
 
 ```log
-** WARNING: connection is not using a post-quantum key exchange algorithm.
-** This session may be vulnerable to "store now, decrypt later" attacks.
-** The server may need to be upgraded. See https://openssh.com/pq.html
 Warning: Permanently added '192.168.100.12' (ED25519) to the list of known hosts.
-** WARNING: connection is not using a post-quantum key exchange algorithm.
-** This session may be vulnerable to "store now, decrypt later" attacks.
-** The server may need to be upgraded. See https://openssh.com/pq.html
 sysadmin@192.168.100.12's password: 
 ```
 
@@ -158,6 +152,26 @@ search den.skv
 </details>
 
 ```bash
+# Отключение IPV6
+echo "net.ipv6.conf.all.disable_ipv6 = 1" \
+| tee -a  /etc/sysctl.conf \
+&& sysctl -p
+```
+```log
+net.ipv6.conf.all.disable_ipv6 = 1
+```
+```bash
+# Вывод о состоянии настроек ядра с IPV6
+sysctl -a \
+| grep "disable_ipv6"
+```
+```log
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.ens19.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+```
+```bash
 # Выключение и включения интерфейса  с сеть для сброса и перезапуск службы для запуска мостового
 ifdown ens19 \
 ; ifup ens19 \
@@ -170,7 +184,6 @@ ifdown ens19 \
 3. Затем нажмать **`.`** (точка).
 
 ```bash
-
 # Вход на altsrv2 по новому Ip
 ssh -t \
 -i ~/.ssh/id_skv_VKR_vpn \
@@ -209,91 +222,6 @@ rtt min/avg/max/mdev = 13.781/13.818/13.856/0.037 ms
 
 </details>
 
-## Установка Сервера DHCP
-```bash
-# обновление системы и установка dhcp
-apt-get update \
-&& update-kernel -y \
-&& apt-get dist-upgrade -y \
-&& apt-get install -y \
-dhcp-server
-```
-## Базовый конфиг DHCP
-```bash
-cat > /etc/dhcp/dhcpd.conf <<'EOF'
-ddns-update-style none;
-
-subnet 192.168.100.0 netmask 255.255.255.0 {
-        option routers                  192.168.100.1;
-        option subnet-mask              255.255.255.0;
-
-        option nis-domain               "den.skv";
-        option domain-name              "den.skv";
-        option domain-name-servers      77.88.8.8, 77.88.8.1;
-
-        range dynamic-bootp 192.168.100.50 192.168.100.254;
-        default-lease-time 172800;
-        max-lease-time 259200;
-}
-
-host altsrv1.den.skv {
-  hardware ethernet ee:a8:71:80:72:45;
-  fixed-address 192.168.100.254;
-}
-
-host altsrv2.den.skv {
-  hardware ethernet 36:dd:7b:0c:81:2d;
-  fixed-address 192.168.100.253;
-}
-
-host altsrv3.den.skv {
-  hardware ethernet ae:49:e7:f8:62:2d;
-  fixed-address 192.168.100.252;
-}
-
-host altsrv4.den.skv {
-  hardware ethernet ce:94:fd:b4:54:40;
-  fixed-address 192.168.100.251;
-}
-EOF
-```
-## Запуск DHCP с базовой настройкой
-```bash
-# проверка конфига
-dhcpd -t
-```
-
-<details>
-<summary>Вывод рабочего конфига</summary>
-
-```log
-Internet Systems Consortium DHCP Server 4.4.3-P1
-Copyright 2004-2022 Internet Systems Consortium.
-All rights reserved.
-For info, please visit https://www.isc.org/software/dhcp/
-Config file: /etc/dhcp/dhcpd.conf
-Database file: /state/dhcpd.leases
-PID file: /var/run/dhcpd.pid
-```
-
-</details>
-
-```bash
-# ЗАпуск службы
-systemctl \
-enable \
---now dhcpd
-
-# Вывод состояние службы
-systemctl \
-status \
-dhcpd \
-| grep Active
-```
-```log
-Active: active (running) since Thu 2026-04-02 22:36:36 MSK; 4s ago
-```
-
 ## Подготовка и Установка необходимых пакетов для SAMBA-DC
 ```bash
 # Если присутствую останавливаем конфликтующие службы
@@ -307,6 +235,8 @@ dnsmasq
 
 # Устанавливаем пакеты для SAMBA-DC и графическое управление его настройками
 apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
 && apt-get install -y \
 alterator-net-domain \
 task-samba-dc \
@@ -350,6 +280,11 @@ mkdir: created directory '/var/lib/samba/sysvol'
 # при использовании открытых SMB ресурсов sysvol и netlogon на контроллере домена
 samba-tool domain provision \
 --realm=den.skv \
+--option="dns forwarder=77.88.8.8" \
+--option="interfaces= lo ens19" \
+--option="bind interfaces only=yes" \
+--option="dns zone scavenging=yes" \
+--option="allow dns updates=secure only" \
 --domain den \
 --server-role=dc \
 --dns-backend=SAMBA_INTERNAL \
@@ -362,46 +297,46 @@ samba-tool domain provision \
 
 ```log
 WARNING: Using passwords on command line is insecure. Installing the setproctitle python module will hide these from shortly after program start.
-INFO 2026-04-02 21:34:49,206 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2128: Looking up IPv4 addresses
-INFO 2026-04-02 21:34:49,207 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2145: Looking up IPv6 addresses
-WARNING 2026-04-02 21:34:49,207 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2152: No IPv6 address will be assigned
-INFO 2026-04-02 21:34:49,650 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2318: Setting up share.ldb
-INFO 2026-04-02 21:34:49,748 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2322: Setting up secrets.ldb
-INFO 2026-04-02 21:34:49,822 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2327: Setting up the registry
-INFO 2026-04-02 21:34:50,038 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2330: Setting up the privileges database
-INFO 2026-04-02 21:34:50,160 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2333: Setting up idmap db
-INFO 2026-04-02 21:34:50,254 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2340: Setting up SAM db
-INFO 2026-04-02 21:34:50,285 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #886: Setting up sam.ldb partitions and settings
-INFO 2026-04-02 21:34:50,286 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #898: Setting up sam.ldb rootDSE
-INFO 2026-04-02 21:34:50,305 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1320: Pre-loading the Samba 4 and AD schema
+INFO 2026-04-04 20:15:56,017 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2128: Looking up IPv4 addresses
+INFO 2026-04-04 20:15:56,018 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2145: Looking up IPv6 addresses
+WARNING 2026-04-04 20:15:56,018 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2152: No IPv6 address will be assigned
+INFO 2026-04-04 20:15:56,597 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2318: Setting up share.ldb
+INFO 2026-04-04 20:15:56,705 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2322: Setting up secrets.ldb
+INFO 2026-04-04 20:15:56,769 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2327: Setting up the registry
+INFO 2026-04-04 20:15:56,972 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2330: Setting up the privileges database
+INFO 2026-04-04 20:15:57,092 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2333: Setting up idmap db
+INFO 2026-04-04 20:15:57,172 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2340: Setting up SAM db
+INFO 2026-04-04 20:15:57,202 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #886: Setting up sam.ldb partitions and settings
+INFO 2026-04-04 20:15:57,205 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #898: Setting up sam.ldb rootDSE
+INFO 2026-04-04 20:15:57,233 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1320: Pre-loading the Samba 4 and AD schema
 Unable to determine the DomainSID, can not enforce uniqueness constraint on local domainSIDs
 
-INFO 2026-04-02 21:34:50,383 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1399: Adding DomainDN: DC=den,DC=skv
-INFO 2026-04-02 21:34:50,431 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1431: Adding configuration container
-INFO 2026-04-02 21:34:50,477 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1446: Setting up sam.ldb schema
-INFO 2026-04-02 21:34:52,696 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1466: Setting up sam.ldb configuration data
-INFO 2026-04-02 21:34:52,849 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1508: Setting up display specifiers
-INFO 2026-04-02 21:34:54,210 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1516: Modifying display specifiers and extended rights
-INFO 2026-04-02 21:34:54,247 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1523: Adding users container
-INFO 2026-04-02 21:34:54,248 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1529: Modifying users container
-INFO 2026-04-02 21:34:54,249 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1532: Adding computers container
-INFO 2026-04-02 21:34:54,250 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1538: Modifying computers container
-INFO 2026-04-02 21:34:54,251 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1542: Setting up sam.ldb data
-INFO 2026-04-02 21:34:54,379 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1573: Setting up well known security principals
-INFO 2026-04-02 21:34:54,406 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1587: Setting up sam.ldb users and groups
-INFO 2026-04-02 21:34:54,518 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1595: Setting up self join
-Repacking database from v1 to v2 format (first record CN=ms-WMI-int8Max,CN=Schema,CN=Configuration,DC=den,DC=skv)
+INFO 2026-04-04 20:15:57,327 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1399: Adding DomainDN: DC=den,DC=skv
+INFO 2026-04-04 20:15:57,372 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1431: Adding configuration container
+INFO 2026-04-04 20:15:57,421 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1446: Setting up sam.ldb schema
+INFO 2026-04-04 20:15:59,662 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1466: Setting up sam.ldb configuration data
+INFO 2026-04-04 20:15:59,846 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1508: Setting up display specifiers
+INFO 2026-04-04 20:16:01,165 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1516: Modifying display specifiers and extended rights
+INFO 2026-04-04 20:16:01,200 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1523: Adding users container
+INFO 2026-04-04 20:16:01,202 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1529: Modifying users container
+INFO 2026-04-04 20:16:01,204 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1532: Adding computers container
+INFO 2026-04-04 20:16:01,206 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1538: Modifying computers container
+INFO 2026-04-04 20:16:01,207 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1542: Setting up sam.ldb data
+INFO 2026-04-04 20:16:01,339 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1573: Setting up well known security principals
+INFO 2026-04-04 20:16:01,370 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1587: Setting up sam.ldb users and groups
+INFO 2026-04-04 20:16:01,492 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #1595: Setting up self join
+Repacking database from v1 to v2 format (first record CN=Foreign-Identifier,CN=Schema,CN=Configuration,DC=den,DC=skv)
 Repack: re-packed 10000 records so far
-Repacking database from v1 to v2 format (first record CN=nTDSDSA-Display,CN=405,CN=DisplaySpecifiers,CN=Configuration,DC=den,DC=skv)
-Repacking database from v1 to v2 format (first record CN=6bcd5681-8314-11d6-977b-00c04f613221,CN=Operations,CN=DomainUpdates,CN=System,DC=den,DC=skv)
-INFO 2026-04-02 21:34:56,339 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/sambadns.py #1202: Adding DNS accounts
-INFO 2026-04-02 21:34:56,394 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/sambadns.py #1236: Creating CN=MicrosoftDNS,CN=System,DC=den,DC=skv
-INFO 2026-04-02 21:34:56,422 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/sambadns.py #1249: Creating DomainDnsZones and ForestDnsZones partitions
-INFO 2026-04-02 21:34:56,556 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/sambadns.py #1254: Populating DomainDnsZones and ForestDnsZones partitions
-Repacking database from v1 to v2 format (first record DC=_kerberos._tcp,DC=den.skv,CN=MicrosoftDNS,DC=DomainDnsZones,DC=den,DC=skv)
-Repacking database from v1 to v2 format (first record DC=_ldap._tcp.gc,DC=_msdcs.den.skv,CN=MicrosoftDNS,DC=ForestDnsZones,DC=den,DC=skv)
-INFO 2026-04-02 21:34:56,966 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2032: Setting up sam.ldb rootDSE marking as synchronized
-INFO 2026-04-02 21:34:56,977 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2037: Fixing provision GUIDs
+Repacking database from v1 to v2 format (first record CN=nTFRSSettings-Display,CN=415,CN=DisplaySpecifiers,CN=Configuration,DC=den,DC=skv)
+Repacking database from v1 to v2 format (first record CN=6bcd5689-8314-11d6-977b-00c04f613221,CN=Operations,CN=DomainUpdates,CN=System,DC=den,DC=skv)
+INFO 2026-04-04 20:16:03,252 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/sambadns.py #1202: Adding DNS accounts
+INFO 2026-04-04 20:16:03,302 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/sambadns.py #1236: Creating CN=MicrosoftDNS,CN=System,DC=den,DC=skv
+INFO 2026-04-04 20:16:03,332 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/sambadns.py #1249: Creating DomainDnsZones and ForestDnsZones partitions
+INFO 2026-04-04 20:16:03,476 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/sambadns.py #1254: Populating DomainDnsZones and ForestDnsZones partitions
+Repacking database from v1 to v2 format (first record DC=e.root-servers.net,DC=RootDNSServers,CN=MicrosoftDNS,DC=DomainDnsZones,DC=den,DC=skv)
+Repacking database from v1 to v2 format (first record CN=Deleted Objects,DC=ForestDnsZones,DC=den,DC=skv)
+INFO 2026-04-04 20:16:03,985 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2032: Setting up sam.ldb rootDSE marking as synchronized
+INFO 2026-04-04 20:16:03,996 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2037: Fixing provision GUIDs
 Temporarily overriding 'dsdb:schema update allowed' setting
 Applied Forest Update 11: 27a03717-5963-48fc-ba6f-69faa33e70ed
 Applied Forest Update 54: 134428a8-0043-48a6-bcda-63310d9ec4dd
@@ -483,18 +418,72 @@ Applied Domain Update 86: 3a6b3fbf-3168-4312-a10d-dd5b3393952d
 Applied Domain Update 87: 7f950403-0ab3-47f9-9730-5d7b0269f9bd
 Applied Domain Update 88: 434bb40d-dbc9-4fe7-81d4-d57229f7b080
 Applied Domain Update 89: a0c238ba-9e30-4ee6-80a6-43f731e9a5cd
-INFO 2026-04-02 21:34:59,365 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2432: A Kerberos configuration suitable for Samba AD has been generated at /var/lib/samba/private/krb5.conf
-INFO 2026-04-02 21:34:59,366 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2434: Merge the contents of this file with your system krb5.conf or replace it with this one. Do not create a symlink!
-INFO 2026-04-02 21:34:59,553 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2102: Setting up fake yp server settings
-INFO 2026-04-02 21:34:59,707 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #493: Once the above files are installed, your Samba AD server will be ready to use
-INFO 2026-04-02 21:34:59,708 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #498: Server Role:           active directory domain controller
-INFO 2026-04-02 21:34:59,708 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #499: Hostname:              altsrv2
-INFO 2026-04-02 21:34:59,708 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #500: NetBIOS Domain:        DEN
-INFO 2026-04-02 21:34:59,708 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #501: DNS Domain:            den.skv
-INFO 2026-04-02 21:34:59,708 pid:4944 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #502: DOMAIN SID:            S-1-5-21-1480690032-1578806245-2070519350
+INFO 2026-04-04 20:16:06,197 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2432: A Kerberos configuration suitable for Samba AD has been generated at /var/lib/samba/private/krb5.conf
+INFO 2026-04-04 20:16:06,198 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2434: Merge the contents of this file with your system krb5.conf or replace it with this one. Do not create a symlink!
+INFO 2026-04-04 20:16:06,379 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #2102: Setting up fake yp server settings
+INFO 2026-04-04 20:16:06,523 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #493: Once the above files are installed, your Samba AD server will be ready to use
+INFO 2026-04-04 20:16:06,523 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #498: Server Role:           active directory domain controller
+INFO 2026-04-04 20:16:06,523 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #499: Hostname:              altsrv2
+INFO 2026-04-04 20:16:06,523 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #500: NetBIOS Domain:        DEN
+INFO 2026-04-04 20:16:06,523 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #501: DNS Domain:            den.skv
+INFO 2026-04-04 20:16:06,524 pid:3256 /usr/lib64/samba-dc/python3.9/samba/provision/__init__.py #502: DOMAIN SID:            S-1-5-21-3844159431-4187069331-1753675981
 ```
 
 </details>
+
+```bash
+cat /etc/samba/smb.conf
+```
+
+<details>
+<summary>Вывод получившихся настроек SAMBA DC</summary>
+
+```ini
+# Global parameters
+[global]
+        allow dns updates = secure only
+        bind interfaces only = Yes
+        dns forwarder = 77.88.8.8
+        dns zone scavenging = Yes
+        interfaces = lo ens19
+        netbios name = ALTSRV2
+        realm = DEN.SKV
+        server role = active directory domain controller
+        workgroup = DEN
+        idmap_ldb:use rfc2307 = yes
+
+[sysvol]
+        path = /var/lib/samba/sysvol
+        read only = No
+
+[netlogon]
+        path = /var/lib/samba/sysvol/den.skv/scripts
+        read only = No
+```
+
+</details>
+
+## Запуск/автозапуск служб Домена
+```bash
+systemctl enable \
+--now samba
+```
+
+### Выставляем очистку с интервалом обновления 30 дней
+```bash
+# --refreshinterval выставляем в часах
+samba-tool dns \
+zoneoptions \
+altsrv2.den.skv \
+den.skv \
+--aging=1 \
+--refreshinterval=720 \
+-U administrator
+```
+```log
+Set Aging to 1
+Set RefreshInterval to 720
+```
 
 ### Создание обратной(PTR) зоны для всей сети `192.168.100.0/24`
 ```bash
@@ -507,7 +496,19 @@ altsrv2.den.skv \
 ```log
 Zone 100.168.192.in-addr.arpa created successfully
 ```
-
+### Добавление записи типа PTR для обратной зоны 192.168.0.0/24 самого домен контролера
+```bash
+samba-tool dns \
+add \
+altsrv2.den.skv \
+100.168.192.in-addr.arpa \
+253 PTR \
+altsrv2.den.skv \
+-U administrator
+```
+```log
+Record added successfully
+```
 ### Вывод информации о созданной зоне
 ```bash
 samba-tool dns \
@@ -561,82 +562,11 @@ Password for [DEN\administrator]:
 
 </details>
 
-## Донастройка домен-контролера
 ```bash
-# Используемый интерфейс
-ip -br a \
-| awk '/253/ {print $1}'
-```
-```log
-ens19
-```
-```bash
-# Указание прослушивания только интерфейса локальной сети
-sed -i '/7 = yes/r /dev/stdin' /etc/samba/smb.conf << "EOF"
-        bind interfaces only = yes
-        interfaces = lo ens19
-EOF
-```
-### Включение очистки с интервалом обновления 30 дней
-#### Включение функции очистки старых DNS записей
-```bash
-sed -i '/forwarder/a\        dns zone scavenging = yes' \
-/etc/samba/smb.conf
-```
-#### Выставляем очистку с интервалом обновления 30 дней
-```bash
-# --refreshinterval выставляем в часах
-samba-tool dns \
-zoneoptions \
-altsrv2.den.skv \
-den.skv \
---aging=1 \
---refreshinterval=720 \
--U administrator
-```
-```log
-Set Aging to 1
-Set RefreshInterval to 720
-```
-```bash
-cat /etc/samba/smb.conf
-```
-
-<details>
-<summary>Вывод получившихся настроек SAMBA DC</summary>
-
-```ini
-# Global parameters
-[global]
-        dns forwarder = 77.88.8.8
-        dns zone scavenging = yes
-        netbios name = ALTSRV2
-        realm = DEN.SKV
-        server role = active directory domain controller
-        workgroup = DEN
-        idmap_ldb:use rfc2307 = yes
-        bind interfaces only = yes
-        interfaces = lo ens19
-
-[sysvol]
-        path = /var/lib/samba/sysvol
-        read only = No
-
-[netlogon]
-        path = /var/lib/samba/sysvol/den.skv/scripts
-        read only = No
-```
-
-</details>
-
-## Запуск/автозапуск служб Домена
-```bash
-systemctl enable \
---now samba
-
 # Заменяем ip внешних DNS на самого себя после запуска служб Домена
 cat > /etc/net/ifaces/ens19/resolv.conf<<'EOF'
 nameserver 127.0.0.1
+nameserver 192.168.100.252
 search den.skv
 EOF
 
@@ -654,13 +584,6 @@ network
 ifdown ens19 \
 ; ifup ens19
 ```
-```log
-dhcpcd-10.2.2 starting
-ens19: rebinding lease of 192.168.100.253
-ens19: leased 192.168.100.253 for 172800 seconds
-ens19: adding route to 192.168.100.0/24
-ens19: adding default route via 192.168.100.1
-```
 ```bash
 # проверка работы через кеширующий DNS
 cat /etc/resolv.conf
@@ -672,45 +595,18 @@ cat /etc/resolv.conf
 domain den.skv
 nameserver 127.0.0.1
 ```
-## Обновление DHCP настроек
-```bash
-# Для сервиса DHCP поменяем внешние DNS на локальные
-sed -i 's/77.88.8.8, 77.88.8.1/192.168.100.253, 192.168.100.252/' \
-/etc/dhcp/dhcpd.conf
-
-# проверка конфига
-dhcpd -t
-```
-
-<details>
-<summary>Вывод о работоспособности конфига</summary>
-
-```log
-Internet Systems Consortium DHCP Server 4.4.3-P1
-Copyright 2004-2022 Internet Systems Consortium.
-All rights reserved.
-For info, please visit https://www.isc.org/software/dhcp/
-Config file: /etc/dhcp/dhcpd.conf
-Database file: /state/dhcpd.leases
-PID file: /var/run/dhcpd.pid
-```
-
-</details>
-
-```bash
-# Перезапуск службы
-systemctl \
-restart \
-dhcpd
-```
-
 ## Проверка поднятого домена
 ```bash
+# Перезапуск
+systemctl \
+restart \
+samba
+
+# Проверка статуса
 systemctl \
 status \
 samba
 ```
-
 
 <details>
 <summary>ВЫВОД СОСТОЯНИЯ ДОМЕН-КОНТРОЛЕРА</summary>
@@ -718,86 +614,85 @@ samba
 ```log
 ● samba.service - Samba AD Daemon
      Loaded: loaded (/lib/systemd/system/samba.service; enabled; vendor preset: disabled)
-     Active: active (running) since Thu 2026-04-02 22:46:05 MSK; 10min ago
+     Active: active (running) since Sat 2026-04-04 20:28:19 MSK; 19s ago
        Docs: man:samba(8)
              man:samba(7)
              man:smb.conf(5)
-   Main PID: 4993 (samba)
+   Main PID: 4601 (samba)
      Status: "samba: ready to serve connections..."
-      Tasks: 59 (limit: 4680)
-     Memory: 180.8M
-        CPU: 10.223s
+      Tasks: 58 (limit: 4680)
+     Memory: 179.2M
+        CPU: 6.280s
      CGroup: /system.slice/samba.service
-             ├─ 4993 /usr/sbin/samba --foreground --no-process-group
-             ├─ 4994 /usr/sbin/samba --foreground --no-process-group
-             ├─ 4995 /usr/sbin/samba --foreground --no-process-group
-             ├─ 4996 /usr/sbin/samba --foreground --no-process-group
-             ├─ 4997 /usr/sbin/samba --foreground --no-process-group
-             ├─ 4998 /usr/sbin/samba --foreground --no-process-group
-             ├─ 4999 /usr/sbin/smbd -D "--option=server role check:inhibit=yes" --foreground ""
-             ├─ 5000 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5001 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5002 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5003 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5004 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5005 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5006 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5007 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5008 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5009 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5010 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5011 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5012 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5013 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5014 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5015 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5016 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5017 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5018 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5019 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5020 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5021 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5022 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5023 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5024 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5025 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5026 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5027 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5028 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5029 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5030 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5031 /usr/sbin/winbindd -D "--option=server role check:inhibit=yes" --foreground ""
-             ├─ 5033 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5034 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5035 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5036 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5037 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5038 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5039 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5040 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5046 /usr/sbin/smbd -D "--option=server role check:inhibit=yes" --foreground ""
-             ├─ 5047 /usr/sbin/smbd -D "--option=server role check:inhibit=yes" --foreground ""
-             ├─ 5048 /usr/sbin/winbindd -D "--option=server role check:inhibit=yes" --foreground ""
-             ├─ 5049 /usr/sbin/winbindd -D "--option=server role check:inhibit=yes" --foreground ""
-             ├─ 5050 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5051 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5052 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5053 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5054 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5055 /usr/sbin/samba --foreground --no-process-group
-             ├─ 5056 /usr/sbin/samba --foreground --no-process-group
-             └─ 5057 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4601 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4603 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4604 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4605 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4606 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4607 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4608 /usr/sbin/smbd -D "--option=server role check:inhibit=yes" --foreground ""
+             ├─ 4609 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4610 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4611 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4612 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4613 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4614 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4615 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4616 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4617 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4618 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4619 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4620 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4621 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4622 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4623 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4624 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4625 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4626 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4627 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4628 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4629 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4630 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4631 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4632 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4633 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4634 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4635 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4636 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4637 /usr/sbin/winbindd -D "--option=server role check:inhibit=yes" --foreground ""
+             ├─ 4638 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4639 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4640 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4641 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4642 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4643 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4644 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4645 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4647 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4648 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4649 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4655 /usr/sbin/smbd -D "--option=server role check:inhibit=yes" --foreground ""
+             ├─ 4656 /usr/sbin/smbd -D "--option=server role check:inhibit=yes" --foreground ""
+             ├─ 4657 /usr/sbin/winbindd -D "--option=server role check:inhibit=yes" --foreground ""
+             ├─ 4658 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4659 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4660 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4661 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4662 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4663 /usr/sbin/samba --foreground --no-process-group
+             ├─ 4664 /usr/sbin/samba --foreground --no-process-group
+             └─ 4665 /usr/sbin/samba --foreground --no-process-group
 
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]: [2026/04/02 22:46:09.766332,  0] ../../lib/util/util_runcmd.c:355(samba_runcmd_io_handler)
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]:   /usr/sbin/samba_dnsupdate: ERROR(runtime): Record already exists; record could not be added. >
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]: [2026/04/02 22:46:09.828900,  0] ../../lib/util/util_runcmd.c:355(samba_runcmd_io_handler)
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]:   /usr/sbin/samba_dnsupdate: ERROR(runtime): Record already exists; record could not be added. >
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]: [2026/04/02 22:46:09.887496,  0] ../../lib/util/util_runcmd.c:355(samba_runcmd_io_handler)
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]:   /usr/sbin/samba_dnsupdate: ERROR(runtime): Record already exists; record could not be added. >
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]: [2026/04/02 22:46:09.943725,  0] ../../lib/util/util_runcmd.c:355(samba_runcmd_io_handler)
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]:   /usr/sbin/samba_dnsupdate: ERROR(runtime): Record already exists; record could not be added. >
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]: [2026/04/02 22:46:09.998434,  0] ../../source4/dsdb/dns/dns_update.c:85(dnsupdate_nameupdate_do>
-Apr 02 22:46:09 altsrv2.den.skv samba[5038]:   dnsupdate_nameupdate_done: Failed DNS update with exit code 29
+Apr 04 20:28:19 altsrv2.den.skv samba[4601]:   Copyright Andrew Tridgell and the Samba Team 1992-2023
+Apr 04 20:28:19 altsrv2.den.skv samba[4601]: [2026/04/04 20:28:19.552871,  0] ../../lib/util/become_daemon>
+Apr 04 20:28:19 altsrv2.den.skv samba[4601]:   daemon 'samba' : Starting process...
+Apr 04 20:28:19 altsrv2.den.skv smbd[4608]: [2026/04/04 20:28:19.874803,  0] ../../source3/smbd/server.c:1>
+Apr 04 20:28:19 altsrv2.den.skv smbd[4608]:   smbd version 4.19.9-alt9 started.
+Apr 04 20:28:19 altsrv2.den.skv smbd[4608]:   Copyright Andrew Tridgell and the Samba Team 1992-2023
+Apr 04 20:28:19 altsrv2.den.skv systemd[1]: Started Samba AD Daemon.
+Apr 04 20:28:19 altsrv2.den.skv winbindd[4637]: [2026/04/04 20:28:19.916611,  0] ../../source3/winbindd/wi>
+Apr 04 20:28:19 altsrv2.den.skv winbindd[4637]:   winbindd version 4.19.9-alt9 started.
+Apr 04 20:28:19 altsrv2.den.skv winbindd[4637]:   Copyright Andrew Tridgell and the Samba Team 1992-2023
 ```
 </details>
 
@@ -811,7 +706,7 @@ info \
 <details>
 <summary>ВЫВОД БАЗОВОЙ ИНФОРМАЦИИ О ДОМЕН-КОНТРОЛЕРЕ</summary>
 
-```
+```log
 Forest           : den.skv
 Domain           : den.skv
 Netbios domain   : DEN
@@ -831,18 +726,18 @@ cat /etc/samba/smb.conf
 <summary>ВЫВОД получившихся настроек SAMBA DC</summary>
 
 ```ini
-</details>
 # Global parameters
 [global]
+        allow dns updates = secure only
+        bind interfaces only = Yes
         dns forwarder = 77.88.8.8
-        dns zone scavenging = yes
+        dns zone scavenging = Yes
+        interfaces = lo ens19
         netbios name = ALTSRV2
         realm = DEN.SKV
         server role = active directory domain controller
         workgroup = DEN
         idmap_ldb:use rfc2307 = yes
-        bind interfaces only = yes
-        interfaces = lo ens19
 
 [sysvol]
         path = /var/lib/samba/sysvol
@@ -852,6 +747,7 @@ cat /etc/samba/smb.conf
         path = /var/lib/samba/sysvol/den.skv/scripts
         read only = No
 ```
+
 </details>
 
 ```bash
@@ -863,7 +759,7 @@ smbclient -L localhost \
 <details>
 <summary>Доступные сетевые папки домен-контролера</summary>
 
-```bash
+```log
 Password for [DEN\Administrator]:
 
         Sharename       Type      Comment
@@ -887,6 +783,7 @@ resolvconf -l
 ```log
 # resolv.conf from ens19
 nameserver 127.0.0.1
+nameserver 192.168.100.252
 search den.skv
 ```
 
@@ -903,11 +800,11 @@ ping pub.ru -c 2
 ```log
 PING pub.ru (62.122.170.171) 56(84) bytes of data.
 64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=1 ttl=53 time=40.1 ms
-64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=2 ttl=53 time=40.3 ms
+64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=2 ttl=53 time=40.2 ms
 
 --- pub.ru ping statistics ---
-2 packets transmitted, 2 received, 0% packet loss, time 1002ms
-rtt min/avg/max/mdev = 40.117/40.214/40.312/0.097 ms
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 40.070/40.124/40.178/0.054 ms
 ```
 
 </details>
@@ -927,6 +824,15 @@ host altsrv2.den.skv
 ```log
 altsrv2.den.skv has address 192.168.100.253
 ```
+
+```bash
+# Резолв хоста по PTR записи
+host 192.168.100.253
+```
+```log
+253.100.168.192.in-addr.arpa domain name pointer altsrv2.den.skv.
+```
+
 ```bash
 # Резолв DNS-сервер записи домена
 host -t NS den.skv
@@ -989,11 +895,14 @@ kdestroy
 ```
 ```bash
 # Получение белета kerberos
-kinit Administrator
+kinit -V Administrator
 ```
 ```log
+Using default cache: /tmp/krb5cc_500
+Using principal: Administrator@DEN.SKV
 Password for Administrator@DEN.SKV: 
-Warning: Your password will expire in 41 days on Thu May 14 22:45:25 2026
+Warning: Your password will expire in 41 days on Sat May 16 20:16:01 2026
+Authenticated to Kerberos v5
 ```
 ```bash
 # Проверка получения белета
@@ -1008,8 +917,8 @@ Ticket cache: FILE:/tmp/krb5cc_500
 Default principal: Administrator@DEN.SKV
 
 Valid starting     Expires            Service principal
-04/02/26 23:24:31  04/03/26 09:24:31  krbtgt/DEN.SKV@DEN.SKV
-        renew until 04/03/26 23:24:27
+04/04/26 20:38:54  04/05/26 06:38:54  krbtgt/DEN.SKV@DEN.SKV
+        renew until 04/05/26 20:38:50
 ```
 
 </details>
@@ -1058,23 +967,22 @@ chrony-wait.service
 chronyc tracking
 ```
 
-
 <details>
 <summary>Вывод текущего отслеживания времени</summary>
 
 ```log
 Reference ID    : 596DFB17 (ntp3.vniiftri.ru)
 Stratum         : 2
-Ref time (UTC)  : Fri Apr 03 08:44:17 2026
-System time     : 0.000140978 seconds slow of NTP time
-Last offset     : -0.000155140 seconds
-RMS offset      : 0.002252836 seconds
-Frequency       : 18.016 ppm slow
-Residual freq   : -0.067 ppm
-Skew            : 4.530 ppm
-Root delay      : 0.014275064 seconds
-Root dispersion : 0.000138944 seconds
-Update interval : 64.6 seconds
+Ref time (UTC)  : Sat Apr 04 17:40:24 2026
+System time     : 0.000011905 seconds fast of NTP time
+Last offset     : +0.000015026 seconds
+RMS offset      : 0.000015026 seconds
+Frequency       : 59.973 ppm slow
+Residual freq   : +0.114 ppm
+Skew            : 284.308 ppm
+Root delay      : 0.014225077 seconds
+Root dispersion : 0.000780643 seconds
+Update interval : 2.0 seconds
 Leap status     : Normal
 ```
 
@@ -1088,7 +996,7 @@ chronyc sources -v
 <summary>Состояние синхронизации с источниками</summary>
 
 ```log
-  .-- Source mode  '^' = server, '=' = peer, '#' = local clock.
+.-- Source mode  '^' = server, '=' = peer, '#' = local clock.
  / .- Source state '*' = current best, '+' = combined, '-' = not combined,
 | /             'x' = may be in error, '~' = too variable, '?' = unusable.
 ||                                                 .- xxxx [ yyyy ] +/- zzzz
@@ -1098,7 +1006,7 @@ chronyc sources -v
 ||                                 |    |           \
 MS Name/IP address         Stratum Poll Reach LastRx Last sample               
 ===============================================================================
-^* ntp3.vniiftri.ru              1   6   377    50   -197us[ -282us] +/- 7579us
+^* ntp3.vniiftri.ru              1   6    17    21    +80us[  +95us] +/- 7125us
 ```
 
 </details>
@@ -1173,12 +1081,12 @@ samba-tool user \
 list
 ```
 ```log
-smaba_u3
+Administrator
 Guest
-smaba_u1
 smaba_u2
 krbtgt
-Administrator
+smaba_u3
+smaba_u1
 ```
 ```bash
 # Подробный просмотр пользователя LDAP 
@@ -1199,12 +1107,12 @@ objectClass: user
 cn: Моледцев Владимир Александрович
 givenName: Моледцев Владимир Александрович
 instanceType: 4
-whenCreated: 20260403085428.0Z
-whenChanged: 20260403085428.0Z
+whenCreated: 20260404174215.0Z
+whenChanged: 20260404174215.0Z
 displayName: Моледцев Владимир Александрович
-uSNCreated: 4281
+uSNCreated: 4316
 name: Моледцев Владимир Александрович
-objectGUID: 4c7413ca-ca4a-4a1f-8f27-9383d87fdfde
+objectGUID: e04e5496-2c64-4fe0-8fce-334a4c0dbf61
 badPwdCount: 0
 codePage: 0
 countryCode: 0
@@ -1212,7 +1120,7 @@ badPasswordTime: 0
 lastLogoff: 0
 lastLogon: 0
 primaryGroupID: 513
-objectSid: S-1-5-21-4113027746-331116429-4112936127-1104
+objectSid: S-1-5-21-3844159431-4187069331-1753675981-1104
 accountExpires: 9223372036854775807
 logonCount: 0
 sAMAccountName: smaba_u2
@@ -1220,9 +1128,9 @@ sAMAccountType: 805306368
 userPrincipalName: smaba_u2@den.skv
 objectCategory: CN=Person,CN=Schema,CN=Configuration,DC=den,DC=skv
 mail: syn_polka@den.skv
-pwdLastSet: 134196800686232510
+pwdLastSet: 134197981357863030
 userAccountControl: 512
-uSNChanged: 4283
+uSNChanged: 4318
 distinguishedName: CN=Моледцев Владимир Александрович,CN=Users,DC=den,DC=skv
 ```
 
@@ -1261,45 +1169,45 @@ list
 <summary>Список групп домена</summary>
 
 ```log
-Protected Users
+Domain Controllers
+Read-only Domain Controllers
+Pre-Windows 2000 Compatible Access
 Account Operators
 Distributed COM Users
-Replicator
-Remote Desktop Users
-Terminal Server License Servers
-Read-only Domain Controllers
-Domain Computers
-Backup Operators
-Performance Log Users
-Windows Authorization Access Group
-Domain Controllers
-Administrators
-Cert Publishers
-Domain Users
-Pre-Windows 2000 Compatible Access
-Denied RODC Password Replication Group
 Cryptographic Operators
-Incoming Forest Trust Builders
-RAS and IAS Servers
-Domain Guests
-Certificate Service DCOM Access
-IIS_IUSRS
-DnsUpdateProxy
-Network Configuration Operators
 Вымышленные_герои
-Domain Admins
-Enterprise Read-only Domain Controllers
+Domain Guests
 Print Operators
-Schema Admins
-Event Log Readers
-Group Policy Creator Owners
+IIS_IUSRS
+Domain Users
+Network Configuration Operators
+Certificate Service DCOM Access
 Enterprise Admins
-Server Operators
-Performance Monitor Users
-Users
 Allowed RODC Password Replication Group
+Performance Log Users
+Group Policy Creator Owners
+Users
+Domain Computers
+RAS and IAS Servers
+Administrators
+Incoming Forest Trust Builders
+Performance Monitor Users
 DnsAdmins
+Backup Operators
+Replicator
 Guests
+Event Log Readers
+Protected Users
+Remote Desktop Users
+Windows Authorization Access Group
+Domain Admins
+DnsUpdateProxy
+Enterprise Read-only Domain Controllers
+Cert Publishers
+Server Operators
+Denied RODC Password Replication Group
+Terminal Server License Servers
+Schema Admins
 ```
 
 </details>
@@ -1338,21 +1246,30 @@ samba-tool group listmembers "$g"; done
 
 ```log
 ---Вымышленные_герои---
-smaba_u3
 smaba_u2
+smaba_u3
 smaba_u1
 ---Domain Users---
-smaba_u3
 smaba_u2
-krbtgt
 Administrator
+smaba_u3
 smaba_u1
+krbtgt
 ---Domain Admins---
 Administrator
 smaba_u1
 ```
 
 </details>
+
+
+## Установка Сервера DHCP
+```bash
+# обновление системы и установка dhcp
+apt-get update \
+&& apt-get install -y \
+dhcp-server
+```
 
 ## Настройка DHCP-сервера для обновления DNS-записей
 ### Создание пользователя, от имени которого будут производится обновления DNS-записей
@@ -1400,7 +1317,7 @@ Export one principal to /etc/dhcp/dhcpduser.keytab
 file /etc/dhcp/dhcpduser.keytab
 ```
 ```log
-/etc/dhcp/dhcpduser.keytab: Kerberos Keytab file, realm=DEN.SKV, principal=dhcpduser/, type=92623, date=Wed Dec 15 17:27:28 2049, kvno=18
+/etc/dhcp/dhcpduser.keytab: Kerberos Keytab file, realm=DEN.SKV, principal=dhcpduser/, type=92625, date=Fri Jul  8 13:11:28 2011, kvno=18
 ```
 
 ### Смена Владельца к файлу Kerberos
@@ -1847,190 +1764,26 @@ EOT
 
 ```bash
 # Делаем скрипт исполняемым и доступным
-chmod 755 /usr/local/bin/dhcp-dyndns.sh
-```
-
-## Изменение конфигурации DHCP
-### Резервная копия рабочего файла конфигурации dhcp
-```bash
-cp -v /etc/dhcp/dhcpd.conf{,.bak}
+chmod -v 755 \
+/usr/local/bin/dhcp-dyndns.sh
 ```
 ```log
-'/etc/dhcp/dhcpd.conf' -> '/etc/dhcp/dhcpd.conf.bak'
-```
-### Замена конфигурации DHCP
-```bash
-cat > /etc/dhcp/dhcpd.conf <<'EOF'
-authoritative;
-ddns-update-style none;
-
-subnet 192.168.100.0 netmask 255.255.255.0 {
-        option broadcast-address        192.168.100.255;
-        option time-offset              0;
-        option routers                  192.168.100.1;
-        option subnet-mask              255.255.255.0;
-
-        option nis-domain               "den.skv";
-        option domain-name              "den.skv";
-        option domain-name-servers      192.168.100.253, 192.168.100.252;
-        option ntp-servers              192.168.100.253, 192.168.100.252;
-
-        range dynamic-bootp 192.168.100.50 192.168.100.254;
-        default-lease-time 172800;
-        max-lease-time 259200;
-}
-
-on commit {
-set noname = concat("dhcp-", binary-to-ascii(10, 8, "-", leased-address));
-set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
-set ClientDHCID = concat (
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
-);
-set ClientName = pick-first-value(option host-name, config-option host-name, client-name, noname);
-log(concat("Commit: IP: ", ClientIP, " DHCID: ", ClientDHCID, " Name: ", ClientName));
-execute("/usr/local/bin/dhcp-dyndns.sh", "add", ClientIP, ClientDHCID, ClientName);
-}
-
-on release {
-set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
-set ClientDHCID = concat (
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
-);
-log(concat("Release: IP: ", ClientIP));
-execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
-}
-
-on expiry {
-set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
-log(concat("Expired: IP: ", ClientIP));
-execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, "", "0");
-}
-
-host altsrv1.den.skv {
-  hardware ethernet ee:a8:71:80:72:45;
-  fixed-address 192.168.100.254;
-}
-
-host altsrv2.den.skv {
-  hardware ethernet 36:dd:7b:0c:81:2d;
-  fixed-address 192.168.100.253;
-}
-
-host altsrv3.den.skv {
-  hardware ethernet ae:49:e7:f8:62:2d;
-  fixed-address 192.168.100.252;
-}
-
-host altsrv4.den.skv {
-  hardware ethernet ce:94:fd:b4:54:40;
-  fixed-address 192.168.100.251;
-}
-EOF
-```
-## Отключение chroot для DHCP-сервера 
-```bash
-control dhcpd-chroot \
-disabled
-```
-### проверка состояния chroot через control
-```bash
-control dhcpd-chroot
-```
-```log
-disabled
-```
-### Проверка правильности конфгиа
-```bash
-dhcpd -t
+mode of '/usr/local/bin/dhcp-dyndns.sh' changed from 0644 (rw-r--r--) to 0755 (rwxr-xr-x)
 ```
 
-<details>
-<summary>Вывод корректности конфигурации DHCP</summary>
-
-```log
-Internet Systems Consortium DHCP Server 4.4.3-P1
-Copyright 2004-2022 Internet Systems Consortium.
-All rights reserved.
-For info, please visit https://www.isc.org/software/dhcp/
-Config file: /etc/dhcp/dhcpd.conf
-Database file: /state/dhcpd.leases
-PID file: /var/run/dhcpd.pid
-```
-
-</details>
-
-## перезапуск службы dhcp
-```bash
-systemctl \
-restart \
-dhcpd
-```
-```bash
-journalctl -efu dhcpd
-```
-
-
-<details>
-<summary>Вывод журнала о регистрации DHCP и DNS НЕ доменной машины</summary>
-
-```log
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: Dynamic and static leases present for 192.168.100.252.
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: Remove host declaration altsrv3.den.skv or remove 192.168.100.252
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: from the dynamic address pool for 192.168.100.0/24
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: Commit: IP: 192.168.100.252 DHCID: ae:49:e7:f8:62:2d Name: altsrv3
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: execute_statement argv[0] = /usr/local/bin/dhcp-dyndns.sh
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: execute_statement argv[1] = add
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: execute_statement argv[2] = 192.168.100.252
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: execute_statement argv[3] = ae:49:e7:f8:62:2d
-Apr 03 15:26:49 altsrv2.den.skv dhcpd[4192]: execute_statement argv[4] = altsrv3
-Apr 03 15:26:50 altsrv2.den.skv dhcpd[4675]: Record added successfully
-Apr 03 15:26:51 altsrv2.den.skv dhcpd[4703]: Record added successfully
-Apr 03 15:26:51 altsrv2.den.skv dhcpd[4706]: DHCP-DNS add succeeded
-Apr 03 15:26:51 altsrv2.den.skv dhcpd[4717]: Computer 'altsrv3' not found. Exiting.
-Apr 03 15:26:51 altsrv2.den.skv dhcpd[4192]: execute: /usr/local/bin/dhcp-dyndns.sh exit status 17408
-Apr 03 15:26:51 altsrv2.den.skv dhcpd[4192]: DHCPREQUEST for 192.168.100.252 from ae:49:e7:f8:62:2d via ens19
-Apr 03 15:26:51 altsrv2.den.skv dhcpd[4192]: DHCPACK on 192.168.100.252 to ae:49:e7:f8:62:2d via ens19
-```
-
-</details>
-
-```bash
-# Вывод NS A записи хоста
-host altsrv3
-```
-```log
-altsrv3.den.skv has address 192.168.100.252
-```
-```bash
-# Вывод PTR записи хоста
-host 192.168.100.252
-```
-```log
-252.100.168.192.in-addr.arpa domain name pointer altsrv3.den.skv.
-```
-
-## Настройка переключения failover-DHCP
-### Генерация случайного ключа OMAPI
+### Создание конфигурации DHCP
+#### Генерация случайного ключа OMAPI
 ```bash
 tsig-keygen -a hmac-md5 omapi_key
 ```
 ```json
 key "omapi_key" {
         algorithm hmac-md5;
-        secret "X1fpFP2WBXkOtsSj8kVwRw==";
+        secret "KsP/KnIQcoQF5fMMjBcOhg==";
 };
 ```
-### Замена конфига с Добавлением ключа и failover опций в настройку DHCP сервера
+
+### Создание конфига с Добавлением ключа, failover и обращение к скрипту опций в настройку DHCP сервера
 ```bash
 cat > /etc/dhcp/dhcpd.conf <<'EOF'
 authoritative;
@@ -2040,7 +1793,7 @@ omapi-port 7911;
 omapi-key omapi_key;
 key "omapi_key" {
         algorithm hmac-md5;
-        secret "X1fpFP2WBXkOtsSj8kVwRw==";
+        secret "KsP/KnIQcoQF5fMMjBcOhg==";
 };
 
 failover peer "dhcp-failover" {
@@ -2051,7 +1804,7 @@ failover peer "dhcp-failover" {
   # Полное DNS-имя имя резервного DHCP-сервера
   peer address altsrv3.den.skv;
   peer port 647;
-  max-response-delay 20;
+  max-response-delay 10;
   max-unacked-updates 5;
   mclt 1800;
   split 255;
@@ -2138,7 +1891,11 @@ host altsrv4.den.skv {
 }
 EOF
 
-cp  /etc/dhcp/dhcpd.conf{,.working_failover}
+# Делаем бэкап рабочей конфигурации
+cp -v /etc/dhcp/dhcpd.conf{,.working}
+```
+```
+'/etc/dhcp/dhcpd.conf' -> '/etc/dhcp/dhcpd.conf.working'
 ```
 
 ### Создание failback конфига без failover опций на случай падения партнера
@@ -2151,23 +1908,8 @@ omapi-port 7911;
 omapi-key omapi_key;
 key "omapi_key" {
         algorithm hmac-md5;
-        secret "X1fpFP2WBXkOtsSj8kVwRw==";
+        secret "KsP/KnIQcoQF5fMMjBcOhg==";
 };
-
-# failover peer "dhcp-failover" {
-#   primary;
-#   # Полное DNS-имя основного DHCP-сервера
-#   address altsrv2.den.skv;
-#   port 847;
-#   # Полное DNS-имя имя резервного DHCP-сервера
-#   peer address altsrv3.den.skv;
-#   peer port 647;
-#   max-response-delay 20;
-#   max-unacked-updates 5;
-#   mclt 1800;
-#   split 255;
-#   load balance max seconds 2;
-# }
 
 subnet 192.168.100.0 netmask 255.255.255.0 {
         option broadcast-address        192.168.100.255;
@@ -2181,7 +1923,6 @@ subnet 192.168.100.0 netmask 255.255.255.0 {
         option ntp-servers              192.168.100.253, 192.168.100.252;
 
         pool {
-            # failover peer "dhcp-failover";
             default-lease-time 172800;
             max-lease-time 259200;
             range 192.168.100.50 192.168.100.254;
@@ -2249,7 +1990,9 @@ host altsrv4.den.skv {
 }
 EOF
 ```
-### Скрипт проверки и восстановления в случае сбоя DHCP-failover
+
+### Настройка переключения failover-DHCP
+#### Скрипт проверки и восстановления в случае сбоя DHCP-failover
 ```bash
 cat > /usr/local/bin/dhcp-fallback.sh <<'EOF'
 #!/bin/bash
@@ -2280,7 +2023,11 @@ else
 fi
 EOF
 
-chmod 755 /usr/local/bin/dhcp-fallback.sh
+chmod -v 755 \
+/usr/local/bin/dhcp-fallback.sh
+```
+```log
+mode of '/usr/local/bin/dhcp-fallback.sh' changed from 0644 (rw-r--r--) to 0755 (rwxr-xr-x)
 ```
 ### Создание timer systemd Для отслеживания
 ```bash
@@ -2309,23 +2056,27 @@ Type=oneshot
 ExecStart=/usr/local/bin/dhcp-fallback.sh
 EOF
 ```
-### Запуск созданного таймера проверки
+
+## Отключение chroot для DHCP-сервера 
 ```bash
-systemctl \
-enable --now \
-dhcp-fallback.timer
+control dhcpd-chroot \
+disabled
+```
+### проверка состояния chroot через control
+```bash
+control dhcpd-chroot
 ```
 ```log
-Created symlink /etc/systemd/system/timers.target.wants/dhcp-fallback.timer → /etc/systemd/system/dhcp-fallback.timer.
+disabled
 ```
-
-### проверка корректности конфига
+## Запуск DHCP с настройкой
 ```bash
+# проверка конфига
 dhcpd -t
 ```
 
 <details>
-<summary>вывод о корректности конфигурации DHCP</summary>
+<summary>Вывод рабочего конфига</summary>
 
 ```log
 Internet Systems Consortium DHCP Server 4.4.3-P1
@@ -2339,16 +2090,120 @@ PID file: /var/run/dhcpd.pid
 
 </details>
 
-### Перезапуск службы
+```bash
+# ЗАпуск службы
+systemctl \
+enable \
+--now dhcpd
+```
+
+### Запуск созданного таймера проверки
 ```bash
 systemctl \
-restart \
-dhcpd
+enable --now \
+dhcp-fallback.timer
 ```
+
+systemctl \
+status \
+dhcp-fallback.timer
+
+```log
+Created symlink /etc/systemd/system/timers.target.wants/dhcp-fallback.timer → /etc/systemd/system/dhcp-fallback.timer.
+```
+
 ```bash
-# вывод журнала службы
+# Вывод состояние службы
+systemctl \
+status \
+dhcpd \
+| grep Active
+```
+```log
+Active: active (running) since Thu 2026-04-02 22:36:36 MSK; 4s ago
+```
+
+```bash
 journalctl -efu dhcpd
 ```
+
+<details>
+<summary>Вывод журнала о регистрации DHCP и DNS НЕ доменной машины</summary>
+
+```log
+Apr 04 21:08:42 altsrv2.den.skv systemd[1]: Starting DHCPv4 Server Daemon...
+Apr 04 21:08:42 altsrv2.den.skv systemd[1]: Started DHCPv4 Server Daemon.
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Internet Systems Consortium DHCP Server 4.4.3-P1
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Copyright 2004-2022 Internet Systems Consortium.
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: All rights reserved.
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: For info, please visit https://www.isc.org/software/dhcp/
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Config file: /etc/dhcp/dhcpd.conf
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Database file: /var/lib/dhcp/dhcpd/state/dhcpd.leases
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: PID file: /var/run/dhcpd.pid
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Listening on LPF/ens19/36:dd:7b:0c:81:2d/192.168.100.0/24
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Sending on   LPF/ens19/36:dd:7b:0c:81:2d/192.168.100.0/24
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Sending on   Socket/fallback/fallback-net
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Wrote 0 deleted host decls to leases file.
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Wrote 0 new dynamic host decls to leases file.
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Wrote 0 leases to leases file.
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: failover peer dhcp-failover: I move from recover to startup
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: altsrv3.den.skv: host unknown.
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: failover peer dhcp-failover: unexpected error
+Apr 04 21:08:42 altsrv2.den.skv dhcpd[6318]: Server starting service.
+Apr 04 21:08:48 altsrv2.den.skv systemd[1]: Stopping DHCPv4 Server Daemon...
+Apr 04 21:08:48 altsrv2.den.skv systemd[1]: dhcpd.service: Deactivated successfully.
+Apr 04 21:08:48 altsrv2.den.skv systemd[1]: Stopped DHCPv4 Server Daemon.
+Apr 04 21:08:48 altsrv2.den.skv systemd[1]: Starting DHCPv4 Server Daemon...
+Apr 04 21:08:48 altsrv2.den.skv systemd[1]: Started DHCPv4 Server Daemon.
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Internet Systems Consortium DHCP Server 4.4.3-P1
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Copyright 2004-2022 Internet Systems Consortium.
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: All rights reserved.
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: For info, please visit https://www.isc.org/software/dhcp/
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Config file: /etc/dhcp/dhcpd.conf
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Database file: /var/lib/dhcp/dhcpd/state/dhcpd.leases
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: PID file: /var/run/dhcpd.pid
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Listening on LPF/ens19/36:dd:7b:0c:81:2d/192.168.100.0/24
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Sending on   LPF/ens19/36:dd:7b:0c:81:2d/192.168.100.0/24
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Sending on   Socket/fallback/fallback-net
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: /var/lib/dhcp/dhcpd/state/dhcpd.leases line 8: unknown failover peer: dhcp-failover
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: failover peer "dhcp-failover"
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]:                ^
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: /var/lib/dhcp/dhcpd/state/dhcpd.leases line 15: unknown failover peer: dhcp-failover
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: failover peer "dhcp-failover"
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]:                ^
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Wrote 0 deleted host decls to leases file.
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Wrote 0 new dynamic host decls to leases file.
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Wrote 0 leases to leases file.
+Apr 04 21:08:48 altsrv2.den.skv dhcpd[6441]: Server starting service.
+Apr 04 21:15:13 altsrv2.den.skv dhcpd[6441]: Commit: IP: 192.168.100.50 DHCID: 6a:36:90:85:f6:66 Name: altwks2
+Apr 04 21:15:13 altsrv2.den.skv dhcpd[6441]: execute_statement argv[0] = /usr/local/bin/dhcp-dyndns.sh
+Apr 04 21:15:13 altsrv2.den.skv dhcpd[6441]: execute_statement argv[1] = add
+Apr 04 21:15:13 altsrv2.den.skv dhcpd[6441]: execute_statement argv[2] = 192.168.100.50
+Apr 04 21:15:13 altsrv2.den.skv dhcpd[6441]: execute_statement argv[3] = 6a:36:90:85:f6:66
+Apr 04 21:15:13 altsrv2.den.skv dhcpd[6441]: execute_statement argv[4] = altwks2
+Apr 04 21:15:14 altsrv2.den.skv dhcpd[6520]: 04-04-26 21:15:14 [dyndns] : Getting new ticket, old one has expired
+Apr 04 21:15:14 altsrv2.den.skv dhcpd[6528]: Record added successfully
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6556]: Record added successfully
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6562]: DHCP-DNS add succeeded
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: DHCPREQUEST for 192.168.100.50 from 6a:36:90:85:f6:66 via ens19
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: DHCPACK on 192.168.100.50 to 6a:36:90:85:f6:66 (altwks2) via ens19
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: reuse_lease: lease age 2 (secs) under 25% threshold, reply with unaltered, existing lease for 192.168.100.50
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: DHCPDISCOVER from 6a:36:90:85:f6:66 (altwks2) via ens19
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: DHCPOFFER on 192.168.100.50 to 6a:36:90:85:f6:66 (altwks2) via ens19
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: Commit: IP: 192.168.100.50 DHCID: 6a:36:90:85:f6:66 Name: altwks2
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: execute_statement argv[0] = /usr/local/bin/dhcp-dyndns.sh
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: execute_statement argv[1] = add
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: execute_statement argv[2] = 192.168.100.50
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: execute_statement argv[3] = 6a:36:90:85:f6:66
+Apr 04 21:15:15 altsrv2.den.skv dhcpd[6441]: execute_statement argv[4] = altwks2
+Apr 04 21:15:16 altsrv2.den.skv dhcpd[6588]: Correct 'A' record exists, not updating.
+Apr 04 21:15:17 altsrv2.den.skv dhcpd[6614]: Correct 'PTR' record exists, not updating.
+Apr 04 21:15:17 altsrv2.den.skv dhcpd[6441]: reuse_lease: lease age 2 (secs) under 25% threshold, reply with unaltered, existing lease for 192.168.100.50
+Apr 04 21:15:17 altsrv2.den.skv dhcpd[6441]: DHCPREQUEST for 192.168.100.50 (192.168.100.253) from 6a:36:90:85:f6:66 (altwks2) via ens19
+Apr 04 21:15:17 altsrv2.den.skv dhcpd[6441]: DHCPACK on 192.168.100.50 to 6a:36:90:85:f6:66 (altwks2) via ens19
+```
+
+</details>
 
 ## Подключение хостов к домену
 ### Выясняем ip адреса клиентов DHCP
@@ -2369,14 +2224,8 @@ sysadmin@192.168.100.253 \
 <summary>Ищим хост для ввода в домен</summary>
 
 ```log
-** WARNING: connection is not using a post-quantum key exchange algorithm.
-** This session may be vulnerable to "store now, decrypt later" attacks.
-** The server may need to be upgraded. See https://openssh.com/pq.html
-** WARNING: connection is not using a post-quantum key exchange algorithm.
-** This session may be vulnerable to "store now, decrypt later" attacks.
-** The server may need to be upgraded. See https://openssh.com/pq.html
 Password: 
-lease 192.168.100.51 {
+lease 192.168.100.50 {
 Connection to 192.168.100.253 closed
 ```
 
@@ -2388,7 +2237,7 @@ ssh -t \
 -i ~/.ssh/id_skv_VKR_vpn \
 -J sysadmin@172.16.100.2 \
 -o StrictHostKeyChecking=accept-new \
-sysadmin@192.168.100.51 \
+sysadmin@192.168.100.50 \
 "su -"
 ```
 
@@ -2400,10 +2249,10 @@ sysadmin@192.168.100.51 \
 -i ~/.ssh/id_skv_VKR_vpn \
 -J sysadmin@172.16.100.2 \
 -o StrictHostKeyChecking=accept-new \
-sysadmin@192.168.100.51 \
+sysadmin@192.168.100.50 \
 "su -"
 Warning: Permanently added '192.168.100.51' (ED25519) to the list of known hosts.
-sysadmin@192.168.100.51's password: 
+sysadmin@192.168.100.50's password: 
 Password: 
 [root@altwks2 ~]# 
 ```
@@ -2424,18 +2273,9 @@ resolvconf -l
 search den.skv
 nameserver 192.168.100.253
 nameserver 192.168.100.252
-
-# resolv.conf from ens19.dhcp
-# Generated by dhcpcd from ens19.dhcp
-domain den.skv
-search den.skv
-nameserver 192.168.100.253
-nameserver 192.168.100.252
 ```
 
 </details>
-
-
 
 ```bash
 ping pub.ru -c 2; \
@@ -2447,23 +2287,22 @@ ping den.skv -c 2
 
 ```log
 PING pub.ru (62.122.170.171) 56(84) bytes of data.
-64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=1 ttl=53 time=39.8 ms
+64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=1 ttl=53 time=40.1 ms
 64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=2 ttl=53 time=40.1 ms
 
 --- pub.ru ping statistics ---
-2 packets transmitted, 2 received, 0% packet loss, time 1002ms
-rtt min/avg/max/mdev = 39.844/39.983/40.122/0.139 ms
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 40.082/40.086/40.091/0.004 ms
 PING den.skv (192.168.100.253) 56(84) bytes of data.
-64 bytes from 192.168.100.253 (192.168.100.253): icmp_seq=1 ttl=64 time=0.350 ms
-64 bytes from 192.168.100.253 (192.168.100.253): icmp_seq=2 ttl=64 time=0.465 ms
+64 bytes from altsrv2.den.skv (192.168.100.253): icmp_seq=1 ttl=64 time=0.315 ms
+64 bytes from altsrv2.den.skv (192.168.100.253): icmp_seq=2 ttl=64 time=0.404 ms
 
 --- den.skv ping statistics ---
-2 packets transmitted, 2 received, 0% packet loss, time 1001ms
-rtt min/avg/max/mdev = 0.350/0.407/0.465/0.057 ms
+2 packets transmitted, 2 received, 0% packet loss, time 1002ms
+rtt min/avg/max/mdev = 0.315/0.359/0.404/0.044 ms
 ```
 
 </details>
-
 
 ### Переименовываем имя хоста согласно FQDN имени домена
 ```bash
@@ -2507,7 +2346,6 @@ server 192.168.100.252
 
 </details>
 
-
 ### Ввод в домен через командную строку 
 ```bash
 # altwks2 имя вводимого хоста
@@ -2539,9 +2377,9 @@ ls -lhd /etc/krb5*
 <summary>Соджержимое каталога с kerberos</summary>
 
 ```log
--rw-r--r-- 1 root root     538 Apr  3 19:51 /etc/krb5.conf
-drwxr-xr-x 2 root root    4.0K Apr  3 19:31 /etc/krb5.conf.d
--rw-r----- 1 root _keytab 2.3K Apr  3 19:51 /etc/krb5.keytab
+-rw-r--r-- 1 root root     538 Apr  4 21:30 /etc/krb5.conf
+drwxr-xr-x 2 root root    4.0K Apr  4 21:20 /etc/krb5.conf.d
+-rw-r----- 1 root _keytab 1.2K Apr  4 21:30 /etc/krb5.keytab
 ```
 
 </details>
@@ -2585,9 +2423,9 @@ id smaba_u{1..3}
 <summary>Вывод информации о пользователях домена id</summary>
 
 ```log
-uid=1048801103(smaba_u1) gid=1048800513(domain users) groups=1048800513(domain users),1048800512(domain admins),1048800572(denied rodc password replication group),1048801106(вымышленные_герои),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf),101(localadmins),10(wheel)
-uid=1048801104(smaba_u2) gid=1048800513(domain users) groups=1048800513(domain users),1048801106(вымышленные_герои),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf)
-uid=1048801105(smaba_u3) gid=1048800513(domain users) groups=1048800513(domain users),1048801106(вымышленные_герои),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf
+uid=815801103(smaba_u1) gid=815800513(domain users) groups=815800513(domain users),815800512(domain admins),815801106(вымышленные_герои),815800572(denied rodc password replication group),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf),101(localadmins),10(wheel)
+uid=815801104(smaba_u2) gid=815800513(domain users) groups=815800513(domain users),815801106(вымышленные_герои),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf)
+uid=815801105(smaba_u3) gid=815800513(domain users) groups=815800513(domain users),815801106(вымышленные_герои),100(users),36(vmusers),450(usershares),80(cdwriter),22(cdrom),81(audio),481(video),19(proc),83(radio),471(camera),71(floppy),498(xgrp),499(scanner),14(uucp),476(vboxusers),478(fuse),492(vboxadd),491(vboxsf)
 ```
 
 </details>
@@ -2600,9 +2438,9 @@ getent passwd smaba_u{1..3}
 <summary>Вывод информации о пользователях домена passwd</summary>
 
 ```log
-smaba_u1:*:1048801103:1048800513:Василий Иванович Чапаев:/home/DEN.SKV/smaba_u1:/bin/bash
-smaba_u2:*:1048801104:1048800513:Моледцев Владимир Александрович:/home/DEN.SKV/smaba_u2:/bin/bash
-smaba_u3:*:1048801105:1048800513:Колкин Павел Сергеевич:/home/DEN.SKV/smaba_u3:/bin/bash
+smaba_u1:*:815801103:815800513:Василий Иванович Чапаев:/home/DEN.SKV/smaba_u1:/bin/bash
+smaba_u2:*:815801104:815800513:Моледцев Владимир Александрович:/home/DEN.SKV/smaba_u2:/bin/bash
+smaba_u3:*:815801105:815800513:Колкин Павел Сергеевич:/home/DEN.SKV/smaba_u3:/bin/bash
 ```
 
 </details>
@@ -2633,7 +2471,7 @@ vboxadd:vboxsf
 
 </details>
 
-## Процедура перезагрузки хоста после ввода в домен
+## Перезагрузка хоста после ввода в домен
 ```bash
 systemctl reboot
 ```
@@ -2652,6 +2490,7 @@ smaba_u1@192.168.100.50
 ```log
 smaba_u1@192.168.100.50's password: 
 Last login: Fri Apr  3 21:40:54 2026 from 192.168.100.1
+[smaba_u1@altwks2 ~]$ 
 ```
 
 </details>
@@ -2670,7 +2509,7 @@ id
 <summary>Вывод информации о текущем пользователе</summary>
 
 ```log
-uid=1048801103(smaba_u1) gid=1048800513(domain users) группы=1048800513(domain users),10(wheel),14(uucp),19(proc),22(cdrom),36(vmusers),71(floppy),80(cdwriter),81(audio),83(radio),100(users),101(localadmins),450(usershares),471(camera),476(vboxusers),478(fuse),481(video),491(vboxsf),492(vboxadd),498(xgrp),499(scanner),1048800512(domain admins),1048800572(denied rodc password replication group),1048801106(вымышленные_герои)
+uid=815801103(smaba_u1) gid=815800513(domain users) группы=815800513(domain users),10(wheel),14(uucp),19(proc),22(cdrom),36(vmusers),71(floppy),80(cdwriter),81(audio),83(radio),100(users),101(localadmins),450(usershares),471(camera),476(vboxusers),478(fuse),481(video),491(vboxsf),492(vboxadd),498(xgrp),499(scanner),815800512(domain admins),815800572(denied rodc password replication group),815801106(вымышленные_герои)
 ```
 
 </details>
@@ -2709,4 +2548,29 @@ altlinux_gf \
 main
 
 popd
+```
+
+
+##
+
+```bash
+# Вывод NS A записи хоста
+host altsrv3
+```
+```log
+altsrv3.den.skv has address 192.168.100.252
+```
+```bash
+# Вывод PTR записи хоста
+host 192.168.100.252
+```
+```log
+252.100.168.192.in-addr.arpa domain name pointer altsrv3.den.skv.
+```
+
+
+
+```bash
+# вывод журнала службы
+journalctl -efu dhcpd
 ```
