@@ -2108,27 +2108,3 @@ main
 popd
 ```
 
-<details>
-<summary>xxxx</summary>
-
-```log
-
-```
-
-</details>
-
-
-```bash
-
-```
-```log
-
-```
-
-cat > <<'EOF'
-EOF
-
-journalctl -ef  --no-pager
-
-journalctl -efu samba --no-pager
-
