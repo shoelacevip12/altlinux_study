@@ -1283,7 +1283,7 @@ Password for [DEN\smaba_u1]:
 
 ### Подготовленного конфига Вторичного DHCP
 ```bash
-cat > /home/sysadmin/dhcpd.conf.working <<'EOF'
+cat > /etc/dhcp/dhcpd.conf.working <<'EOF'
 authoritative;
 ddns-update-style none;
 
@@ -1388,28 +1388,13 @@ host altsrv4.den.skv {
 EOF
 ```
 
-```bash
-# Проверка наличия файл
-find /home/sysadmin/dhcpd.conf.working 
-```
-```log
-/home/sysadmin/dhcpd.conf.working
-```
-
 ### Копирование подготовленного конфига
 ```bash
-cp -v /home/sysadmin/dhcpd.conf.working \
+cp -v /etc/dhcp/dhcpd.conf.working \
 /etc/dhcp/dhcpd.conf
 ```
 ```log
-'/home/sysadmin/dhcpd.conf.working' -> '/etc/dhcp/dhcpd.conf'
-```
-```bash
-cp -v /home/sysadmin/dhcpd.conf.working \
-/etc/dhcp/
-```
-```log
-'/home/sysadmin/dhcpd.conf.working' -> '/etc/dhcp/dhcpd.conf.working'
+'/etc/dhcp/dhcpd.conf.working' -> '/etc/dhcp/dhcpd.conf'
 ```
 ```bash
 # проверка конфига
@@ -1432,7 +1417,7 @@ PID file: /var/run/dhcpd.pid
 
 ## Подготовка Взаимодействия с DNS записями Вторичного DHCP
 ```bash
-# Копирование скрипт и keytab-файл с Основного DC\DHCP на Вторичный из-под локального пользователя sysadmin
+# Копирование скрипта с Основного DC\DHCP на Вторичный из-под локального пользователя sysadmin
 ssh -t \
 -o StrictHostKeyChecking=accept-new \
 sysadmin@altsrv2 \
@@ -1445,16 +1430,7 @@ sysadmin@altsrv3:~/'"
 samba-tool domain \
 exportkeytab \
 --principal=dhcpduser@DEN.SKV \
-/home/sysadmin/dhcpduser.keytab
-```
-```bash
-# Проверка полученных файлов
-find /home/sysadmin/dhcp*
-```
-```log
-/home/sysadmin/dhcp-dyndns.sh
-/home/sysadmin/dhcpd.conf.working
-/home/sysadmin/dhcpduser.keytab
+/etc/dhcp/dhcpduser.keytab
 ```
 ### Скрипт взаимодействия с DNS записями AD
 ```bash
@@ -1474,14 +1450,6 @@ chmod -v 755 \
 mode of '/usr/local/bin/dhcp-dyndns.sh' retained as 0755 (rwxr-xr-x)
 ```
 ### Файл kerberos УЗ dhcpduser для взаимодействия с DNS записями AD
-```bash
-# Перенос Файла kerberos в каталог службы dhcpd
-cp -v /home/sysadmin/dhcpduser.keytab \
-/etc/dhcp/
-```
-```log
-'/home/sysadmin/dhcpduser.keytab' -> '/etc/dhcp/dhcpduser.keytab'
-```
 ```bash
 # Смена владельца доступа до файла kerberos
 chown -v dhcpd:dhcp \
@@ -1511,25 +1479,6 @@ control dhcpd-chroot
 ```log
 disabled
 ```
-### Проверка правильности конфгиа
-```bash
-dhcpd -t
-```
-
-<details>
-<summary>Вывод корректности конфигурации DHCP</summary>
-
-```log
-Internet Systems Consortium DHCP Server 4.4.3-P1
-Copyright 2004-2022 Internet Systems Consortium.
-All rights reserved.
-For info, please visit https://www.isc.org/software/dhcp/
-Config file: /etc/dhcp/dhcpd.conf
-Database file: /state/dhcpd.leases
-PID file: /var/run/dhcpd.pid
-```
-
-</details>
 
 ## Запуск DHCP с Подготовленными настройками Вторичного DHCP
 
@@ -1808,10 +1757,6 @@ Apr 04 22:22:05 altsrv3.den.skv dhcpd[5542]: execute_statement argv[1] = add
 Apr 04 22:22:05 altsrv3.den.skv dhcpd[5542]: execute_statement argv[2] = 192.168.100.50
 Apr 04 22:22:05 altsrv3.den.skv dhcpd[5542]: execute_statement argv[3] = 6a:36:90:85:f6:66
 Apr 04 22:22:05 altsrv3.den.skv dhcpd[5542]: execute_statement argv[4] = altwks2
-Apr 04 22:22:06 altsrv3.den.skv dhcpd[5733]: 04-04-26 22:22:06 [dyndns] : Getting new ticket, old one has expired
-Apr 04 22:22:06 altsrv3.den.skv dhcpd[5734]: kinit: Pre-authentication failed: Недопустимый аргумент while getting initial credentials
-Apr 04 22:22:06 altsrv3.den.skv dhcpd[5735]: 04-04-26 22:22:06 [dyndns] : dhcpd kinit for dynamic DNS failed
-Apr 04 22:22:06 altsrv3.den.skv dhcpd[5542]: execute: /usr/local/bin/dhcp-dyndns.sh exit status 256
 Apr 04 22:22:06 altsrv3.den.skv dhcpd[5542]: DHCPREQUEST for 192.168.100.50 from 6a:36:90:85:f6:66 via ens19
 Apr 04 22:22:06 altsrv3.den.skv dhcpd[5542]: DHCPACK on 192.168.100.50 to 6a:36:90:85:f6:66 (altwks2) via ens19
 ```
@@ -1862,8 +1807,7 @@ Apr 04 22:22:06 altsrv2.den.skv dhcpd[4326]: DHCPACK on 192.168.100.50 to 6a:36:
 
 </details>
 
-## Настройка переключения failover-DHCP
-### Создание failback конфига без failover опций на случай падения партнера
+### Создание failback конфига для смены порядка dns на случай падения партнера
 ```bash
 cat > /etc/dhcp/dhcpd-fallback.conf <<'EOF'
 authoritative;
@@ -1875,6 +1819,19 @@ key "omapi_key" {
         algorithm hmac-md5;
         secret "X1fpFP2WBXkOtsSj8kVwRw==";
 };
+
+failover peer "dhcp-failover" {
+  secondary;
+  # Полное DNS-имя основного DHCP-сервера
+  address altsrv3.den.skv;
+  port 647;
+  # Полное DNS-имя имя резервного DHCP-сервера
+  peer address altsrv2.den.skv;
+  peer port 847;
+  max-response-delay 20;
+  max-unacked-updates 5;
+  load balance max seconds 2;
+}
 
 subnet 192.168.100.0 netmask 255.255.255.0 {
         option broadcast-address        192.168.100.255;
@@ -1888,6 +1845,7 @@ subnet 192.168.100.0 netmask 255.255.255.0 {
         option ntp-servers              192.168.100.252, 192.168.100.253;
 
         pool {
+            failover peer "dhcp-failover";
             default-lease-time 172800;
             max-lease-time 259200;
             range 192.168.100.50 192.168.100.254;
@@ -1955,12 +1913,13 @@ host altsrv4.den.skv {
 }
 EOF
 ```
-### Скрипт проверки и восстановления в случае сбоя DHCP-failover
+### Настройка переключения failover-DHCP
+#### Скрипт проверки и восстановления в случае сбоя DHCP-failover
 ```bash
 cat > /usr/local/bin/dhcp-fallback.sh <<'EOF'
 #!/bin/bash
 
-if ! ping -c 2 -W 5 altsrv2.den.skv &>/dev/null; then
+if ! nc -zvw3 altsrv2.den.skv 7911 &>/dev/null; then
     logger "DHCP failover: partner unreachable, switching to fallback mode"
     
     # Перезапуск, только если нет бэкапа рабочего конфига
@@ -1980,8 +1939,9 @@ else
     # Восстанавление конфига, только если есть бэкап
     if [ -f /etc/dhcp/dhcpd.conf.bak ]; then
         logger "DHCP: restoring original config from backup"
+        systemctl stop dhcpd
         mv -f /etc/dhcp/dhcpd.conf{.bak,}
-        systemctl restart dhcpd
+        systemctl start dhcpd
     fi
 fi
 EOF
@@ -1992,9 +1952,9 @@ chmod -v 755 \
 ```log
 mode of '/usr/local/bin/dhcp-fallback.sh' changed from 0644 (rw-r--r--) to 0755 (rwxr-xr-x)
 ```
-
 ### Создание timer systemd Для отслеживания
 ```bash
+# таймер
 cat > /etc/systemd/system/dhcp-fallback.timer <<'EOF'
 [Unit]
 Description=Проверка DHCP failover партнера каждые 2 минуты
@@ -2022,32 +1982,15 @@ EOF
 ### Запуск созданного таймера проверки
 ```bash
 systemctl \
+daemon-reload
+
+systemctl \
 enable --now \
 dhcp-fallback.timer
 ```
 ```log
 Created symlink /etc/systemd/system/timers.target.wants/dhcp-fallback.timer → /etc/systemd/system/dhcp-fallback.timer.
 ```
-
-### проверка корректности конфига
-```bash
-dhcpd -t
-```
-
-<details>
-<summary>вывод о корректности конфигурации DHCP</summary>
-
-```log
-Internet Systems Consortium DHCP Server 4.4.3-P1
-Copyright 2004-2022 Internet Systems Consortium.
-All rights reserved.
-For info, please visit https://www.isc.org/software/dhcp/
-Config file: /etc/dhcp/dhcpd.conf
-Database file: /state/dhcpd.leases
-PID file: /var/run/dhcpd.pid
-```
-
-</details>
 
 ### Перезапуск службы
 ```bash
@@ -2162,7 +2105,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd4]ДЛЯ ВКР AD SAMBA_INTERNAL DHCP" \
+git commit -am "[upd5]ДЛЯ ВКР AD SAMBA_INTERNAL DHCP" \
 && git push \
 --set-upstream \
 altlinux \

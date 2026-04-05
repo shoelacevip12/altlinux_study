@@ -1898,165 +1898,6 @@ cp -v /etc/dhcp/dhcpd.conf{,.working}
 '/etc/dhcp/dhcpd.conf' -> '/etc/dhcp/dhcpd.conf.working'
 ```
 
-### Создание failback конфига без failover опций на случай падения партнера
-```bash
-cat > /etc/dhcp/dhcpd-fallback.conf <<'EOF'
-authoritative;
-ddns-update-style none;
-
-omapi-port 7911;
-omapi-key omapi_key;
-key "omapi_key" {
-        algorithm hmac-md5;
-        secret "KsP/KnIQcoQF5fMMjBcOhg==";
-};
-
-subnet 192.168.100.0 netmask 255.255.255.0 {
-        option broadcast-address        192.168.100.255;
-        option time-offset              0;
-        option routers                  192.168.100.1;
-        option subnet-mask              255.255.255.0;
-
-        option nis-domain               "den.skv";
-        option domain-name              "den.skv";
-        option domain-name-servers      192.168.100.253, 192.168.100.252;
-        option ntp-servers              192.168.100.253, 192.168.100.252;
-
-        pool {
-            default-lease-time 172800;
-            max-lease-time 259200;
-            range 192.168.100.50 192.168.100.254;
-        }
-}
-
-on commit {
-set noname = concat("dhcp-", binary-to-ascii(10, 8, "-", leased-address));
-set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
-set ClientDHCID = concat (
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
-);
-set ClientName = pick-first-value(option host-name, config-option host-name, client-name, noname);
-log(concat("Commit: IP: ", ClientIP, " DHCID: ", ClientDHCID, " Name: ", ClientName));
-execute("/usr/local/bin/dhcp-dyndns.sh", "add", ClientIP, ClientDHCID, ClientName);
-}
-
-on release {
-set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
-set ClientDHCID = concat (
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
-suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
-);
-log(concat("Release: IP: ", ClientIP));
-execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
-}
-
-on expiry {
-set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
-log(concat("Expired: IP: ", ClientIP));
-execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, "", "0");
-}
-
-host altsrv1.den.skv {
-  hardware ethernet ee:a8:71:80:72:45;
-  infinite-is-reserved on;
-  fixed-address 192.168.100.254;
-}
-
-host altsrv2.den.skv {
-  hardware ethernet 36:dd:7b:0c:81:2d;
-  infinite-is-reserved on;
-  fixed-address 192.168.100.253;
-}
-
-host altsrv3.den.skv {
-  hardware ethernet ae:49:e7:f8:62:2d;
-  infinite-is-reserved on;
-  fixed-address 192.168.100.252;
-}
-
-host altsrv4.den.skv {
-  hardware ethernet ce:94:fd:b4:54:40;
-  infinite-is-reserved on;
-  fixed-address 192.168.100.251;
-}
-EOF
-```
-
-### Настройка переключения failover-DHCP
-#### Скрипт проверки и восстановления в случае сбоя DHCP-failover
-```bash
-cat > /usr/local/bin/dhcp-fallback.sh <<'EOF'
-#!/bin/bash
-
-if ! ping -c 2 -W 5 altsrv3.den.skv &>/dev/null; then
-    logger "DHCP failover: partner unreachable, switching to fallback mode"
-    
-    # Перезапуск, только если нет бэкапа рабочего конфига
-    if [ ! -f /etc/dhcp/dhcpd.conf.bak ]; then
-        # Сохранить текущий конфиг
-        rsync /etc/dhcp/dhcpd.conf{,.bak}
-        # Заменяем на fallback-конфиг
-        rsync /etc/dhcp/dhcpd{-fallback,}.conf
-        # Перезапускаем службу
-        systemctl restart dhcpd
-    fi
-
-else
-    # Партнёр доступен
-    logger "DHCP: partner is reachable, normal working"
-
-    # Восстанавление конфига, только если есть бэкап
-    if [ -f /etc/dhcp/dhcpd.conf.bak ]; then
-        logger "DHCP: restoring original config from backup"
-        mv -f /etc/dhcp/dhcpd.conf{.bak,}
-        systemctl restart dhcpd
-    fi
-fi
-EOF
-
-chmod -v 755 \
-/usr/local/bin/dhcp-fallback.sh
-```
-```log
-mode of '/usr/local/bin/dhcp-fallback.sh' changed from 0644 (rw-r--r--) to 0755 (rwxr-xr-x)
-```
-### Создание timer systemd Для отслеживания
-```bash
-# таймер
-cat > /etc/systemd/system/dhcp-fallback.timer <<'EOF'
-[Unit]
-Description=Проверка DHCP failover партнера каждые 2 минуты
-
-[Timer]
-OnBootSec=1min
-OnUnitActiveSec=2min
-Unit=dhcp-fallback.service
-
-[Install]
-WantedBy=timers.target
-EOF
-
-# One-shot служба запускаемая таймером
-cat > /etc/systemd/system/dhcp-fallback.service <<'EOF'
-[Unit]
-Description=DHCP Fallback Check
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/dhcp-fallback.sh
-EOF
-```
-
 ## Отключение chroot для DHCP-сервера 
 ```bash
 control dhcpd-chroot \
@@ -2076,7 +1917,7 @@ dhcpd -t
 ```
 
 <details>
-<summary>Вывод рабочего конфига</summary>
+<summary>Вывод работоспособности конфига</summary>
 
 ```log
 Internet Systems Consortium DHCP Server 4.4.3-P1
@@ -2095,21 +1936,6 @@ PID file: /var/run/dhcpd.pid
 systemctl \
 enable \
 --now dhcpd
-```
-
-### Запуск созданного таймера проверки
-```bash
-systemctl \
-enable --now \
-dhcp-fallback.timer
-```
-
-systemctl \
-status \
-dhcp-fallback.timer
-
-```log
-Created symlink /etc/systemd/system/timers.target.wants/dhcp-fallback.timer → /etc/systemd/system/dhcp-fallback.timer.
 ```
 
 ```bash
