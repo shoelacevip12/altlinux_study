@@ -731,7 +731,7 @@ samba_dnsupdate --verbose --all-names
 ```
 
 <details>
-<summary>Вывод синхронизации</summary>
+<summary>Вывод Обновления записей</summary>
 
 ```log
 IPs: ['192.168.100.252']
@@ -1020,6 +1020,19 @@ _ldap._tcp.Default-First-Site-Name._sites.ForestDnsZones.den.skv. 900 IN SRV 0 1
 
 </details>
 
+### Репликация с первого контроллера домена на второй: 
+```bash
+samba-tool drs \
+replicate \
+altsrv3.den.skv \
+altsrv2.den.skv \
+dc=den,dc=skv \
+-Usmaba_u1
+```
+```log
+Replicate from altsrv2.den.skv to altsrv3.den.skv was successful.
+```
+
 ### Состояние репликации
 ```bash
 samba-tool drs \
@@ -1220,6 +1233,54 @@ Warning: No NC replicated for Connection!
 
 </details>
 
+### Проверка Репликации Ldap
+```bash
+samba-tool ldapcmp  \
+ldap://altsrv2.den.skv \
+ldap://altsrv3.den.skv \
+-Usmaba_u1
+```
+
+<details>
+<summary>Вывод состояния репликации LDAP</summary>
+
+```log
+Password for [DEN\smaba_u1]:
+
+* Comparing [DOMAIN] context...
+
+* Objects to be compared: 289
+
+* Result for [DOMAIN]: SUCCESS
+
+* Comparing [CONFIGURATION] context...
+
+* Objects to be compared: 1733
+
+* Result for [CONFIGURATION]: SUCCESS
+
+* Comparing [SCHEMA] context...
+
+* Objects to be compared: 1770
+
+* Result for [SCHEMA]: SUCCESS
+
+* Comparing [DNSDOMAIN] context...
+
+* Objects to be compared: 46
+
+* Result for [DNSDOMAIN]: SUCCESS
+
+* Comparing [DNSFOREST] context...
+
+* Objects to be compared: 18
+
+* Result for [DNSFOREST]: SUCCESS
+```
+
+</details>
+
+
 ### Подготовленного конфига Вторичного DHCP
 ```bash
 cat > /home/sysadmin/dhcpd.conf.working <<'EOF'
@@ -1377,8 +1438,14 @@ ssh -t \
 sysadmin@altsrv2 \
 "su - \
 -c 'scp /usr/local/bin/dhcp-dyndns.sh \
-/etc/dhcp/dhcpduser.keytab \
 sysadmin@altsrv3:~/'"
+```
+### Экспорт файла keytab для пользователя для аутентификации через Kerberos в AD
+```bash
+samba-tool domain \
+exportkeytab \
+--principal=dhcpduser@DEN.SKV \
+/home/sysadmin/dhcpduser.keytab
 ```
 ```bash
 # Проверка полученных файлов
@@ -1425,11 +1492,11 @@ changed ownership of '/etc/dhcp/dhcpduser.keytab' from root:root to dhcpd:dhcp
 ```
 ```bash
 # Ограничение прав на работу с файлом Kerberos
-chmod -v 400 \
+chmod -v 440 \
 /etc/dhcp/dhcpduser.keytab
 ```
 ```
-mode of '/etc/dhcp/dhcpduser.keytab' retained as 0400 (r--------)
+mode of '/etc/dhcp/dhcpduser.keytab' changed from 0400 (r--------) to 0440 (r--r-----)
 ```
 
 ## Отключение chroot для DHCP-сервера 
@@ -2095,7 +2162,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd3]ДЛЯ ВКР AD SAMBA_INTERNAL DHCP" \
+git commit -am "[upd4]ДЛЯ ВКР AD SAMBA_INTERNAL DHCP" \
 && git push \
 --set-upstream \
 altlinux \

@@ -28,4 +28,6 @@ EOF
 
 journalctl -ef  --no-pager
 
+journalctl -efu dhcpd --no-pager
+
 journalctl -efu samba --no-pager
