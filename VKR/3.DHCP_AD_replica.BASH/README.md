@@ -2082,6 +2082,306 @@ Apr 04 22:32:54 altsrv2.den.skv dhcpd[5531]: failover peer dhcp-failover: Both s
 
 </details>
 
+## Двунаправленная репликации SysVol
+
+### Генерация ssh ключей между rootами контроллеров домена
+
+```bash
+# Включаем агента в текущей оснастке и прописываем в базу агента ssh ключи
+eval $(ssh-agent) \
+&& ssh-add  \
+~/.ssh/id_skv_VKR_vpn
+
+# Вход на altsrv2(AD1) по новому Ip
+ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.253 \
+"su -"
+
+# Создание SSH-ключа
+ssh-keygen \
+-f ~/.ssh/id_sysval_ed25519 \
+-t ed25519 \
+-C "rsync SysVol"
+```
+
+<details>
+<summary>Вывод генерации ключа</summary>
+
+```log
+Generating public/private ed25519 key pair.
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /root/.ssh/id_sysval_ed25519.
+Your public key has been saved in /root/.ssh/id_sysval_ed25519.pub.
+The key fingerprint is:
+SHA256:W4nJWybYoODptl+w40vElNJLZJa3yHgpTjOPumsCoxI rsync SysVol
+The key's randomart image is:
++--[ED25519 256]--+
+|    +.           |
+|   =...          |
+|  oo=+..         |
+| .*B=o.= o .     |
+| ooB* . S =      |
+|E.o..o   B       |
+|o+o + . o        |
+|=o + o           |
+|*o..+.           |
++----[SHA256]-----+
+```
+
+</details>
+
+```bash
+# Ограничение прав на пользование приватного ключа
+chmod 600 \
+~/.ssh/id_*_ed25519
+
+# Ограничение прав на пользование публичного ключа
+chmod 644 \
+~/.ssh/id_*_ed25519.pub
+```
+### Проброс ключа ssh до root
+```bash
+# Проброс созданного ключа на sysadmin
+ssh-copy-id -i ~/.ssh/id_sysval_ed25519.pub \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@altsrv3
+```
+
+<details>
+<summary>Вывод проброса на sysadmin пользователя</summary>
+
+```log
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/root/.ssh/id_sysval_ed25519.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+sysadmin@altsrv3's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh -o 'StrictHostKeyChecking=accept-new' 'sysadmin@altsrv3'"
+and check to make sure that only the key(s) you wanted were added.
+```
+
+</details>
+
+```bash
+# Проброс публичного ключа на root пользователя вторичного домен контроллера
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@altsrv3 \
+"su - \
+-c 'grep SysVol /home/sysadmin/.ssh/authorized_keys \
+| tee -a ~/.ssh/authorized_keys'"
+```
+```log
+sysadmin@altsrv3's password: 
+Password: 
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEt+sBZW2dDSNQORHKsqa7eLgp5DIVM2nxSvTFH975DG rsync SysVol
+Connection to altsrv3 closed.
+```
+```bash
+# проверка проброшенного ключа до root хоста altsrv3
+ssh -t \
+-i ~/.ssh/id_sysval_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+root@altsrv3 \
+"hostname"
+```
+```log
+altsrv3.den.skv
+Connection to altsrv3 closed.
+```
+### Преднастройка использования существующего SSH-соединение вместо установки нового
+```bash
+mkdir ~/.ssh/ctl
+
+cat > ~/.ssh/config  << 'EOF'
+Host *
+ControlMaster auto
+ControlPath ~/.ssh/ctl/%h_%p_%r
+ControlPersist 1
+EOF
+```
+### Установка пакетов для синхронизации 
+```bash
+apt-get update \
+&& apt-get install -y \
+rsync \
+unison
+```
+### Файл настроек синхронизации
+```bash
+mkdir /root/.unison
+
+cat > /root/.unison/sync_dc2.prf <<'EOF'
+root = /var/lib/samba
+root = ssh://root@altsrv3.den.skv//var/lib/samba
+# Список подкаталогов, которые нужно синхронизировать
+path = sysvol
+# Список подкаталогов, которые нужно игнорировать
+#ignore = Path
+auto=true
+batch=true
+perms=0
+rsync=true
+maxthreads=1
+retry=3
+confirmbigdeletes=false
+servercmd=/usr/bin/unison
+copythreshold=0
+copyprog = /usr/bin/rsync -XAavz --rsh='ssh -o StrictHostKeyChecking=accept-new -i /root/.ssh/id_sysval_ed25519 -p 22' --inplace --compress
+copyprogrest = /usr/bin/rsync -XAavz --rsh='ssh -o StrictHostKeyChecking=accept-new -i /root/.ssh/id_sysval_ed25519 -p 22' --partial --inplace --compress
+copyquoterem = true
+copymax = 1
+copyquoterem = false
+
+# Сохранять журнал с результатами работы в отдельном файле
+logfile = /var/log/sysvol-sync.log
+EOF
+```
+
+```bash
+# Создание файла для записи журнала репликации
+touch /var/log/sysvol-sync.log
+```
+
+### Установка пакетов для синхронизации на втором домен контролере
+```bash
+apt-get update \
+&& apt-get install -y \
+rsync \
+unison
+```
+
+### Ручной запуск синхронизации на основном домен контролере
+```bash
+/usr/bin/rsync -XAavz \
+--rsh='ssh -p 22 -i /root/.ssh/id_sysval_ed25519' \
+--log-file /var/log/sysvol-sync.log \
+--delete-after -f"+ */" -f"- *" /var/lib/samba/sysvol \
+root@altsrv3.den.skv:/var/lib/samba \
+&& /usr/bin/unison
+```
+
+<details>
+<summary>Вывод ручной синхронизации</summary>
+
+```log
+building file list ... done
+sysvol/
+sysvol/den.skv/
+sysvol/den.skv/Policies/
+sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/
+sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/MACHINE/
+sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/USER/
+sysvol/den.skv/Policies/{6AC1786C-016F-11D2-945F-00C04FB984F9}/
+sysvol/den.skv/Policies/{6AC1786C-016F-11D2-945F-00C04FB984F9}/MACHINE/
+sysvol/den.skv/Policies/{6AC1786C-016F-11D2-945F-00C04FB984F9}/USER/
+sysvol/den.skv/scripts/
+
+sent 2,354 bytes  received 59 bytes  1,608.67 bytes/sec
+total size is 0  speedup is 0.00
+Unison 2.51.3 (ocaml 4.12.0): Contacting server...
+Connected [//altsrv2.den.skv//var/lib/samba -> //altsrv3.den.skv//var/lib/samba]
+Looking for changes
+Warning: No archive files were found for these roots, whose canonical names are:
+        /var/lib/samba
+        //altsrv3.den.skv//var/lib/samba
+This can happen either
+because this is the first time you have synchronized these roots, 
+or because you have upgraded Unison to a new version with a different
+archive format.  
+
+Update detection may take a while on this run if the replicas are 
+large.
+
+Unison will assume that the 'last synchronized state' of both replicas
+was completely empty.  This means that any files that are different
+will be reported as conflicts, and any files that exist only on one
+replica will be judged as new and propagated to the other replica.
+If the two replicas are identical, then no changes will be reported.
+
+If you see this message repeatedly, it may be because one of your machines
+is getting its address from DHCP, which is causing its host name to change
+between synchronizations.  See the documentation for the UNISONLOCALHOSTNAME
+environment variable for advice on how to correct this.
+
+Donations to the Unison project are gratefully accepted: 
+http://www.cis.upenn.edu/~bcpierce/unison
+
+
+  Waiting for changes from server                                       
+Reconciling changes
+file     ---->            sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/GPT.INI  
+file     ---->            sysvol/den.skv/Policies/{6AC1786C-016F-11D2-945F-00C04FB984F9}/GPT.INI  
+Propagating updates
+UNISON 2.51.3 (OCAML 4.12.0) started propagating changes at 01:17:00.32 on 06 Apr 2026
+[BGN] Copying sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/GPT.INI from /var/lib/samba to //altsrv3.den.skv//var/lib/samba
+/usr/bin/rsync -XAavz --rsh='ssh -p 22 -i /root/.ssh/id_sysval_ed25519' --inplace --compress '/var/lib/samba/sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/GPT.INI' 'root@altsrv3.den.skv:/var/lib/samba/sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/.unison.GPT.INI.46bf9307fc8f000dd76b1346667afc76.unison.tmp'
+[END] Copying sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/GPT.INI
+[BGN] Copying sysvol/den.skv/Policies/{6AC1786C-016F-11D2-945F-00C04FB984F9}/GPT.INI from /var/lib/samba to //altsrv3.den.skv//var/lib/samba
+Shortcut: copied /var/lib/samba/sysvol/den.skv/Policies/{6AC1786C-016F-11D2-945F-00C04FB984F9}/GPT.INI from local file /var/lib/samba/sysvol/den.skv/Policies/{31B2F340-016D-11D2-945F-00C04FB984F9}/GPT.INI
+[END] Copying sysvol/den.skv/Policies/{6AC1786C-016F-11D2-945F-00C04FB984F9}/GPT.INI
+UNISON 2.51.3 (OCAML 4.12.0) finished propagating changes at 01:17:00.48 on 06 Apr 2026
+Saving synchronizer state
+Synchronization complete at 01:17:00  (2 items transferred, 0 skipped, 0 failed)
+```
+
+</details>
+
+### Ручной запуск синхронизации
+```bash
+/usr/bin/osync.sh \
+/etc/osync/sync_dc2.conf \
+--verbose
+```
+
+### Создание timer systemd Для отслеживания синхронизации sysvol на основном DC
+```bash
+# таймер
+cat > /etc/systemd/system/sysvol-sync.timer <<'EOF'
+[Unit]
+Description=Cинхронизация sysvol каждые 5 минуты с основного DC
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=sysvol-syn.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# One-shot служба запускаемая таймером
+cat > /etc/systemd/system/sysvol-syn.service <<'EOF'
+[Unit]
+Description=Sysvol sync
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=SSH_AUTH_SOCK=/run/sysvol-ssh-agent.sock
+ExecStartPre=/usr/bin/ssh-agent -a /run/sysvol-ssh-agent.sock
+ExecStart=/usr/bin/ssh-add /root/.ssh/id_sysval_ed25519
+ExecStart=/usr/bin/unison sync_dc2 -silent
+ExecStartPost=/usr/bin/pkill -f "ssh-agent -a /run/sysvol-ssh-agent.sock"
+EOF
+```
+### Запуск созданного таймера синхронизации
+```bash
+systemctl \
+daemon-reload
+
+systemctl \
+enable --now \
+sysvol-sync.timer
+```
+
 ### Для github и gitflic
 ```bash
 exit
@@ -2105,7 +2405,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd5]ДЛЯ ВКР AD SAMBA_INTERNAL DHCP" \
+git commit -am "[upd6]ДЛЯ ВКР AD SAMBA_INTERNAL DHCP" \
 && git push \
 --set-upstream \
 altlinux \
