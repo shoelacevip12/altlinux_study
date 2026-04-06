@@ -65,7 +65,7 @@ sysadmin@192.168.100.253 \
 "grep -B10 altwks2 \
 /var/lib/dhcp/dhcpd/state/dhcpd.leases" | grep lease'
 ```
-# `SMB.BASH.Replica`
+# `SMB.BASH`
 ## Подготовка SMB сервера
 ### Проброс ключа
 ```bash
@@ -258,7 +258,7 @@ task-auth-ad-sssd \
 chrony
 ```
 ## Ввод в домен
-### Проверка связи через локальные DNS
+### Проверка настроек DNS
 ```bash
 resolvconf -l
 ```
@@ -303,7 +303,7 @@ DEN \
 ```
 
 <details>
-<summary>xxxx</summary>
+<summary>Вывод лога ввода в домен</summary>
 
 ```log
 Using short domain name -- DEN
@@ -414,8 +414,8 @@ cat !$
 <details>
 <summary>Конфиг после чистки</summary>
 
-```log
-cat /etc/samba/smb.conf
+```ini
+cat > /etc/samba/smb.conf
 [global]
         security = ads
         realm = DEN.SKV
@@ -437,13 +437,210 @@ cat /etc/samba/smb.conf
 
 ## Подготовка ресурсов для сетевого обмена
 ```bash
-mkdir -v /srv/{smb_work,smb_NOTadmins,trash}
+# Создание каталогов для
+mkdir -v /srv/{smb_work,smb_NOTadmins,trash,smb_spec_GR1}
 ```
 ```log
 mkdir: created directory '/srv/smb_work'
 mkdir: created directory '/srv/smb_NOTadmins'
 mkdir: created directory '/srv/trash'
+mkdir: created directory '/srv/smb_spec_GR1'
 ```
+### ВЫставление Владельцев папок и предварительный доступ
+```bash
+chown -v Administrator:"Domain Users" \
+/srv/trash
+```
+```
+changed ownership of '/srv/trash' from root:root to Administrator:Domain Users
+```
+```bash
+# Заранее проставляем права доступа для каталога /srv/trash
+chmod -v \
+2775 \
+/srv/trash
+```
+```log
+mode of '/srv/trash' changed from 0755 (rwxr-xr-x) to 2775 (rwxrwsr-x)
+```
+```bash
+chown -v Administrator:"Domain Admins" \
+/srv/smb_NOTadmins
+```
+```
+changed ownership of '/srv/smb_NOTadmins' from root:root to Administrator:Domain Admins
+```
+```bash
+# Заранее проставляем права доступа для каталога /srv/smb_NOTadmins
+chmod -v \
+2770 \
+/srv/smb_NOTadmins
+```
+```log
+mode of '/srv/smb_NOTadmins' changed from 0755 (rwxr-xr-x) to 2770 (rwxrws---)
+```
+```bash
+chown -v Administrator:"Domain Users" \
+/srv/smb_work
+```
+```
+changed ownership of '/srv/smb_work' from root:root to Administrator:Domain Users
+```
+```bash
+# Заранее проставляем права доступа для каталога /srv/smb_work
+chmod -v \
+2770 \
+/srv/smb_work
+```
+```log
+mode of '/srv/smb_work' changed from 0755 (rwxr-xr-x) to 2770 (rwxrws---)
+```
+```bash
+chown -v Administrator:'Вымышленные_герои' \
+/srv/smb_spec_GR1
+```
+```
+changed ownership of '/srv/smb_spec_GR1' from root:root to Administrator:Вымышленные_герои
+```
+```bash
+# Заранее проставляем права доступа для каталога /srv/smb_spec_GR1
+chmod -v \
+2770 \
+/srv/smb_spec_GR1
+```
+```log
+mode of '/srv/smb_spec_GR1' changed from 0755 (rwxr-xr-x) to 2770 (rwxrws---)
+```
+### Формируем конфиг сетевых ресурсов
+```bash
+cat >/etc/samba/usershares.conf<<'EOF'
+[trash]
+        comment = TyT /7OJLHbIU TRASH
+        path = /srv/trash
+        writable = yes
+        guest ok = no
+        read list = +'Domain Users' +'Domain Admins'
+        write list = +'Domain Users' +'Domain Admins'
+        browseable = yes
+        create mask = 2775
+        directory mask = 1775
+[IT]
+        comment = Для администраторов
+        path = /srv/smb_NOTadmins
+        writable = yes
+        guest ok = no
+        read list = +'Domain Admins'
+        write list = +'Domain Admins'
+        browseable = no
+        create mask = 2770
+        directory mask = 1770
+[Work]
+        comment = Для работы пользователям домена
+        path = /srv/smb_work
+        writable = yes
+        guest ok = no
+        read list = +'Domain Users' +'Domain Admins'
+        write list = +'Domain Users' +'Domain Admins'
+        browseable = yes
+        create mask = 2770
+        directory mask = 1770
+[VG]
+        comment = Для работы специальной группе
+        path = /srv/smb_spec_GR1
+        writable = yes
+        guest ok = no
+        read list = +'Вымышленные_герои' +'Domain Admins'
+        write list = +'Вымышленные_герои' +'Domain Admins'
+        browseable = yes
+        create mask = 2770
+        directory mask = 1770
+EOF
+```
+```bash
+# Добавляем в Общий конфиг /etc/samba/smb.conf обращение к файлу с отдельными прописанными сетевыми ресурсами
+echo "        include = /etc/samba/usershares.conf" \
+| tee -a /etc/samba/smb.conf
+```
+```log
+        include = /etc/samba/usershares.conf
+```
+
+### Проверка настроек /etc/samba/smb.conf
+```bash
+testparm -s
+```
+
+<details>
+<summary>Вывод проверок конфига</summary>
+
+```ini
+Load smb config files from /etc/samba/smb.conf
+Loaded services file OK.
+Weak crypto is allowed by GnuTLS (e.g. NTLM as a compatibility fallback)
+
+ERROR: Do not use the 'sss' backend as the default idmap backend!
+
+Server role: ROLE_DOMAIN_MEMBER
+
+# Global parameters
+[global]
+        kerberos method = system keytab
+        machine password timeout = 0
+        realm = DEN.SKV
+        security = ADS
+        template homedir = /home/DEN.SKV/%U
+        template shell = /bin/bash
+        winbind use default domain = Yes
+        workgroup = DEN
+        idmap config * : range = 200000-2000200000
+        idmap config * : backend = sss
+        include = /etc/samba/usershares.conf
+
+
+[trash]
+        comment = TyT /7OJLHbIU TRASH
+        create mask = 02774
+        directory mask = 01774
+        path = /srv/trash
+        read list = +'Domain Users' +'Domain Admins'
+        read only = No
+        write list = +'Domain Users' +'Domain Admins'
+
+
+[IT]
+        browseable = No
+        comment = Для администраторов
+        create mask = 02770
+        directory mask = 01770
+        path = /srv/smb_NOTadmins
+        read list = +'Domain Admins'
+        read only = No
+        write list = +'Domain Admins'
+
+
+[Work]
+        comment = Для работы пользователям домена
+        create mask = 02770
+        directory mask = 01770
+        path = /srv/smb_work
+        read list = +'Domain Users' +'Domain Admins'
+        read only = No
+        write list = +'Domain Users' +'Domain Admins'
+
+
+[VG]
+        comment = Для работы специальной группе
+        create mask = 02770
+        directory mask = 01770
+        path = /srv/smb_spec_GR1
+        read list = +'Вымышленные_герои' +'Domain Admins'
+        read only = No
+        write list = +'Вымышленные_герои' +'Domain Admins'
+```
+
+</details>
+
+
 ## Для gitflic
 
 ```bash
@@ -466,7 +663,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd0]ДЛЯ ВКР SMB служба" \
+git commit -am "[upd1]ДЛЯ ВКР SMB служба" \
 && git push \
 --set-upstream \
 altlinux \
