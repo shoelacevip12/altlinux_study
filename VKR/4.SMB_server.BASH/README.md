@@ -246,7 +246,7 @@ rtt min/avg/max/mdev = 13.058/13.147/13.237/0.089 ms
 
 ## Установка пакетов SMB сервер
 ```bash
-# Обновляем систему и Устанавливаем пакеты для SAMBA-DC и DHCP
+# Обновляем систему и Устанавливаем пакеты для SMB и chrony
 apt-get update \
 && update-kernel -y \
 && apt-get dist-upgrade -y \
@@ -817,7 +817,7 @@ SMB1 disabled -- no workgroup available
 
 </details>
 
-### Попытка входа под разными пользователями на на отображаемый ресурс IT
+### Попытка входа под разными пользователями на не отображаемый ресурс IT
 ```bash
 # Скрипт входа в каталог IT под разными пользователями
 for p in {1..3}; do \
@@ -846,7 +846,7 @@ NT_STATUS_ACCESS_DENIED listing \*
 </details>
 
 
-## Для gitflic
+## Для gitflic и github
 
 ```bash
 git branch -v
