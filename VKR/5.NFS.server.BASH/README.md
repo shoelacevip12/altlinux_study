@@ -109,12 +109,13 @@ cat > /etc/exports << 'EOF'
 /srv/trash 192.168.100.0/24(rw,no_subtree_check,sec=krb5:krb5i:krb5p)
 EOF
 ```
+
 ## Настройка аутентификации Kerberos для NFS-сервера
 ```bash
 net ads \
 keytab \
 add nfs \
--Usmaba_u1
+-UAdministrator
 ```
 ```log
 Processing principals to add...
@@ -204,14 +205,35 @@ Export list for altsrv4.den.skv:
 /srv               192.168.100.0/24
 ```
 ```bash
+kvno nfs/altsrv4.den.skv
+```
+```log
+nfs/altsrv4.den.skv@DEN.SKV: kvno = 2
+```
+```bash
+control nfsmount public
+
+control nfsmount
+```
+```log
+public
+```
+```bash
 # Создание каталогов для монтирования
 mkdir -vp /mnt/NFS
 ```
 ```bash
 mkdir: создан каталог '/mnt/NFS'
 ```
-
 ```bash
+chmod -v 777 /mnt/NF
+```
+```log
+права доступа '/mnt/NFS' изменены с 0755 (rwxr-xr-x) на 0777 (rwxrwxrwx)
+```
+```bash
+exit
+
 mount -t nfs4 altsrv4.den.skv:/ -o rw,sec=krb5:krb5i:krb5p /mnt/NFS/ -vv
 ```
 
