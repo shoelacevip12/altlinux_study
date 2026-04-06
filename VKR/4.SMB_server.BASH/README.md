@@ -285,11 +285,74 @@ makestep 1.0 3
 rtcsync
 ntsdumpdir /var/lib/chrony
 logdir /var/log/chrony
-pool 192.168.100.1 iburst
-server 192.168.100.253
-server 192.168.100.252
+server 192.168.100.253 iburst
+server 192.168.100.252 iburst
+# pool 192.168.100.1 iburst
 EOF
 ```
+```bash
+# Запуск служб NTP
+systemctl enable --now \
+chronyd.service
+```
+```log
+Executing: /lib/systemd/systemd-sysv-install enable chronyd
+```
+```bash
+# Запуск ручной синхронизации времени
+systemctl restart \
+chrony-wait.service
+
+# Проверка NTP с новым сервером
+chronyc tracking
+```
+
+<details>
+<summary>Вывод текущего отслеживания времени</summary>
+
+```log
+Reference ID    : C0A864FC (altsrv3.den.skv)
+Stratum         : 11
+Ref time (UTC)  : Mon Apr 06 22:06:39 2026
+System time     : 0.000000070 seconds fast of NTP time
+Last offset     : -0.000075933 seconds
+RMS offset      : 0.000075933 seconds
+Frequency       : 18.065 ppm slow
+Residual freq   : -0.526 ppm
+Skew            : 17.171 ppm
+Root delay      : 0.000495138 seconds
+Root dispersion : 0.000052771 seconds
+Update interval : 1.8 seconds
+Leap status     : Normal
+[root@altsrv4 ~]# 
+```
+
+</details>
+
+```bash
+chronyc sources -v
+```
+
+<details>
+<summary>Состояние синхронизации с источниками</summary>
+
+```log
+  .-- Source mode  '^' = server, '=' = peer, '#' = local clock.
+ / .- Source state '*' = current best, '+' = combined, '-' = not combined,
+| /             'x' = may be in error, '~' = too variable, '?' = unusable.
+||                                                 .- xxxx [ yyyy ] +/- zzzz
+||      Reachability register (octal) -.           |  xxxx = adjusted offset,
+||      Log2(Polling interval) --.      |          |  yyyy = measured offset,
+||                                \     |          |  zzzz = estimated error.
+||                                 |    |           \
+MS Name/IP address         Stratum Poll Reach LastRx Last sample               
+===============================================================================
+^- altsrv2.den.skv              10   6    17    14   +147us[ +147us] +/-  167us
+^* altsrv3.den.skv              10   6    17    15  +8746ns[  -67us] +/-  248us
+```
+
+</details>
+
 ### Ввод в домен через командную строку 
 ```bash
 # altsrv4 имя вводимого хоста
