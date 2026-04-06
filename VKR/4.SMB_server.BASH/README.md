@@ -511,6 +511,25 @@ chmod -v \
 ```log
 mode of '/srv/smb_spec_GR1' changed from 0755 (rwxr-xr-x) to 2770 (rwxrws---)
 ```
+```bash
+# Вывод выставленных прав доступа на созданные каталоги
+ls -lhd /srv/*
+```
+
+<details>
+<summary>Вывод ls</summary>
+
+```log
+drwxr-xr-x 2 root          root              4.0K Dec 12  2023 /srv/public
+drwxrwxrwt 2 root          root              4.0K Dec 12  2023 /srv/share
+drwxrws--- 2 administrator domain admins     4.0K Apr  6 17:46 /srv/smb_NOTadmins
+drwxrws--- 2 administrator вымышленные_герои 4.0K Apr  6 16:58 /srv/smb_spec_GR1
+drwxrws--- 2 administrator domain users      4.0K Apr  6 16:14 /srv/smb_work
+drwxrwsr-x 2 administrator domain users      4.0K Apr  6 17:44 /srv/trash
+```
+
+</details>
+
 ### Формируем конфиг сетевых ресурсов
 ```bash
 cat >/etc/samba/usershares.conf<<'EOF'
@@ -640,6 +659,192 @@ Server role: ROLE_DOMAIN_MEMBER
 
 </details>
 
+## Запуск службы SMB сервера и службы отображения в сетевом окружении
+```bash
+systemctl \
+enable --now \
+smb \
+avahi-daemon
+```
+```log
+Synchronizing state of smb.service with SysV service script with /lib/systemd/systemd-sysv-install.
+Executing: /lib/systemd/systemd-sysv-install enable smb
+Synchronizing state of avahi-daemon.service with SysV service script with /lib/systemd/systemd-sysv-install.
+Executing: /lib/systemd/systemd-sysv-install enable avahi-daemon
+Created symlink /etc/systemd/system/multi-user.target.wants/smb.service → /lib/systemd/system/smb.service.
+```
+## Вывод журнала о запуске службы
+```bash
+journalctl -efu smb
+```
+<details>
+<summary>Первый запуск SMB</summary>
+
+```log
+Apr 06 18:05:39 altsrv4.den.skv systemd[1]: Starting Samba SMB Daemon...
+Apr 06 18:05:39 altsrv4.den.skv smbd[3422]: [2026/04/06 18:05:39.982609,  0] ../../source3/smbd/server.c:1746(main)
+Apr 06 18:05:39 altsrv4.den.skv smbd[3422]:   smbd version 4.19.9-alt9 started.
+Apr 06 18:05:39 altsrv4.den.skv smbd[3422]:   Copyright Andrew Tridgell and the Samba Team 1992-2023
+Apr 06 18:05:40 altsrv4.den.skv systemd[1]: Started Samba SMB Daemon.
+
+```
+
+</details>
+
+## Проверки доступа к сетевым папкам из-под компьютера в домене
+```bash
+# Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
+eval $(ssh-agent) \
+&& ssh-add  \
+~/.ssh/id_skv_VKR_vpn
+```
+```bash
+# Вход на altwks2 под пользователем с правами 'User Domain'
+ssh \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+smaba_u3@192.168.100.50
+```
+
+<details>
+<summary>Лог Входа</summary>
+
+```log
+[shoel@shoellin VKR]$ ssh \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+smaba_u3@192.168.100.50
+smaba_u3@192.168.100.50's password: 
+Last login: Sat Apr  4 22:55:54 2026 from 192.168.100.1
+[smaba_u3@altwks2 ~]$
+```
+
+</details>
+
+### Проверка прав в домене
+```bash
+id
+```
+
+<details>
+<summary>Вывод прав доступа</summary>
+
+```log
+uid=815801105(smaba_u3) gid=815800513(domain users) группы=815800513(domain users),14(uucp),19(proc),22(cdrom),36(vmusers),71(floppy),80(cdwriter),81(audio),83(radio),100(users),450(usershares),471(camera),476(vboxusers),478(fuse),481(video),491(vboxsf),492(vboxadd),498(xgrp),499(scanner),815801106(вымышленные_герои
+```
+
+</details>
+
+### Вывод доступных ресурсов для пользователя smaba_u3
+```bash
+smbclient -L altsrv4 \
+-k
+```
+
+<details>
+<summary>ВЫвод доступных ресурсов для smaba_u3</summary>
+
+```log
+WARNING: The option -k|--kerberos is deprecated!
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        trash           Disk      TyT /7OJLHbIU TRASH
+        Work            Disk      Для работы пользователям домена
+        VG              Disk      Для работы специальной группе
+        IPC$            IPC       IPC Service (Samba 4.19.9-alt9)
+SMB1 disabled -- no workgroup available
+```
+
+</details>
+
+### Доступ до неотображаемого ресурса для пользователя smaba_u3
+```bash
+smbclient //altsrv4/IT \
+-k \
+-c 'ls'
+```
+```log
+WARNING: The option -k|--kerberos is deprecated!
+NT_STATUS_ACCESS_DENIED listing \*
+```
+
+### Отображение ресурсов под разными пользователями с пользовательского хоста altwks2
+
+```bash
+# Скрипт отображения ресурсов для разных пользователей
+for p in {1..3}; do \
+echo "=== smbclient smaba_u$p ==="; \
+smbclient -L altsrv4 \
+-U smaba_u$p \
+--password '1qaz@WSX'; done
+```
+
+<details>
+<summary>Вывод для разных пользователей</summary>
+
+```log
+=== smbclient smaba_u1 ===
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        trash           Disk      TyT /7OJLHbIU TRASH
+        Work            Disk      Для работы пользователям домена
+        VG              Disk      Для работы специальной группе
+        IPC$            IPC       IPC Service (Samba 4.19.9-alt9)
+SMB1 disabled -- no workgroup available
+=== smbclient smaba_u2 ===
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        trash           Disk      TyT /7OJLHbIU TRASH
+        Work            Disk      Для работы пользователям домена
+        VG              Disk      Для работы специальной группе
+        IPC$            IPC       IPC Service (Samba 4.19.9-alt9)
+SMB1 disabled -- no workgroup available
+=== smbclient smaba_u3 ===
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        trash           Disk      TyT /7OJLHbIU TRASH
+        Work            Disk      Для работы пользователям домена
+        VG              Disk      Для работы специальной группе
+        IPC$            IPC       IPC Service (Samba 4.19.9-alt9)
+SMB1 disabled -- no workgroup available
+```
+
+</details>
+
+### Попытка входа под разными пользователями на на отображаемый ресурс IT
+```bash
+# Скрипт входа в каталог IT под разными пользователями
+for p in {1..3}; do \
+echo "=== smbclient smaba_u$p ==="; \
+smbclient //altsrv4/IT \
+-U smaba_u$p%1qaz@WSX \
+-c 'ls'; \
+done
+```
+
+<details>
+<summary>Вывод скрипта входа на скрытый ресурс</summary>
+
+```log
+=== smbclient smaba_u1 ===
+  .                                   D        0  Mon Apr  6 17:46:02 2026
+  ..                                  D        0  Mon Apr  6 17:46:02 2026
+
+                31856428 blocks of size 1024. 26798496 blocks available
+=== smbclient smaba_u2 ===
+NT_STATUS_ACCESS_DENIED listing \*
+=== smbclient smaba_u3 ===
+NT_STATUS_ACCESS_DENIED listing \*
+```
+
+</details>
+
 
 ## Для gitflic
 
@@ -663,7 +868,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd1]ДЛЯ ВКР SMB служба" \
+git commit -am "[upd2]ДЛЯ ВКР SMB служба" \
 && git push \
 --set-upstream \
 altlinux \
