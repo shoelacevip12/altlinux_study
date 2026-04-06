@@ -102,10 +102,11 @@ echo "SECURE_NFS=yes" \
 ### Настройка экспорта ресурсов NFS
 ```bash
 cat > /etc/exports << 'EOF'
-/srv/smb_work 192.168.100.0/24(rw,no_subtree_check,sec=krb5i:krb5p)
-/srv/smb_NOTadmins 192.168.100.0/24(rw,no_subtree_check,sec=krb5i:krb5p)
-/srv/smb_spec_GR1 192.168.100.0/24(rw,no_subtree_check,sec=krb5i:krb5p)
-/srv/trash 192.168.100.0/24(rw,no_subtree_check,sec=krb5i:krb5p)
+/srv 192.168.100.0/24(rw,no_subtree_check,sec=krb5:krb5i:krb5p,fsid=0)
+/srv/smb_work 192.168.100.0/24(rw,no_subtree_check,sec=krb5:krb5i:krb5p)
+/srv/smb_NOTadmins 192.168.100.0/24(rw,no_subtree_check,sec=krb5:krb5i:krb5p)
+/srv/smb_spec_GR1 192.168.100.0/24(rw,no_subtree_check,sec=krb5:krb5i:krb5p)
+/srv/trash 192.168.100.0/24(rw,no_subtree_check,sec=krb5:krb5i:krb5p)
 EOF
 ```
 ## Настройка аутентификации Kerberos для NFS-сервера
@@ -148,6 +149,7 @@ exporting 192.168.100.0/24:/srv/trash
 exporting 192.168.100.0/24:/srv/smb_spec_GR1
 exporting 192.168.100.0/24:/srv/smb_NOTadmins
 exporting 192.168.100.0/24:/srv/smb_work
+exporting 192.168.100.0/24:/srv
 ```
 ```bash
 systemctl \
@@ -158,8 +160,62 @@ nfs-server
 Created symlink /etc/systemd/system/multi-user.target.wants/nfs-server.service → /lib/systemd/system/nfs-server.service.
 ```
 
-## Для gitflic и github
+## Проверки доступа к сетевым папкам NFS из-под компьютера в домене
+```bash
+# Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
+eval $(ssh-agent) \
+&& ssh-add  \
+~/.ssh/id_skv_VKR_vpn
+```
+```bash
+# Вход на altwks2 под пользователем с правами 'Domain Admins'
+ssh \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+smaba_u1@192.168.100.50
+```
 
+<details>
+<summary>Лог входа под smaba_u1</summary>
+
+```log
+smaba_u1@192.168.100.50's password: 
+Last login: Sat Apr  4 22:50:06 2026 from 192.168.100.1
+[smaba_u1@altwks2 ~]$
+```
+
+</details>
+
+```bash
+# Вход под супер пользователем
+su -
+
+# Вывод доступных ресурсов NFS
+showmount -e \
+altsrv4.den.skv
+```
+```log
+Export list for altsrv4.den.skv:
+/srv/trash         192.168.100.0/24
+/srv/smb_spec_GR1  192.168.100.0/24
+/srv/smb_NOTadmins 192.168.100.0/24
+/srv/smb_work      192.168.100.0/24
+/srv               192.168.100.0/24
+```
+```bash
+# Создание каталогов для монтирования
+mkdir -vp /mnt/NFS
+```
+```bash
+mkdir: создан каталог '/mnt/NFS'
+```
+
+```bash
+mount -t nfs4 altsrv4.den.skv:/ -o rw,sec=krb5:krb5i:krb5p /mnt/NFS/ -vv
+```
+
+## Для gitflic и github
 ```bash
 git branch -v
 
@@ -180,7 +236,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd0]ДЛЯ ВКР NFS служба" \
+git commit -am "[upd1]ДЛЯ ВКР NFS служба" \
 && git push \
 --set-upstream \
 altlinux \
