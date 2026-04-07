@@ -2333,13 +2333,6 @@ Synchronization complete at 01:17:00  (2 items transferred, 0 skipped, 0 failed)
 
 </details>
 
-### Ручной запуск синхронизации
-```bash
-/usr/bin/osync.sh \
-/etc/osync/sync_dc2.conf \
---verbose
-```
-
 ### Создание timer systemd Для отслеживания синхронизации sysvol на основном DC
 ```bash
 # таймер

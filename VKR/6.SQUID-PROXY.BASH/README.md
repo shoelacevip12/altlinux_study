@@ -244,7 +244,7 @@ rtt min/avg/max/mdev = 12.821/13.006/13.191/0.185 ms
 
 </details>
 
-## Установка пакетов SMB сервер
+## Обновление системы установка пакетов SQUID и ввода в домен
 ```bash
 # Обновляем систему и Устанавливаем пакеты для SMB и chrony
 apt-get update \
@@ -509,6 +509,111 @@ cp -v /etc/squid/squid.conf{,.bak}
 ```log
 '/etc/squid/squid.conf' -> '/etc/squid/squid.conf.bak'
 ```
+```bash
+# чистка конфига от комментариев
+sed -i \
+-e '/^[[:space:]]*#/d' \
+-e '/^[[:space:]]*$/d' \
+/etc/squid/squid.conf
+```
+
+### настройка режима кеширования 
+```bash
+cat >> /etc/squid/squid.conf <<'EOF'
+cache_mem 1024 MB
+cache_dir ufs /var/spool/squid 2048 16 256
+maximum_object_size 100 MB
+maximum_object_size_in_memory 1 MB
+EOF
+```
+```bash
+squid -z
+```
+
+<details>
+<summary>Вывод формирования каталогов кеширования</summary>
+
+```log
+2026/04/07 17:47:14| WARNING: BCP 177 violation. Detected non-functional IPv6 loopback.
+2026/04/07 17:47:14| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14| Processing Configuration File: /etc/squid/squid.conf (depth 0)
+2026/04/07 17:47:14| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14| Created PID file (/var/run/squid.pid)
+2026/04/07 17:47:14 kid1| WARNING: BCP 177 violation. Detected non-functional IPv6 loopback.
+2026/04/07 17:47:14 kid1| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14 kid1| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14 kid1| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14 kid1| Processing Configuration File: /etc/squid/squid.conf (depth 0)
+2026/04/07 17:47:14 kid1| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14 kid1| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:47:14 kid1| Set Current Directory to /var/spool/squid
+2026/04/07 17:47:15 kid1| Creating missing swap directories
+2026/04/07 17:47:15 kid1| /var/spool/squid exists
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/00
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/01
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/02
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/03
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/04
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/05
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/06
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/07
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/08
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/09
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/0A
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/0B
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/0C
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/0D
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/0E
+2026/04/07 17:47:15 kid1| Making directories in /var/spool/squid/0F
+2026/04/07 17:47:15| Removing PID file (/var/run/squid.pid)
+```
+
+</details>
+
+```bash
+# Предварительный запуск службы
+systemctl enable --now \
+squid
+```
+```log
+Synchronizing state of squid.service with SysV service script with /lib/systemd/systemd-sysv-install.
+Executing: /lib/systemd/systemd-sysv-install enable squid
+Created symlink /etc/systemd/system/multi-user.target.wants/squid.service → /lib/systemd/system/squid.service.
+```
+```bash
+systemctl is-active \
+squid
+```
+```log
+active
+```
+### Добавляем к стандартным acl спискам правило http_access
+```bash
+sed -i '/deny to_linklocal/a http_access allow localnet' \
+/etc/squid/squid.conf
+
+squid -k reconfigure
+```
+
+<details>
+<summary>лог вывода реконфигурации squid</summary>
+
+```log
+2026/04/07 17:54:35| WARNING: BCP 177 violation. Detected non-functional IPv6 loopback.
+2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:54:35| Processing Configuration File: /etc/squid/squid.conf (depth 0)
+2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 17:54:35| Set Current Directory to /var/spool/squid
+```
+
+</details>
+
 
 ## Для gitflic и github
 ```bash
@@ -574,7 +679,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd0]ДЛЯ ВКР SQUID служба" \
+git commit -am "[upd1]ДЛЯ ВКР SQUID служба" \
 && git push \
 --set-upstream \
 altlinux \
