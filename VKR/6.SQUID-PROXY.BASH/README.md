@@ -512,6 +512,49 @@ cp -v /etc/squid/squid.conf{,.bak}
 
 ## Для gitflic и github
 ```bash
+git remote -v
+```
+```log
+altlinux        https://github.com/shoelacevip12/altlinux_study.git (fetch)
+altlinux        https://github.com/shoelacevip12/altlinux_study.git (push)
+altlinux_gf     https://gitflic.ru/project/shoelacevip12/altlinux_study.git (fetch)
+altlinux_gf     https://gitflic.ru/project/shoelacevip12/altlinux_study.git (push)
+```
+```bash
+git remote rm \
+altlinux
+
+git remote rm \
+altlinux_gf
+```
+```bash
+# Добавление источника для авторизации на gitflic по ssh
+git remote add \
+altlinux_gf \
+git@gitflic.ru:shoelacevip12/altlinux_study.git
+
+
+# Добавление источника для авторизации на github по ssh
+git remote add \
+altlinux \
+git@github.com:shoelacevip12/altlinux_study.git
+```
+```bash
+git remote -v
+```
+```log
+altlinux        git@github.com:shoelacevip12/altlinux_study.git (fetch)
+altlinux        git@github.com:shoelacevip12/altlinux_study.git (push)
+altlinux_gf     git@gitflic.ru:shoelacevip12/altlinux_study.git (fetch)
+altlinux_gf     git@gitflic.ru:shoelacevip12/altlinux_study.git (push
+```
+```bash
+# Добавляем ключи агенту ssh от репозитория gitflic и github
+eval $(ssh-agent) \
+&& ssh-add ~/.ssh/id_gitflic_2026_ed25519 \
+&& ssh-add ~/.ssh/id_github_2026_ed25519 \
+&& ssh-agent -c
+
 git branch -v
 
 git log --oneline
