@@ -792,6 +792,11 @@ proxy_acc \
 Added members to group proxy_acc
 ```
 
+export HTTP_PROXY=http://altsrv1.den.skv:3128
+export HTTPS_PROXY=http://altsrv1.den.skv:3128
+unset NO_PROXY
+env |grep PROXY
+
 ## Для gitflic и github
 ```bash
 git remote -v
@@ -856,7 +861,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd2]ДЛЯ ВКР SQUID служба" \
+git commit -am "[upd3]ДЛЯ ВКР SQUID служба" \
 && git push \
 --set-upstream \
 altlinux \
