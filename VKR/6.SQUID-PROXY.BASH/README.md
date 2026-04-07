@@ -590,11 +590,97 @@ squid
 ```log
 active
 ```
-### Добавляем к стандартным acl спискам правило http_access
+### Добавление kerberos аутентификации для группы AD proxy_acc
 ```bash
-sed -i '/deny to_linklocal/a http_access allow localnet' \
+# Добавление параметров аутентификации на основе выданного принципала с количеством одновременных экземпляров подпроцессов 
+# и создание внешнего списка acl kerberos_access Привязанной к предварительно созданной Группе AD proxy_acc
+sed -i '1i\
+auth_param negotiate program /usr/lib/squid/negotiate_kerberos_auth -d -s HTTP/altsrv1.den.skv@DEN.SKV\
+auth_param negotiate children 20 startup=0 idle=1\
+auth_param negotiate keep_alive on\
+external_acl_type kerberos_access ttl=900 negative_ttl=900 %LOGIN /usr/lib/squid/ext_kerberos_ldap_group_acl -d -a -g proxy_acc -D DEN.SKV' \
+/etc/squid/squid.conf
+```
+
+### Добавляем acl список доступа
+```bash
+# Добавляем список доступа auth как REQUIRED
+sed -i '/multiling/aacl auth proxy_auth REQUIRED' \
+/etc/squid/squid.conf
+ 
+# Добавляем список доступа auth как REQUIRED
+sed -i '/multiling/aacl kerberos_access external kerberos_access' \
 /etc/squid/squid.conf
 
+# Добавляем к acl спискам auth и kerberos_access правило http_access
+sed -i '/to_linklocal/ahttp_access allow kerberos_access auth' \
+/etc/squid/squid.conf
+
+# Проверка конфигурации
+squid -k parse
+```
+
+<details>
+<summary>Проверка конфигурации squid</summary>
+
+```log
+2026/04/07 19:43:52| WARNING: BCP 177 violation. Detected non-functional IPv6 loopback.
+2026/04/07 19:43:52| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:43:52| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:43:52| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:43:52| Processing Configuration File: /etc/squid/squid.conf (depth 0)
+2026/04/07 19:43:52| Processing: auth_param negotiate program /usr/lib/squid/negotiate_kerberos_auth -d -s HTTP/altsrv1.den.skv@DEN.SKV
+2026/04/07 19:43:52| Processing: auth_param negotiate children 20 startup=0 idle=1
+2026/04/07 19:43:52| Processing: auth_param negotiate keep_alive on
+2026/04/07 19:43:52| Processing: external_acl_type kerberos_access ttl=900 negative_ttl=900 %LOGIN /usr/lib/squid/ext_kerberos_ldap_group_acl -d -a -g proxy_acc -D DEN.SKV
+2026/04/07 19:43:52| Processing: acl localnet src 0.0.0.1-0.255.255.255 # RFC 1122 "this" network (LAN)
+2026/04/07 19:43:52| Processing: acl localnet src 10.0.0.0/8            # RFC 1918 local private network (LAN)
+2026/04/07 19:43:52| Processing: acl localnet src 100.64.0.0/10         # RFC 6598 shared address space (CGN)
+2026/04/07 19:43:52| Processing: acl localnet src 169.254.0.0/16        # RFC 3927 link-local (directly plugged) machines
+2026/04/07 19:43:52| Processing: acl localnet src 172.16.0.0/12         # RFC 1918 local private network (LAN)
+2026/04/07 19:43:52| Processing: acl localnet src 192.168.0.0/16                # RFC 1918 local private network (LAN)
+2026/04/07 19:43:52| Processing: acl localnet src fc00::/7              # RFC 4193 local private network range
+2026/04/07 19:43:52| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:43:52| Processing: acl localnet src fe80::/10             # RFC 4291 link-local (directly plugged) machines
+2026/04/07 19:43:52| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:43:52| Processing: acl SSL_ports port 443
+2026/04/07 19:43:52| Processing: acl Safe_ports port 80         # http
+2026/04/07 19:43:52| Processing: acl Safe_ports port 21         # ftp
+2026/04/07 19:43:52| Processing: acl Safe_ports port 443                # https
+2026/04/07 19:43:52| Processing: acl Safe_ports port 70         # gopher
+2026/04/07 19:43:52| Processing: acl Safe_ports port 210                # wais
+2026/04/07 19:43:52| Processing: acl Safe_ports port 1025-65535 # unregistered ports
+2026/04/07 19:43:52| Processing: acl Safe_ports port 280                # http-mgmt
+2026/04/07 19:43:52| Processing: acl Safe_ports port 488                # gss-http
+2026/04/07 19:43:52| Processing: acl Safe_ports port 591                # filemaker
+2026/04/07 19:43:52| Processing: acl Safe_ports port 777                # multiling http
+2026/04/07 19:43:52| Processing: acl kerberos_access external kerberos_access
+2026/04/07 19:43:52| Processing: acl auth proxy_auth REQUIRED
+2026/04/07 19:43:52| Processing: http_access deny !Safe_ports
+2026/04/07 19:43:52| Processing: http_access deny CONNECT !SSL_ports
+2026/04/07 19:43:52| Processing: http_access allow localhost manager
+2026/04/07 19:43:52| Processing: http_access deny manager
+2026/04/07 19:43:52| Processing: http_access allow localhost
+2026/04/07 19:43:52| Processing: http_access deny to_localhost
+2026/04/07 19:43:52| Processing: http_access deny to_linklocal
+2026/04/07 19:43:52| Processing: http_access allow kerberos_access auth
+2026/04/07 19:43:52| Processing: http_access deny all
+2026/04/07 19:43:52| Processing: http_port 3128
+2026/04/07 19:43:52| Processing: coredump_dir /var/spool/squid
+2026/04/07 19:43:52| Processing: refresh_pattern ^ftp:          1440    20%     10080
+2026/04/07 19:43:52| Processing: refresh_pattern -i (/cgi-bin/|\?) 0    0%      0
+2026/04/07 19:43:52| Processing: refresh_pattern .              0       20%     4320
+2026/04/07 19:43:52| Processing: cache_mem 1024 MB
+2026/04/07 19:43:52| Processing: cache_dir ufs /var/spool/squid 2048 16 256
+2026/04/07 19:43:52| Processing: maximum_object_size 100 MB
+2026/04/07 19:43:52| Processing: maximum_object_size_in_memory 1 MB
+2026/04/07 19:43:52| Requiring client certificates.
+```
+
+</details>
+
+```bash
+# Перезапуск конфигурации
 squid -k reconfigure
 ```
 
@@ -602,18 +688,109 @@ squid -k reconfigure
 <summary>лог вывода реконфигурации squid</summary>
 
 ```log
-2026/04/07 17:54:35| WARNING: BCP 177 violation. Detected non-functional IPv6 loopback.
-2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
-2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
-2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
-2026/04/07 17:54:35| Processing Configuration File: /etc/squid/squid.conf (depth 0)
-2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
-2026/04/07 17:54:35| aclIpParseIpData: IPv6 has not been enabled.
-2026/04/07 17:54:35| Set Current Directory to /var/spool/squid
+2026/04/07 19:44:09| WARNING: BCP 177 violation. Detected non-functional IPv6 loopback.
+2026/04/07 19:44:09| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:44:09| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:44:09| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:44:09| Processing Configuration File: /etc/squid/squid.conf (depth 0)
+2026/04/07 19:44:09| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:44:09| aclIpParseIpData: IPv6 has not been enabled.
+2026/04/07 19:44:09| Set Current Directory to /var/spool/squid
 ```
 
 </details>
 
+```bash
+# Созданный конфиг
+cat /etc/squid/squid.conf
+```
+
+<details>
+<summary>Конфиг Squid</summary>
+
+```ini
+auth_param negotiate program /usr/lib/squid/negotiate_kerberos_auth -d -s HTTP/altsrv1.den.skv@DEN.SKV
+auth_param negotiate children 20 startup=0 idle=1
+auth_param negotiate keep_alive on
+external_acl_type kerberos_access ttl=900 negative_ttl=900 %LOGIN /usr/lib/squid/ext_kerberos_ldap_group_acl -d -a -g proxy_acc -D DEN.SKV
+acl localnet src 0.0.0.1-0.255.255.255  # RFC 1122 "this" network (LAN)
+acl localnet src 10.0.0.0/8             # RFC 1918 local private network (LAN)
+acl localnet src 100.64.0.0/10          # RFC 6598 shared address space (CGN)
+acl localnet src 169.254.0.0/16         # RFC 3927 link-local (directly plugged) machines
+acl localnet src 172.16.0.0/12          # RFC 1918 local private network (LAN)
+acl localnet src 192.168.0.0/16         # RFC 1918 local private network (LAN)
+acl localnet src fc00::/7               # RFC 4193 local private network range
+acl localnet src fe80::/10              # RFC 4291 link-local (directly plugged) machines
+acl SSL_ports port 443
+acl Safe_ports port 80          # http
+acl Safe_ports port 21          # ftp
+acl Safe_ports port 443         # https
+acl Safe_ports port 70          # gopher
+acl Safe_ports port 210         # wais
+acl Safe_ports port 1025-65535  # unregistered ports
+acl Safe_ports port 280         # http-mgmt
+acl Safe_ports port 488         # gss-http
+acl Safe_ports port 591         # filemaker
+acl Safe_ports port 777         # multiling http
+acl kerberos_access external kerberos_access
+acl auth proxy_auth REQUIRED
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost manager
+http_access deny manager
+http_access allow localhost
+http_access deny to_localhost
+http_access deny to_linklocal
+http_access allow kerberos_access auth
+http_access deny all
+http_port 3128
+coredump_dir /var/spool/squid
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern .               0       20%     4320
+cache_mem 1024 MB
+cache_dir ufs /var/spool/squid 2048 16 256
+maximum_object_size 100 MB
+maximum_object_size_in_memory 1 MB
+```
+
+</details>
+
+## Создание группы `proxy_acc` со стороны домен контролера
+```bash
+# Включаем агента в текущей оснастке и прописываем в базу агента
+eval $(ssh-agent) \
+&& ssh-add  \
+~/.ssh/id_skv_VKR_vpn
+```
+```bash
+# Вход на altsrv3(AD2) по новому Ip
+ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.252 \
+"su -"
+```
+## Создание групп пользователей с доступом в интернет
+```bash
+# Создание группы
+samba-tool group add \
+proxy_acc
+```
+```log
+Added group proxy_acc
+```
+### Добавление пользователей в группы
+```bash
+# Добавление Администраторов домена в группу доступа в интернет proxy_acc
+samba-tool group addmembers \
+proxy_acc \
+'Domain Admins'
+```
+```log
+Added members to group proxy_acc
+```
 
 ## Для gitflic и github
 ```bash
@@ -679,7 +856,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd1]ДЛЯ ВКР SQUID служба" \
+git commit -am "[upd2]ДЛЯ ВКР SQUID служба" \
 && git push \
 --set-upstream \
 altlinux \
