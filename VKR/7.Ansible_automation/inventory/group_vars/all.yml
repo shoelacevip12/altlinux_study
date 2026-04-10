@@ -1,0 +1,26 @@
+# Общие параметры домена
+ad_realm: "DEN.SKV"
+ad_domain: "DEN"
+ad_admin_user: "Administrator"
+ad_admin_password: "{{ vault_ad_admin_password }}"
+
+# Сеть
+network_subnet: "192.168.100.0"
+network_netmask: "255.255.255.0"
+network_gateway: "192.168.100.1"
+dns_forwarder: "77.88.8.8"
+ntp_servers:
+  - "192.168.100.253"
+  - "192.168.100.252"
+
+# Kerberos
+kerberos_kdc: "altsrv2.den.skv"
+kerberos_admin_server: "altsrv2.den.skv"
+
+# Общие пакеты
+base_packages:
+  - curl
+  - wget
+  - vim
+  - rsync
+  - sshpass

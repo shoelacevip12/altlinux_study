@@ -1,0 +1,13 @@
+#cloud-config
+users:
+  - name: skv
+    groups: sudo
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK/47mAS0sUnBDavx6pBJDYs23hzWPc3JGAlnpYWrPOo VKR_vpn
+  
+  - name: root
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK/47mAS0sUnBDavx6pBJDYs23hzWPc3JGAlnpYWrPOo VKR_vpn
