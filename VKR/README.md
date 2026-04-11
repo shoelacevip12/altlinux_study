@@ -1193,7 +1193,7 @@ cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
   shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
   listen: "restart interface"
   async: 10
-  poll: 
+  poll: 0
   ignore_unreachable: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
@@ -1219,16 +1219,13 @@ cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
   shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
   listen: "restart interface dc2"
   async: 10
-  poll: 
+  poll: 0
   ignore_unreachable: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[1]
 ...
 EOF
 ```
-
-
-
 
 # gitflic_github репозиторий
 ```bash
