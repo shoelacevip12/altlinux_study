@@ -1,3 +1,53 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# handlers file for roles/samba_ad_dc
+- name: Перезапуск сетевых служб основного dc
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "restart network"
+  async: 10
+  poll: 0
+  loop:
+    - network
+    - samba
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: перезапуск интерфейса основного dc
+  shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
+  listen: "restart interface"
+  async: 10
+  poll: 
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Перезапуск сетевых служб основного dc
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "restart network dc2"
+  async: 10
+  poll: 0
+  loop:
+    - network
+    - samba
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: перезапуск интерфейса основного dc
+  shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
+  listen: "restart interface dc2"
+  async: 10
+  poll: 
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+...

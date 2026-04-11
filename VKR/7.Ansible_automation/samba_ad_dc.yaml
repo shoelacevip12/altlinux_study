@@ -1,10 +1,10 @@
 #!/usr/bin/env ansible-playbook
 ---
-- name: Настройка синхронизации времени
-  hosts: all
+- name: Samba Active Directory DC
+  hosts: domain_controllers
   become: true
   become_method: su
   become_user: root
   roles:
-    - chrony_sync
+    - samba_ad_dc
 ...

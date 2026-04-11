@@ -600,7 +600,6 @@ ansible_become_password: "{{ vault_su_password }}"
 
 # Общие параметры домена
 ad_workgroup: "den.skv"
-ad_realm: "DEN.SKV"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
 ad_admin_password: "{{ vault_ad_admin_password }}"
@@ -609,10 +608,6 @@ ad_admin_password: "{{ vault_ad_admin_password }}"
 network_subnet: "192.168.100.0"
 network_netmask: "255.255.255.0"
 network_gateway: "192.168.100.1"
-dns_forwarder: "77.88.8.8"
-ntp_servers:
-  - "192.168.100.12"
-  - "192.168.100.13"
 ...
 EOF
 ```
@@ -661,7 +656,7 @@ cat > ./main.yaml<< 'EOF'
 ---
 - name: Развертывание гибридной инфраструктуры
   hosts: all
-  become: yes
+  become: true
   become_method: su
   become_user: root
   gather_facts: true
@@ -727,7 +722,7 @@ cat > ./base_setup.yaml << 'EOF'
 ---
 - name: Базовая настройка хостов
   hosts: all
-  become: yes
+  become: true
   become_method: su
   become_user: root
   roles:
@@ -827,7 +822,7 @@ cat > ./chrony_sync.yaml << 'EOF'
 ---
 - name: Настройка синхронизации времени
   hosts: all
-  become: yes
+  become: true
   become_method: su
   become_user: root
   roles:
@@ -854,7 +849,7 @@ cat > roles/chrony_sync/tasks/main.yml <<'EOF'
   template:
     src: chrony.conf.dc_main.j2
     dest: /etc/chrony.conf
-    backup: yes
+    backup: true
   notify: Restart chronyd
   when:
   - inventory_hostname == (groups['domain_controllers'] | list)[0]
@@ -863,7 +858,7 @@ cat > roles/chrony_sync/tasks/main.yml <<'EOF'
   template:
     src: chrony.conf.dc_second.j2
     dest: /etc/chrony.conf
-    backup: yes
+    backup: true
   notify: Restart chronyd
   when:
   - inventory_hostname == (groups['domain_controllers'] | list)[1]
@@ -872,7 +867,7 @@ cat > roles/chrony_sync/tasks/main.yml <<'EOF'
   template:
     src: chrony.conf.members.j2
     dest: /etc/chrony.conf
-    backup: yes
+    backup: true
   notify: Restart chronyd
   when:
   - inventory_hostname not in groups['domain_controllers']
@@ -880,10 +875,10 @@ cat > roles/chrony_sync/tasks/main.yml <<'EOF'
 - name: Запуск и включение службы chronyd
   systemd:
     name: "{{ item }}"
-    enabled: yes
-    masked: no
-    daemon_reload: yes
-    enabled: yes
+    state: started
+    enabled: true
+    masked: false
+    daemon_reload: true
   loop:
     - chronyd
 ...
@@ -948,15 +943,16 @@ cat > roles/chrony_sync/handlers/main.yml <<'EOF'
   systemd:
     name: "{{ item }}"
     state: restarted
-    enabled: yes
-    masked: no
-    daemon_reload: yes
+    enabled: true
+    masked: false
+    daemon_reload: true
   loop:
     - chronyd
   listen: Restart chronyd
 ...
 EOF
 ```
+### Переменные по умолчанию
 ```bash
 cat > roles/chrony_sync/defaults/main.yml<<'EOF'
 ---
@@ -965,6 +961,272 @@ allow_clients: "192.168.100.0/24"
 ...
 EOF
 ```
+
+### `samba_ad_dc` - Контроллер домена Active Directory
+```bash
+cat > ./samba_ad_dc.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: Samba Active Directory DC
+  hosts: domain_controllers
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - samba_ad_dc
+...
+EOF
+```
+
+#### Главный файл задач роли Контроллер домена Active Directory
+```bash
+cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
+---
+- name: Остановка конфликтующих служб
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    masked: true
+    enabled: false
+  loop: 
+    - smb
+    - nmb
+    - krb5kdc
+    - slapd
+    - bind
+    - dnsmasq
+
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов Samba DC
+  apt_rpm:
+    name:
+      - task-samba-dc
+      - alterator-net-domain
+      - alterator-datetime
+    state: present
+    
+- name: Очистка дефолтных конфигов Samba
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/samba/smb.conf
+    - /var/lib/samba
+    - /var/cache/samba
+
+- name: Определить основной интерфейс
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Provisioning основного домен-контроллера
+  command: >
+    samba-tool domain provision --realm={{ ad_realm }} --domain={{ ad_domain }} --server-role=dc --dns-backend="{{ ad_backend }}" --use-rfc2307 --function-level="{{ func_level }}" --adminpass='{{ ad_admin_password }}' --option="dns forwarder={{ dns_forwarder }}" --option="interfaces= lo {{ primary_iface_name }}" --option="bind interfaces only=yes" --option="dns zone scavenging=yes" --option="allow dns updates=secure only"
+  args:
+    creates: /var/lib/samba/private/sam.ldb
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Запуск samba AD сервер
+  systemd:
+    name: "{{ item }}"
+    state: started
+    masked: false
+    enabled: true
+  loop: 
+    - samba
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Очистка Очистка с интервалом обновления 30 дней
+  command: >
+    samba-tool dns zoneoptions {{ inventory_hostname }} {{ ad_realm }} --aging=1 --refreshinterval={{ dns_refresh }} -U {{ ad_admin_user }}
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Создание обратной - PTR зоны
+  command: >
+    samba-tool dns zonecreate {{ inventory_hostname }} {{ ptr_zone }} -U {{ ad_admin_user }}
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Добавление записи типа PTR для обратной зоны самого домен контролера
+  command: >
+    samba-tool dns add  {{ inventory_hostname }} {{ ptr_zone }} {{ ptr_ip_main_dc }} PTR -U {{ inventory_hostname }} -U {{ ad_admin_user }}
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Настройка DNS резолвера основного DC
+  template:
+    src: resolv.conf_dc_main.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  notify:
+    - restart network
+    - restart interface
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Определить основной интерфейс вторичного DC
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Присоединение вторичного контроллера домена
+  command: >
+    samba-tool domain join {{ ad_realm }} DC -U{{ ad_admin_user }}%{{ ad_join_password }} --realm={{ ad_realm }} --option="ad dc functional level={{ func_level }}" --option="dns forwarder={{ dns_forwarder }}" --option='idmap_ldb:use rfc2307 = yes' --option="interfaces= lo {{ primary_iface_name }}" --option="bind interfaces only=yes" --option="dns zone scavenging=yes" --option="allow dns updates=secure only"
+  args:
+    creates: /var/lib/samba/private/secrets.tdb
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+  
+- name: Запуск samba AD сервер
+  systemd:
+    name: "{{ item }}"
+    state: started
+    masked: false
+    enabled: true
+  loop: 
+    - samba
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Добавление записи типа PTR для обратной зоны вторичного домен контролера
+  command: >
+    samba-tool dns add  {{ inventory_hostname }} {{ ptr_zone }} {{ ptr_ip_second_dc }} PTR -U {{ inventory_hostname }} -U {{ ad_admin_user }}
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Настройка DNS резолвера дополнительного DC
+  template:
+    src: resolv.conf_dc_second.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  notify:
+    - restart network dc2
+    - restart interface dc2
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+...
+EOF
+```
+
+#### Шаблон resolver роли домен контроллеров
+##### Шаблон resolver для основного DC
+```bash
+cat > roles/samba_ad_dc/templates/resolv.conf_dc_main.j2 <<'EOF'
+nameserver 127.0.0.1
+{% for server in groups.domain_controllers %}
+{% if inventory_hostname != host %}
+nameserver {{ hostvars[server].ansible_host }}
+{% endif %}
+{% endfor %}
+search {{ ad_workgroup }}
+EOF
+```
+
+##### Шаблон resolver для вторичного DC
+```bash
+cat > roles/samba_ad_dc/templates/resolv.conf_dc_second.j2 <<'EOF'
+nameserver 127.0.0.1
+{% for server in groups.domain_controllers %}
+{% if inventory_hostname != host %}
+nameserver {{ hostvars[server].ansible_host }}
+{% endif %}
+{% endfor %}
+search {{ ad_workgroup }}
+EOF
+```
+
+#### Переменные по умолчанию
+```bash
+cat > roles/samba_ad_dc/defaults/main.yml<<'EOF'
+---
+ad_realm: "DEN.SKV"
+func_level: 2016
+ad_backend: 'SAMBA_INTERNAL'
+dns_refresh: 720
+ptr_zone: "100.168.192.in-addr.arpa"
+ptr_ip_main_dc: 12
+ptr_ip_second_dc: 13
+dns_forwarder: "77.88.8.8"
+...
+EOF
+```
+#### Обработчики роли Синхронизация времени
+```bash
+cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
+---
+- name: Перезапуск сетевых служб основного dc
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "restart network"
+  async: 10
+  poll: 0
+  loop:
+    - network
+    - samba
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: перезапуск интерфейса основного dc
+  shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
+  listen: "restart interface"
+  async: 10
+  poll: 
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Перезапуск сетевых служб основного dc
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "restart network dc2"
+  async: 10
+  poll: 0
+  loop:
+    - network
+    - samba
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: перезапуск интерфейса основного dc
+  shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
+  listen: "restart interface dc2"
+  async: 10
+  poll: 
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+...
+EOF
+```
+
 
 
 
@@ -994,7 +1256,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd4]ansible" \
+git commit -am "[upd5]ansible" \
 && git push \
 --set-upstream \
 altlinux \

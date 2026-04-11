@@ -13,7 +13,7 @@
   template:
     src: chrony.conf.dc_main.j2
     dest: /etc/chrony.conf
-    backup: yes
+    backup: true
   notify: Restart chronyd
   when:
   - inventory_hostname == (groups['domain_controllers'] | list)[0]
@@ -22,7 +22,7 @@
   template:
     src: chrony.conf.dc_second.j2
     dest: /etc/chrony.conf
-    backup: yes
+    backup: true
   notify: Restart chronyd
   when:
   - inventory_hostname == (groups['domain_controllers'] | list)[1]
@@ -31,7 +31,7 @@
   template:
     src: chrony.conf.members.j2
     dest: /etc/chrony.conf
-    backup: yes
+    backup: true
   notify: Restart chronyd
   when:
   - inventory_hostname not in groups['domain_controllers']
@@ -39,10 +39,10 @@
 - name: Запуск и включение службы chronyd
   systemd:
     name: "{{ item }}"
-    enabled: yes
-    masked: no
-    daemon_reload: yes
-    enabled: yes
+    state: started
+    enabled: true
+    masked: false
+    daemon_reload: true
   loop:
     - chronyd
 ...

@@ -2,7 +2,7 @@
 ---
 - name: Базовая настройка хостов
   hosts: all
-  become: yes
+  become: true
   become_method: su
   become_user: root
   roles:

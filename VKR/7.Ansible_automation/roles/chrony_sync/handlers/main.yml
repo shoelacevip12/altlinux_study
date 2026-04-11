@@ -3,9 +3,9 @@
   systemd:
     name: "{{ item }}"
     state: restarted
-    enabled: yes
-    masked: no
-    daemon_reload: yes
+    enabled: true
+    masked: false
+    daemon_reload: true
   loop:
     - chronyd
   listen: Restart chronyd
