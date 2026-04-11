@@ -1,3 +1,48 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# tasks file for roles/chrony_sync
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка базовых пакетов при вводе в домен
+  apt_rpm:
+    name:
+      - chrony
+    state: installed
+    
+- name: Настройка chrony.conf для основного DC
+  template:
+    src: chrony.conf.dc_main.j2
+    dest: /etc/chrony.conf
+    backup: yes
+  notify: Restart chronyd
+  when:
+  - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Настройка chrony.conf для вторичного DC
+  template:
+    src: chrony.conf.dc_second.j2
+    dest: /etc/chrony.conf
+    backup: yes
+  notify: Restart chronyd
+  when:
+  - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Настройка chrony.conf для пользователей домена
+  template:
+    src: chrony.conf.members.j2
+    dest: /etc/chrony.conf
+    backup: yes
+  notify: Restart chronyd
+  when:
+  - inventory_hostname not in groups['domain_controllers']
+
+- name: Запуск и включение службы chronyd
+  systemd:
+    name: "{{ item }}"
+    enabled: yes
+    masked: no
+    daemon_reload: yes
+    enabled: yes
+  loop:
+    - chronyd
+...

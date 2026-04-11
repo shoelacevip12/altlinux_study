@@ -1,0 +1,10 @@
+#!/usr/bin/env ansible-playbook
+---
+- name: Настройка синхронизации времени
+  hosts: all
+  become: yes
+  become_method: su
+  become_user: root
+  roles:
+    - chrony_sync
+...

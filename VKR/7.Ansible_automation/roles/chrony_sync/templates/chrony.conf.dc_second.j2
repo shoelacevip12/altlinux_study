@@ -1,0 +1,13 @@
+{% for host in groups['domain_controllers'] %}
+{% if inventory_hostname != host %}
+server {{ host }}.{{ ad_workgroup }} iburst
+{% endif %}
+{% endfor %}
+server {{ exter_ntp }} iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+allow {{ allow_clients }}
+local stratum 10
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony

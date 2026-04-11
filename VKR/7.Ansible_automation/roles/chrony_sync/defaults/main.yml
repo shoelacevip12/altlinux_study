@@ -1,3 +1,4 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for roles/chrony_sync
+exter_ntp: ntp3.vniiftri.ru
+allow_clients: "192.168.100.0/24"
+...

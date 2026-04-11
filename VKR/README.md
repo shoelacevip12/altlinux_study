@@ -818,8 +818,155 @@ nameserver {{ hostvars[server].ansible_host }}
 search {{ ad_workgroup }}
 options rotate
 EOF
----
 ```
+
+### `chrony_sync` - Синхронизация времени
+```bash
+cat > ./chrony_sync.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: Настройка синхронизации времени
+  hosts: all
+  become: yes
+  become_method: su
+  become_user: root
+  roles:
+    - chrony_sync
+...
+EOF
+```
+
+#### Главный файл задач Синхронизация времени
+```bash
+cat > roles/chrony_sync/tasks/main.yml <<'EOF'
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка базовых пакетов при вводе в домен
+  apt_rpm:
+    name:
+      - chrony
+    state: installed
+    
+- name: Настройка chrony.conf для основного DC
+  template:
+    src: chrony.conf.dc_main.j2
+    dest: /etc/chrony.conf
+    backup: yes
+  notify: Restart chronyd
+  when:
+  - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Настройка chrony.conf для вторичного DC
+  template:
+    src: chrony.conf.dc_second.j2
+    dest: /etc/chrony.conf
+    backup: yes
+  notify: Restart chronyd
+  when:
+  - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Настройка chrony.conf для пользователей домена
+  template:
+    src: chrony.conf.members.j2
+    dest: /etc/chrony.conf
+    backup: yes
+  notify: Restart chronyd
+  when:
+  - inventory_hostname not in groups['domain_controllers']
+
+- name: Запуск и включение службы chronyd
+  systemd:
+    name: "{{ item }}"
+    enabled: yes
+    masked: no
+    daemon_reload: yes
+    enabled: yes
+  loop:
+    - chronyd
+...
+EOF
+```
+#### Шаблоны сервера времени роли Синхронизация времени
+##### Для основного сервера времени
+```bash
+cat > roles/chrony_sync/templates/chrony.conf.dc_main.j2 <<'EOF'
+server {{ exter_ntp }} iburst
+{% for host in groups['domain_controllers'] %}
+{% if inventory_hostname != host %}
+server {{ host }}.{{ ad_workgroup }} iburst
+{% endif %}
+{% endfor %}
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+allow {{ allow_clients }}
+local stratum 10
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+EOF
+```
+##### Для вторичного сервера времени
+```bash
+cat > roles/chrony_sync/templates/chrony.conf.dc_second.j2 <<'EOF'
+{% for host in groups['domain_controllers'] %}
+{% if inventory_hostname != host %}
+server {{ host }}.{{ ad_workgroup }} iburst
+{% endif %}
+{% endfor %}
+server {{ exter_ntp }} iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+allow {{ allow_clients }}
+local stratum 10
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+EOF
+```
+##### Для пользователей домена
+```bash
+cat > roles/chrony_sync/templates/chrony.conf.members.j2 <<'EOF'
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+{% for host in groups['domain_controllers'] %}
+server {{ host }}.{{ ad_workgroup }} iburst
+{% endfor %}
+EOF
+```
+
+#### Обработчики роли Синхронизация времени
+```bash
+cat > roles/chrony_sync/handlers/main.yml <<'EOF'
+---
+- name: Перезапуск chronyd обработчиком
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+    masked: no
+    daemon_reload: yes
+  loop:
+    - chronyd
+  listen: Restart chronyd
+...
+EOF
+```
+```bash
+cat > roles/chrony_sync/defaults/main.yml<<'EOF'
+---
+exter_ntp: ntp3.vniiftri.ru
+allow_clients: "192.168.100.0/24"
+...
+EOF
+```
+
+
 
 # gitflic_github репозиторий
 ```bash
@@ -847,7 +994,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd3]ansible" \
+git commit -am "[upd4]ansible" \
 && git push \
 --set-upstream \
 altlinux \

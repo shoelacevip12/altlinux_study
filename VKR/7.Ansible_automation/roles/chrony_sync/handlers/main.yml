@@ -1,3 +1,12 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# handlers file for roles/chrony_sync
+- name: Перезапуск chronyd обработчиком
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+    masked: no
+    daemon_reload: yes
+  loop:
+    - chronyd
+  listen: Restart chronyd
+...
