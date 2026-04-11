@@ -5,6 +5,8 @@
 
 # Памятка входа
 ```bash
+export ANSIBLE_CONFIG=./ansible.cfg
+
 # Команда вызова редактирования файла с паролями
 EDITOR=nano \
 ansible-vault edit \
@@ -593,10 +595,11 @@ cat > inventory/group_vars/all.yml <<'EOF'
 ---
 # параметры суперпользователя
 ansible_ssh_private_key_file: " ~/.ssh/id_skv_VKR_vpn"
-ansible_user: "{{ su_wheel_user }}"
-ansible_become_password: "{{ su_password }}"
+ansible_user: "{{ vault_su_wheel_user }}"
+ansible_become_password: "{{ vault_su_password }}"
 
 # Общие параметры домена
+ad_workgroup: "den.skv"
 ad_realm: "DEN.SKV"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
@@ -608,8 +611,8 @@ network_netmask: "255.255.255.0"
 network_gateway: "192.168.100.1"
 dns_forwarder: "77.88.8.8"
 ntp_servers:
-  - "192.168.100.253"
-  - "192.168.100.252"
+  - "192.168.100.12"
+  - "192.168.100.13"
 ...
 EOF
 ```
@@ -651,22 +654,174 @@ ansible-vault edit \
 ./inventory/group_vars/all/vault.yml \
 --vault-password-file ./va_pa
 ```
-
+### создание основы главного playbook
 ```bash
-# Создание файла переменных применимых для группы хостов [alt_work_p11]
-# Переназначаем стандартные переменные ansible_* на:
-# на расположение приватного файла ключа для подключения по ssh
-# Исполняемым интерпретатор на управляемых хостах при выполнений модулей ansible
-# Имя удаленной учетной записи для подключения
-# пароль для входа под суперпользователя на управляемом хосте
-cat > ~/ans/group_vars/alt_work_p11.yml<< 'EOF'
-ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
-ansible_python_interpreter: "/usr/bin/python3"
-ansible_user: "{{ su_wheel_user }}"
-ansible_become_password: "{{ su_password }}"
+cat > ./main.yaml<< 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: Развертывание гибридной инфраструктуры
+  hosts: all
+  become: yes
+  become_method: su
+  become_user: root
+  gather_facts: true
+  vars:
+    # включаем(true)\выключаем(false)
+    base_setup: true 
+    chrony_sync: false
+    samba_ad_dc: false
+    dhcp_server: false
+    sysvol_replication: false
+    kerberos_client: false
+    smb_shares: false
+    nfs_server: false
+    squid_proxy: false
+    monitoring_scripts: false
+
+- name: Базовая настройка хостов
+  import_playbook: base_setup.yaml
+  when: base_setup | bool
+
+- name: Настройка синхронизации времени
+  import_playbook: chrony_sync.yaml
+  when: chrony_sync | bool
+
+- name: Установка Samba Active Directory DC
+  import_playbook: samba_ad_dc.yaml
+  when: samba_ad_dc | bool
+
+- name: DHCP с failover и DDNS
+  import_playbook: dhcp_server.yaml
+  when: dhcp_server | bool
+
+- name: Репликация SysVol между DC
+  import_playbook: squid_proxy.yaml
+  when: squid_proxy | bool
+
+- name: Настройка Kerberos-клиента
+  import_playbook: kerberos_client.yaml
+  when: kerberos_client | bool
+
+- name: Smb файловый сервер
+  import_playbook: smb_shares.yaml
+  when: smb_shares | bool
+
+- name: NFS с Kerberos
+  import_playbook: nfs_server.yaml
+  when: nfs_server | bool
+
+- name: SQUID с Kerberos-аутентификацией
+  import_playbook: squid_proxy.yaml
+  when: squid_proxy | bool
+
+- name: Скрипты мониторинга и failover
+  import_playbook: monitoring_scripts.yaml
+  when: monitoring_scripts | bool
+...
+EOF
+```
+### playbook базовых настроек хостов
+```bash
+cat > ./base_setup.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: Базовая настройка хостов
+  hosts: all
+  become: yes
+  become_method: su
+  become_user: root
+  roles:
+    - base_setup
+...
+EOF
+```
+#### Главный файл задач базовых настроек
+```bash
+cat > roles/base_setup/tasks/main.yml <<'EOF'
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+  when: dist_upd | bool
+
+- name: Установка базовых пакетов при вводе в домен
+  apt_rpm:
+    name:
+      - task-auth-ad-sssd
+      - chrony
+      - samba-common-tools
+      - samba-client
+    state: installed
+  when:
+    - inventory_hostname not in groups['domain_controllers']
+    - dist_upd | bool
+
+- name: Обновление пакетов
+  apt_rpm:
+    dist_upgrade: true
+  when: dist_upgrd | bool
+
+- name: Обновление ядра
+  apt_rpm:
+    update_kernel: true
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/usr/sbin"
+  ignore_errors: true
+  when: kernel_upd | bool
+
+- name: Установка имени хоста
+  hostname:
+    name: "{{ inventory_hostname }}.{{ ad_workgroup }}"
+    
+- name: Определить основной интерфейс
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+
+- name: Настройка DNS резолвера
+  template:
+    src: resolv.conf.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  when:
+    - inventory_hostname not in groups['domain_controllers']
+    
+- name: Отключение IPv6
+  sysctl:
+    name: net.ipv6.conf.all.disable_ipv6
+    value: "1"
+    state: present
+...
 EOF
 ```
 
+#### Файл переменных по умолчанию роли базовых настроек
+```bash
+cat > roles/base_setup/defaults/main.yml <<'EOF'
+---
+dist_upd: true # Обновление кеша пакетов
+dist_upgrd: true # обновление установленных приложений
+kernel_upd: true # обновление ядра
+...
+EOF
+```
+#### Шаблон resolver роли базовых настроек
+```bash
+cat > roles/base_setup/templates/resolv.conf.j2 <<'EOF'
+{% for server in groups.domain_controllers %}
+nameserver {{ hostvars[server].ansible_host }}
+{% endfor %}
+search {{ ad_workgroup }}
+options rotate
+EOF
+---
+```
+
+# gitflic_github репозиторий
 ```bash
 # Добавляем ключи агенту ssh от репозитория gitflic и github
 eval $(ssh-agent) \
@@ -692,7 +847,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd2]ansible" \
+git commit -am "[upd3]ansible" \
 && git push \
 --set-upstream \
 altlinux \

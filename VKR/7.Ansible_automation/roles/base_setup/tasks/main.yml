@@ -1,3 +1,58 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# tasks file for roles/base_setup
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+  when: dist_upd | bool
+
+- name: Установка базовых пакетов при вводе в домен
+  apt_rpm:
+    name:
+      - task-auth-ad-sssd
+      - chrony
+      - samba-common-tools
+      - samba-client
+    state: installed
+  when:
+    - inventory_hostname not in groups['domain_controllers']
+    - dist_upd | bool
+
+- name: Обновление пакетов
+  apt_rpm:
+    dist_upgrade: true
+  when: dist_upgrd | bool
+
+- name: Обновление ядра
+  apt_rpm:
+    update_kernel: true
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/usr/sbin"
+  ignore_errors: true
+  when: kernel_upd | bool
+
+- name: Установка имени хоста
+  hostname:
+    name: "{{ inventory_hostname }}.{{ ad_workgroup }}"
+    
+- name: Определить основной интерфейс
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+
+- name: Настройка DNS резолвера
+  template:
+    src: resolv.conf.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  when:
+    - inventory_hostname not in groups['domain_controllers']
+    
+- name: Отключение IPv6
+  sysctl:
+    name: net.ipv6.conf.all.disable_ipv6
+    value: "1"
+    state: present
+...

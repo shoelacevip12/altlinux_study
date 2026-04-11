@@ -1,3 +1,5 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for roles/base_setup
+dist_upd: true # Обновление кеша пакетов
+dist_upgrd: true # обновление установленных приложений
+kernel_upd: true # обновление ядра
+...

@@ -1,10 +1,11 @@
 ---
 # параметры суперпользователя
 ansible_ssh_private_key_file: " ~/.ssh/id_skv_VKR_vpn"
-ansible_user: "{{ su_wheel_user }}"
-ansible_become_password: "{{ su_password }}"
+ansible_user: "{{ vault_su_wheel_user }}"
+ansible_become_password: "{{ vault_su_password }}"
 
 # Общие параметры домена
+ad_workgroup: "den.skv"
 ad_realm: "DEN.SKV"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
@@ -16,6 +17,6 @@ network_netmask: "255.255.255.0"
 network_gateway: "192.168.100.1"
 dns_forwarder: "77.88.8.8"
 ntp_servers:
-  - "192.168.100.253"
-  - "192.168.100.252"
+  - "192.168.100.12"
+  - "192.168.100.13"
 ...

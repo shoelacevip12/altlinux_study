@@ -1,0 +1,43 @@
+grep nat_ip_address terraform.tfstate
+
+yc compute instance list
+
+yc compute instance start fv4clqtg1jq6rde85jcc
+
+yc compute instance list
+
+yc compute instance stop fv4clqtg1jq6rde85jcc
+
+eval $(ssh-agent) \
+&& ssh-add  \
+~/.ssh/id_skv_VKR_vpn
+
+ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J skv@158.160.201.144 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@172.16.100.2 \
+"su -"
+
+# вход на bastion хост по ключу по ssh
+> ~/.ssh/known_hosts \
+&& ssh -t -o StrictHostKeyChecking=accept-new \
+sysadmin@172.16.100.2 \
+"su -"
+
+
+# Запуск скрипта выполнения работы
+ssh \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_skv_VKR_vpn \
+skv@158.160.201.144
+
+
+yc compute instance list
+
+yc compute instance start fv4clqtg1jq6rde85jcc
+
+yc compute ssh \
+--id fv4clqtg1jq6rde85jcc \
+--identity-file ~/.ssh/id_skv_VKR_vpn \
+--login skv

@@ -1,0 +1,66 @@
+#!/usr/bin/env ansible-playbook
+---
+- name: Развертывание гибридной инфраструктуры
+  hosts: all
+  become: yes
+  become_method: su
+  become_user: root
+  gather_facts: true
+  vars:
+    # Параметры включения(true)\выключения(false) ролей
+    base_setup: true
+    dist_upd: true # Обновление кеша пакетов роли base_setup
+    dist_upgrd: true # обновление установленных приложений роли base_setup
+    kernel_upd: true # обновление ядра роли base_setup
+    
+    chrony_sync: false
+    samba_ad_dc: false
+    dhcp_server: false
+    sysvol_replication: false
+    kerberos_client: false
+    smb_shares: false
+    nfs_server: false
+    squid_proxy: false
+    monitoring_scripts: false
+    
+
+- name: Базовая настройка хостов
+  import_playbook: base_setup.yaml
+  when: base_setup | bool
+
+- name: Настройка синхронизации времени
+  import_playbook: chrony_sync.yaml
+  when: chrony_sync | bool
+
+- name: Установка Samba Active Directory DC
+  import_playbook: samba_ad_dc.yaml
+  when: samba_ad_dc | bool
+
+- name: DHCP с failover и DDNS
+  import_playbook: dhcp_server.yaml
+  when: dhcp_server | bool
+
+- name: Репликация SysVol между DC
+  import_playbook: squid_proxy.yaml
+  when: squid_proxy | bool
+
+- name: Настройка Kerberos-клиента
+  import_playbook: kerberos_client.yaml
+  when: kerberos_client | bool
+
+- name: Smb файловый сервер
+  import_playbook: smb_shares.yaml
+  when: smb_shares | bool
+
+- name: NFS с Kerberos
+  import_playbook: nfs_server.yaml
+  when: nfs_server | bool
+
+- name: SQUID с Kerberos-аутентификацией
+  import_playbook: squid_proxy.yaml
+  when: squid_proxy | bool
+
+- name: Скрипты мониторинга и failover
+  import_playbook: monitoring_scripts.yaml
+  when: monitoring_scripts | bool
+...
