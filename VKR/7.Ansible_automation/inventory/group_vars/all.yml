@@ -1,3 +1,9 @@
+---
+# параметры суперпользователя
+ansible_ssh_private_key_file: " ~/.ssh/id_skv_VKR_vpn"
+ansible_user: "{{ su_wheel_user }}"
+ansible_become_password: "{{ su_password }}"
+
 # Общие параметры домена
 ad_realm: "DEN.SKV"
 ad_domain: "DEN"
@@ -12,15 +18,4 @@ dns_forwarder: "77.88.8.8"
 ntp_servers:
   - "192.168.100.253"
   - "192.168.100.252"
-
-# Kerberos
-kerberos_kdc: "altsrv2.den.skv"
-kerberos_admin_server: "altsrv2.den.skv"
-
-# Общие пакеты
-base_packages:
-  - curl
-  - wget
-  - vim
-  - rsync
-  - sshpass
+...

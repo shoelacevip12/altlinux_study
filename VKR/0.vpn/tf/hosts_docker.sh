@@ -4,6 +4,8 @@ yc compute instance list
 
 yc compute instance start fv4clqtg1jq6rde85jcc
 
+yc compute instance list
+
 yc compute instance stop fv4clqtg1jq6rde85jcc
 
 eval $(ssh-agent) \
@@ -12,7 +14,7 @@ eval $(ssh-agent) \
 
 ssh -t \
 -i ~/.ssh/id_skv_VKR_vpn \
--J skv@158.160.255.222 \
+-J skv@158.160.201.144 \
 -o StrictHostKeyChecking=accept-new \
 sysadmin@172.16.100.2 \
 "su -"

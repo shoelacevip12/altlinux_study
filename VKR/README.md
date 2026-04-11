@@ -1,7 +1,25 @@
 # Впускная квалификационная работа
 # `Проектирование и автоматизация внедрения гибридной сетевой инфраструктуры на базе Ansible в составе домена AD, прокси-сервера SQUID и Динамического DNS`
 
-![](0.vpn/img/0.png)
+![](0.vpn/img/1.png)
+
+# Памятка входа
+```bash
+# Включаем агента в текущей оснастке
+eval $(ssh-agent) \
+&& ssh-add  \
+~/.ssh/id_skv_VKR_vpn
+```
+```bash
+# вход на bastion(altwks1) хост по ключу по ssh через yandex cloud vm
+> ~/.ssh/known_hosts \
+&& ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J skv@158.160.201.144 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@172.16.100.2 \
+"su -"
+```
 
 # Ход выполнения Автоматизации
 ## Предварительные действия перед выполнением (Доступ до закрытого контура через Openvpn)
@@ -190,6 +208,12 @@ ssh-keygen -f \
 ~/.ssh/id_skv_VKR_vpn \
 -t ed25519 -C "VKR_vpn"
 
+# Вход на промежуточный сервер с Openvpn
+ssh \
+-i ~/.ssh/id_skv_VKR_vpn \
+-o StrictHostKeyChecking=accept-new \
+skv@158.160.201.144
+
 # проброс ключа до altwks1 через Openvpn
 > ~/.ssh/known_hosts \
 && ssh-copy-id \
@@ -198,16 +222,21 @@ ssh-keygen -f \
 sysadmin@172.16.100.2
 ```
 
+<details>
+<summary>лог проброса ключа</summary>
 
-```
-/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/home/shoel/.ssh/id_skv_VKR_vpn.pub"
+```log
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/home/skv/.ssh/id_skv_VKR_vpn.pub"
 /usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
 /usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
 Number of key(s) added: 1
 
-Now try logging into the machine, with: "ssh -i /home/shoel/.ssh/id_skv_VKR_vpn -o 'StrictHostKeyChecking=accept-new' 'sysadmin@172.16.100.2'"
+Now try logging into the machine, with: "ssh -i /home/skv/.ssh/id_skv_VKR_vpn -o 'StrictHostKeyChecking=accept-new' 'sysadmin@172.16.100.2'"
 and check to make sure that only the key(s) you wanted were added.
 ```
+
+</details>
+
 
 ```bash
 # Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
@@ -216,11 +245,151 @@ eval $(ssh-agent) \
 ~/.ssh/id_skv_VKR_vpn
 ```
 ```bash
-# вход на bastion хост по ключу по ssh
+# вход на bastion хост по ключу по ssh через yandex cloud
 > ~/.ssh/known_hosts \
-&& ssh -t -o StrictHostKeyChecking=accept-new \
+&& ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J skv@158.160.201.144 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@172.16.100.2 \
+"hostname && hostname -i"
+```
+```log
+altwks1
+192.168.1.186 192.168.100.1 172.16.100.2
+Connection to 172.16.100.2 closed.
+```
+### Подготовка Управляющего узла
+```bash
+# вход на bastion хост по ключу по ssh через yandex cloud
+ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J skv@158.160.201.144 \
+-o StrictHostKeyChecking=accept-new \
 sysadmin@172.16.100.2 \
 "su -"
+
+# Смена прав на использование ssh ключей
+chown -v sysadmin:sysadmin \
+/home/sysadmin/.ssh/id_skv_VKR_vp* \
+&& chmod -v 600 \
+/home/sysadmin/.ssh/id_skv_VKR_vpn \
+&& chmod -v 640 \
+/home/sysadmin/.ssh/id_skv_VKR_vpn.pub
+```
+
+<details>
+<summary>Лог смены прав ssh ключей</summary>
+
+```log
+ownership of '/home/sysadmin/.ssh/id_skv_VKR_vpn' retained as sysadmin:sysadmin
+ownership of '/home/sysadmin/.ssh/id_skv_VKR_vpn.pub' retained as sysadmin:sysadmin
+mode of '/home/sysadmin/.ssh/id_skv_VKR_vpn' retained as 0600 (rw-------)
+mode of '/home/sysadmin/.ssh/id_skv_VKR_vpn.pub' changed from 0644 (rw-r--r--) to 0640 (rw-r-----)
+```
+
+</details>
+
+```bash
+# Обновление и установка необходимых пакетов Управляющему узлу
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get install ansible sshpass -y \
+&& apt-get autoremove -y \
+&& systemctl reboot
+```
+### Подготовка Управляемых узлов
+#### Проброс ключей для работы ansible
+```bash
+# вход на bastion хост по ключу по ssh через yandex cloud
+ssh -t \
+-i ~/.ssh/id_skv_VKR_vpn \
+-J skv@158.160.201.144 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@172.16.100.2 \
+"su -"
+
+# проброс ключа до Управляемых хостов
+> ~/.ssh/known_hosts
+for ip in {2,11,12,13,14}; do \
+ssh-copy-id \
+-o StrictHostKeyChecking=accept-new \
+-i /home/sysadmin/.ssh/id_skv_VKR_vpn.pub \
+sysadmin@192.168.100.$ip; done
+```
+<details>
+<summary>Вывод Проброса ключей</summary>
+
+```log
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/home/sysadmin/.ssh/id_skv_VKR_vpn.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+sysadmin@192.168.100.2's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh -o 'StrictHostKeyChecking=accept-new' 'sysadmin@192.168.100.2'"
+and check to make sure that only the key(s) you wanted were added.
+
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/home/sysadmin/.ssh/id_skv_VKR_vpn.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+sysadmin@192.168.100.11's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh -o 'StrictHostKeyChecking=accept-new' 'sysadmin@192.168.100.11'"
+and check to make sure that only the key(s) you wanted were added.
+
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/home/sysadmin/.ssh/id_skv_VKR_vpn.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+sysadmin@192.168.100.12's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh -o 'StrictHostKeyChecking=accept-new' 'sysadmin@192.168.100.12'"
+and check to make sure that only the key(s) you wanted were added.
+
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/home/sysadmin/.ssh/id_skv_VKR_vpn.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+sysadmin@192.168.100.13's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh -o 'StrictHostKeyChecking=accept-new' 'sysadmin@192.168.100.13'"
+and check to make sure that only the key(s) you wanted were added.
+
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/home/sysadmin/.ssh/id_skv_VKR_vpn.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+sysadmin@192.168.100.14's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh -o 'StrictHostKeyChecking=accept-new' 'sysadmin@192.168.100.14'"
+and check to make sure that only the key(s) you wanted were added.
+```
+
+</details>
+
+#### Установка необходимых пакетов на управляемых хостах
+```bash
+# Установка пакетов с заранее известных хостов
+for ip in {2,11,12,13,14}; do \
+ssh -t \
+-i /home/sysadmin/.ssh/id_skv_VKR_vpn \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100."$ip" \
+"su -c 'apt-get update \
+&& apt-get install -y \
+python3 \
+python3-module-yaml \
+python3-module-jinja2 \
+python3-module-jsonobject \
+&& systemctl reboot'" ; done
 ```
 
 ### Формирование Структуры папок и файлов
@@ -298,10 +467,10 @@ host_key_checking=False
 host_key_checking=False
 EOF
 
-# создание каталога inventory для хостов
-mkdir -p inventory/{group_vars,host_vars}
+# создание каталога inventory и глобальных переменных для хостов
+mkdir -vp inventory/{group_vars,host_vars}
 
-mkdir -p inventory/group_vars/all
+mkdir -vp inventory/group_vars/all
 
 # Для nfs сетевого хранилища и отключения сообщения
 # "Ansible is being run in a world writable directory ...
@@ -327,6 +496,12 @@ EOF
 #### создание переменных для всех групп в 
 ```bash
 cat > inventory/group_vars/all.yml <<'EOF'
+---
+# параметры суперпользователя
+ansible_ssh_private_key_file: " ~/.ssh/id_skv_VKR_vpn"
+ansible_user: "{{ su_wheel_user }}"
+ansible_become_password: "{{ su_password }}"
+
 # Общие параметры домена
 ad_realm: "DEN.SKV"
 ad_domain: "DEN"
@@ -341,6 +516,7 @@ dns_forwarder: "77.88.8.8"
 ntp_servers:
   - "192.168.100.253"
   - "192.168.100.252"
+...
 EOF
 ```
 
@@ -378,9 +554,24 @@ vault_su_password: netlab123
 ```bash
 EDITOR=nano \
 ansible-vault edit \
-./inventory/group_vars/all/vault.yml
+./inventory/group_vars/all/vault.yml \
+--vault-password-file ./va_pa
 ```
 
+```bash
+# Создание файла переменных применимых для группы хостов [alt_work_p11]
+# Переназначаем стандартные переменные ansible_* на:
+# на расположение приватного файла ключа для подключения по ssh
+# Исполняемым интерпретатор на управляемых хостах при выполнений модулей ansible
+# Имя удаленной учетной записи для подключения
+# пароль для входа под суперпользователя на управляемом хосте
+cat > ~/ans/group_vars/alt_work_p11.yml<< 'EOF'
+ansible_ssh_private_key_file: "~/.ssh/id_xrdp_host"
+ansible_python_interpreter: "/usr/bin/python3"
+ansible_user: "{{ su_wheel_user }}"
+ansible_become_password: "{{ su_password }}"
+EOF
+```
 
 ```bash
 # Добавляем ключи агенту ssh от репозитория gitflic и github
@@ -407,7 +598,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd0]ansible" \
+git commit -am "[upd1]ansible" \
 && git push \
 --set-upstream \
 altlinux \
