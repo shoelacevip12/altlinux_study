@@ -5,6 +5,13 @@
 
 # Памятка входа
 ```bash
+# Команда вызова редактирования файла с паролями
+EDITOR=nano \
+ansible-vault edit \
+./inventory/group_vars/all/vault.yml \
+--vault-password-file ./va_pa
+```
+```bash
 # Включаем агента в текущей оснастке
 eval $(ssh-agent) \
 && ssh-add  \
@@ -26,22 +33,61 @@ sysadmin@172.16.100.2 \
 ### Развертывание сервера Сертификации на сервере Openvpn
 #### Установка пакетов на сервере Openvpn
 ```bash
-# Поиск пакетов
-sudo pacman \
--Ss \
-openvpn
+# Вход в каталога с подготовленным terraform для развертывания openvpn-сервер узла
+cd  VKR/0.vpn/tf
 
-sudo pacman \
--Ss \
-easyrsa
-
-# Установка пакетов
-sudo pacman \
--Syu \
-easy-rsa \
-openvpn
+# Вывод рабочего облака
+yc config get cloud-id
 ```
-#### Генерация пар сертификатов\ключей для TLS VPN
+```log
+b1gkumrn87pei2831blp
+```
+```bash
+# вывод рабочего каталога YC
+yc config get folder-id
+```
+```log
+b1g7qviodfc9v4k81sr5
+```
+```bash
+# Проверка готовых конфигов проекта и вывод плана развертывания
+terraform validate \
+&& terraform fmt \
+&& terraform init --upgrade \
+&& terraform plan -out=tfplan
+```
+```bash
+# Формирование Сервера
+terraform apply "tfplan"
+```
+```bash
+# вывод имеющихся виртуальных машин
+yc compute instance list
+```
+|          ID          | NAME |    ZONE ID    | STATUS  |   EXTERNAL IP   | INTERNAL IP  |
+|----------------------|------|---------------|---------|-----------------|--------------|
+| fv4clqtg1jq6rde85jcc | vkr  | ru-central1-d | RUNNING | 158.160.201.144 | 10.10.10.254 |
+
+
+```bash
+# Вход на сервер для openvpn
+ssh \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_skv_VKR_vpn \
+skv@158.160.201.144
+```
+```bash
+# вход под сперпользователем YC ВМ
+sudo su
+```
+```bash
+# Обновление системы и установка easyrsa
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get install -y easy-rsa tree \
+&& systemctl reboot
+```
 ```bash
 # Генерация структуры каталогов PKI и генерация сертификата CA
 cd /srv \
@@ -54,7 +100,7 @@ easyrsa gen-dh
 
 # сертификат\ключ VPN-сервера
 easyrsa build-server-full \
-shoellin \
+vkr \
 nopass
 
 # сертификат\ключ VPN-клиента
@@ -63,14 +109,31 @@ altwks1 \
 nopass
 ```
 ```bash
-# Перенос в каталог для облачного хранилища генерации Диффи-Хелмана и пары сертификата\ключа для VPN-сервера
-sudo cp \
-/srv/pki/{ca.crt,dh.pem} \
-/srv/pki/issued/altwks1.crt \
-/srv/pki/private/altwks1.key \
-~/nfs_git/
+# перенос генерации Диффи-Хелмана и пары сертификата\ключа для VPN-сервера
+cp /srv/pki/{ca.crt,dh.pem} \
+/srv/pki/{private,issued}/altwks1.* \
+/home/skv/
+
+chow skv:skv /home/skv/altwks1*
+chow skv:skv /home/skv/{ca.crt,dh.pem}
 ```
-### Подготовка VPN-клиента
+
+```bash
+# =====| Со стороны Altwks1 | ======
+# перенос генерации Диффи-Хелмана и пары сертификата\ключа для VPN-сервера
+# Копирование файлов
+scp \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_skv_VKR_vpn \
+skv@158.160.201.144:~/altwks1.* \
+./
+
+scp \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_skv_VKR_vpn \
+skv@158.160.201.144:~/{ca.crt,dh.pem} \
+./
+```
 ```bash
 # вход под суперпользователем
 su -
@@ -88,7 +151,8 @@ easy-rsa
 openvpn --genkey \
 secret \
 /etc/openvpn/keys/ta.key
-
+```
+```bash
 # Копируем сгенерированный HMAC в домашний каталог для обмена через файловое облако между VPN-сервер\клиентом
 cp /etc/openvpn/keys/ta.key \
 /home/sysadmin/
@@ -97,14 +161,29 @@ cp /etc/openvpn/keys/ta.key \
 chown sysadmin:sysadmin \
 /home/sysadmin/ta.key
 ```
-#### После обмена файлами ключей в домашней каталог
 ```bash
-# Копирование всех необходимых файлов
-cp /home/sysadmin/{ca.crt,altwks1.*,ta.key} \
+# Копируем Генерацию Ключа HMAC на openvpn-server
+scp \
+-o StrictHostKeyChecking=accept-new \
+-i /home/sysadmin/.ssh/id_skv_VKR_vpn \
+/home/sysadmin/ta.key \
+skv@158.160.201.144:~/ \
+```
+```bash
+# Копирование всех необходимых файлов для настройки клиента
+cp /home/sysadmin/{altwks1.*,ta.key,ca.crt,dh.pem} \
 /etc/openvpn/keys/
 
 # Выставление желательных прав для ключей\сертификатов
 chmod -R 600 /etc/openvpn/keys
+```
+```bash
+# Добавляем в hosts ip и имя внешнего сервера VPN 
+# имя указанного хоста соответствует на чье имя был выписан сертификат из CA (openvpn-altserver)
+sed -i '/**vkr$/d' /etc/hosts
+echo "158.160.201.144 \
+vkr" \
+>> /etc/hosts
 ```
 ```bash
 # Создание конфига туннельного соединения-клиента по subnet топологии
@@ -112,7 +191,7 @@ cat > /etc/openvpn/client/tun0.conf <<'EOF'
 dev tun0
   client
   nobind
-  remote 46.148.105.24 1194
+  remote vkr 1194
   proto udp4
   topology subnet
   pull
@@ -128,29 +207,24 @@ dev tun0
 EOF
 ```
 ```bash
-# Добавляем в hosts ip и имя внешнего сервера VPN 
-# имя указанного хоста соответствует на чье имя был выписан сертификат из CA (openvpn-altserver)
-echo -e "\n185.215.60.87 shoellin" \
->> /etc/hosts
-
 # Включение и запуск службы VPN-клиента
 systemctl enable \
 --now \
 openvpn-client@tun0
 ```
-#### Подготовка службы сервера openVPN
 ```bash
+# =====| На стороне сервера openVPN |=====
 # Создание каталога для пары ключей и сертификатов
-sudo mkdir \
+sudo mkdir -p \
 /etc/openvpn/keys/
 
 # Копирование подготовленных файлов пары ключей и сертификатов для сервера
-sudo cp pki/{issued,private}/shoellin.* \
+cp pki/{issued,private}/vkr.* \
 /srv/pki/{ca.crt,dh.pem} \
 /etc/openvpn/keys/
 
 # Копирование Ключа HMAC созданного с VPN-клиента
-sudo cp ~/nfs_git/ta.key \
+cp /home/skv/ta.key \
 /etc/openvpn/keys/
 
 sudo chown \
@@ -165,7 +239,7 @@ chmod -R 600 \
 # Создание конфига туннельного соединения-клиента по subnet топологии
 sudo cat > /etc/openvpn/server/tun0.conf <<'EOF'
 dev tun0
-  local 192.168.89.193
+  local 10.10.10.254
   port 1194
   proto udp4
   keepalive 10 60
@@ -175,8 +249,8 @@ dev tun0
   cipher AES-256-CBC
   ca /etc/openvpn/keys/ca.crt
   dh /etc/openvpn/keys/dh.pem
-  cert /etc/openvpn/keys/shoellin.crt
-  key /etc/openvpn/keys/shoellin.key
+  cert /etc/openvpn/keys/vkr.crt
+  key /etc/openvpn/keys/vkr.key
   tls-server
   remote-cert-eku "TLS Web Client Authentication"
   tls-auth /etc/openvpn/keys/ta.key 0
@@ -203,16 +277,32 @@ rtt min/avg/max/mdev = 16.166/16.386/16.606/0.220 ms
 ```
 ### SSH обмен ключами
 ```bash
-# генерация пары ssh ключей для подключения к стенду ВКР
-ssh-keygen -f \
-~/.ssh/id_skv_VKR_vpn \
--t ed25519 -C "VKR_vpn"
+eval $(ssh-agent) \
+&& ssh-add  \
+~/.ssh/id_skv_VKR_vpn
+
+# копирование ключа на промежуточный сервер на YC
+scp -v \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_skv_VKR_vpn.pub \
+~/.ssh/id_skv_VKR_vp* \
+skv@158.160.201.144:~/.ssh/
 
 # Вход на промежуточный сервер с Openvpn
 ssh \
 -i ~/.ssh/id_skv_VKR_vpn \
 -o StrictHostKeyChecking=accept-new \
 skv@158.160.201.144
+
+# Изменение прав 
+chmod 640 \
+~/.ssh/id_skv_VKR_vpn.pub
+chmod 600 \
+~/.ssh/id_skv_VKR_vpn
+
+eval $(ssh-agent) \
+&& ssh-add  \
+~/.ssh/id_skv_VKR_vpn
 
 # проброс ключа до altwks1 через Openvpn
 > ~/.ssh/known_hosts \
@@ -237,15 +327,19 @@ and check to make sure that only the key(s) you wanted were added.
 
 </details>
 
-
 ```bash
-# Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
-eval $(ssh-agent) \
-&& ssh-add  \
-~/.ssh/id_skv_VKR_vpn
+# копирование ключа на удаленный хост клиента openvpn
+scp -v \
+-o StrictHostKeyChecking=accept-new \
+-i ~/.ssh/id_skv_VKR_vpn.pub \
+~/.ssh/id_skv_VKR_vp* \
+sysadmin@172.16.100.2:~/.ssh/
+
+# Выход с сервера openvpn-server
+exit
 ```
 ```bash
-# вход на bastion хост по ключу по ssh через yandex cloud
+# вход на удаленный хост по ключу по ssh через yandex cloud
 > ~/.ssh/known_hosts \
 && ssh -t \
 -i ~/.ssh/id_skv_VKR_vpn \
@@ -598,7 +692,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd1]ansible" \
+git commit -am "[upd2]ansible" \
 && git push \
 --set-upstream \
 altlinux \

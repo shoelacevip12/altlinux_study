@@ -30,7 +30,7 @@ sysadmin@172.16.100.2 \
 ssh \
 -o StrictHostKeyChecking=accept-new \
 -i ~/.ssh/id_skv_VKR_vpn \
-skv@158.160.238.65
+skv@158.160.201.144
 
 
 yc compute instance list
