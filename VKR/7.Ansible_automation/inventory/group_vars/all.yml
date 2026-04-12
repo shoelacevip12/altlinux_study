@@ -6,14 +6,16 @@ ansible_become_password: "{{ vault_su_password }}"
 
 # Общие параметры домена
 ad_workgroup: "den.skv"
-ad_realm: "DEN.SKV"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
 ad_admin_password: "{{ vault_ad_admin_password }}"
+primary_dc: "{{ groups['domain_controllers'][0] }}"
+primary_dc_ip: "{{ hostvars[primary_dc]['ansible_host'] }}"
+secondary_dc: "{{ groups['domain_controllers'][1] }}"
+secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
 
 # Сеть
 network_subnet: "192.168.100.0"
 network_netmask: "255.255.255.0"
 network_gateway: "192.168.100.1"
-dns_forwarder: "77.88.8.8"
 ...

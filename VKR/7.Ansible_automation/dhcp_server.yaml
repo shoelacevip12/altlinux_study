@@ -1,0 +1,10 @@
+#!/usr/bin/env ansible-playbook
+---
+- name: DHCP с failover и DDNS
+  hosts: domain_controllers
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - dhcp_server
+...

@@ -509,7 +509,7 @@ mv ans_vkr_skv \
 7.Ansible_automation
 
 # Создание ролей ansible
-for r in {base_setup,chrony_sync,samba_ad_dc,dhcp_server,kerberos_client,smb_shares,nfs_server,squid_proxy,sysvol_replication,monitoring_scripts}; do \
+for r in {base_setup,chrony_sync,samba_ad_dc,dhcp_server,smb_shares,nfs_server,squid_proxy,sysvol_replication,monitoring_scripts}; do \
 ansible-galaxy role \
 init \
 roles/$r \
@@ -524,7 +524,6 @@ roles/$r \
 - Role roles/chrony_sync was created successfully
 - Role roles/samba_ad_dc was created successfully
 - Role roles/dhcp_server was created successfully
-- Role roles/kerberos_client was created successfully
 - Role roles/smb_shares was created successfully
 - Role roles/nfs_server was created successfully
 - Role roles/squid_proxy was created successfully
@@ -603,6 +602,10 @@ ad_workgroup: "den.skv"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
 ad_admin_password: "{{ vault_ad_admin_password }}"
+primary_dc: "{{ groups['domain_controllers'][0] }}"
+primary_dc_ip: "{{ hostvars[primary_dc]['ansible_host'] }}"
+secondary_dc: "{{ groups['domain_controllers'][1] }}"
+secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
 
 # Сеть
 network_subnet: "192.168.100.0"
@@ -633,7 +636,6 @@ ansible-vault create \
 ```yaml
 ---
 vault_ad_admin_password: "1qaz@WSX"
-vault_ad_join_password: "1qaz@WSX"
 vault_omapi_secret: "KsP/KnIQcoQF5fMMjBcOhg=="
 vault_su_wheel_user: sysadmin
 vault_su_password: netlab123
@@ -662,9 +664,14 @@ cat > ./main.yaml<< 'EOF'
   gather_facts: true
   vars:
     # включаем(true)\выключаем(false)
-    base_setup: true 
-    chrony_sync: false
-    samba_ad_dc: false
+    base_setup: true
+    # Отдельные задачи включения пакетов
+    dist_upd: true # Обновление кеша пакетов
+    dist_upgrd: true # обновление установленных приложений
+    kernel_upd: true # обновление ядра
+
+    chrony_sync: true
+    samba_ad_dc: true
     dhcp_server: false
     sysvol_replication: false
     kerberos_client: false
@@ -692,10 +699,6 @@ cat > ./main.yaml<< 'EOF'
 - name: Репликация SysVol между DC
   import_playbook: squid_proxy.yaml
   when: squid_proxy | bool
-
-- name: Настройка Kerberos-клиента
-  import_playbook: kerberos_client.yaml
-  when: kerberos_client | bool
 
 - name: Smb файловый сервер
   import_playbook: smb_shares.yaml
@@ -733,63 +736,69 @@ EOF
 #### Главный файл задач базовых настроек
 ```bash
 cat > roles/base_setup/tasks/main.yml <<'EOF'
+#!/usr/bin/env ansible-playbook
 ---
-- name: Обновление кеша пакетов
-  apt_rpm:
-    update_cache: true
-  when: dist_upd | bool
+- name: Развертывание гибридной инфраструктуры
+  hosts: all
+  become: true
+  become_method: su
+  become_user: root
+  gather_facts: true
+  vars:
+    # включаем(true)\выключаем(false)
+    base_setup: true
+    # Отдельные задачи включения пакетов
+    dist_upd: true # Обновление кеша пакетов
+    dist_upgrd: true # обновление установленных приложений
+    kernel_upd: true # обновление ядра
 
-- name: Установка базовых пакетов при вводе в домен
-  apt_rpm:
-    name:
-      - task-auth-ad-sssd
-      - chrony
-      - samba-common-tools
-      - samba-client
-    state: installed
-  when:
-    - inventory_hostname not in groups['domain_controllers']
-    - dist_upd | bool
+    chrony_sync: true
+    samba_ad_dc: true
+    second_dc: true # Установка вторичного DC
 
-- name: Обновление пакетов
-  apt_rpm:
-    dist_upgrade: true
-  when: dist_upgrd | bool
+    dhcp_server: false
+    sysvol_replication: false
+    kerberos_client: false
+    smb_shares: false
+    nfs_server: false
+    squid_proxy: false
+    monitoring_scripts: false
 
-- name: Обновление ядра
-  apt_rpm:
-    update_kernel: true
-  environment:
-    PATH: "{{ ansible_env.PATH }}:/usr/sbin"
-  ignore_errors: true
-  when: kernel_upd | bool
+- name: Базовая настройка хостов
+  import_playbook: base_setup.yaml
+  when: base_setup | bool
 
-- name: Установка имени хоста
-  hostname:
-    name: "{{ inventory_hostname }}.{{ ad_workgroup }}"
-    
-- name: Определить основной интерфейс
-  set_fact:
-    primary_iface_name: >-
-      {{
-          ansible_interfaces
-          | difference(['lo'])
-          | select('match', '^(eth|en)[a-z0-9]*')
-          | first
-      }}
+- name: Настройка синхронизации времени
+  import_playbook: chrony_sync.yaml
+  when: chrony_sync | bool
 
-- name: Настройка DNS резолвера
-  template:
-    src: resolv.conf.j2
-    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
-  when:
-    - inventory_hostname not in groups['domain_controllers']
-    
-- name: Отключение IPv6
-  sysctl:
-    name: net.ipv6.conf.all.disable_ipv6
-    value: "1"
-    state: present
+- name: Установка Samba Active Directory DC
+  import_playbook: samba_ad_dc.yaml
+  when: samba_ad_dc | bool
+
+- name: DHCP с failover и DDNS
+  import_playbook: dhcp_server.yaml
+  when: dhcp_server | bool
+
+- name: Репликация SysVol между DC
+  import_playbook: squid_proxy.yaml
+  when: squid_proxy | bool
+
+- name: Smb файловый сервер
+  import_playbook: smb_shares.yaml
+  when: smb_shares | bool
+
+- name: NFS с Kerberos
+  import_playbook: nfs_server.yaml
+  when: nfs_server | bool
+
+- name: SQUID с Kerberos-аутентификацией
+  import_playbook: squid_proxy.yaml
+  when: squid_proxy | bool
+
+- name: Скрипты мониторинга и failover
+  import_playbook: monitoring_scripts.yaml
+  when: monitoring_scripts | bool
 ...
 EOF
 ```
@@ -982,6 +991,29 @@ EOF
 ```bash
 cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
 ---
+- name: Базовая подготовка серверов AD
+  include_tasks: base.yml
+  when:
+    - inventory_hostname in groups['domain_controllers']
+
+- name: Развертывание основного домен контролера
+  include_tasks: primary_dc.yml
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Развертывание вторичного домен контролера
+  include_tasks: second_dc.yml
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+    - sysvol_replication | bool
+...
+EOF
+```
+
+#### Файл базовых задач роли Контроллер домена Active Directory
+```bash
+cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
+---
 - name: Остановка конфликтующих служб
   systemd:
     name: "{{ item }}"
@@ -1017,6 +1049,11 @@ cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
     - /var/lib/samba
     - /var/cache/samba
 
+- name: создание каталога для работы Домена
+  file:
+    path: /var/lib/samba/sysvol
+    state: directory
+
 - name: Определить основной интерфейс
   set_fact:
     primary_iface_name: >-
@@ -1026,16 +1063,31 @@ cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
           | select('match', '^(eth|en)[a-z0-9]*')
           | first
       }}
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+...
+EOF
+```
 
+#### Файл задач развертывания основного DC роли Контроллер домена Active Directory
+```bash
+cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
+---
 - name: Provisioning основного домен-контроллера
   command: >
-    samba-tool domain provision --realm={{ ad_realm }} --domain={{ ad_domain }} --server-role=dc --dns-backend="{{ ad_backend }}" --use-rfc2307 --function-level="{{ func_level }}" --adminpass='{{ ad_admin_password }}' --option="dns forwarder={{ dns_forwarder }}" --option="interfaces= lo {{ primary_iface_name }}" --option="bind interfaces only=yes" --option="dns zone scavenging=yes" --option="allow dns updates=secure only"
+    samba-tool domain provision
+    --realm={{ ad_realm }}
+    --domain={{ ad_domain }}
+    --server-role=dc
+    --dns-backend="{{ ad_backend }}"
+    --use-rfc2307
+    --function-level="{{ func_level }}"
+    --adminpass='{{ ad_admin_password }}'
+    --option="dns forwarder={{ dns_forwarder }}"
+    --option="interfaces= lo {{ primary_iface_name }}"
+    --option="bind interfaces only=yes"
+    --option="dns zone scavenging=yes"
+    --option="allow dns updates=secure only"
   args:
     creates: /var/lib/samba/private/sam.ldb
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
 - name: Запуск samba AD сервер
   systemd:
@@ -1045,26 +1097,54 @@ cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
     enabled: true
   loop: 
     - samba
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
-- name: Очистка Очистка с интервалом обновления 30 дней
+- name: Очистка с интервалом обновления 30 дней
   command: >
-    samba-tool dns zoneoptions {{ inventory_hostname }} {{ ad_realm }} --aging=1 --refreshinterval={{ dns_refresh }} -U {{ ad_admin_user }}
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+    samba-tool dns zoneoptions
+    {{ inventory_hostname }}
+    {{ ad_realm }}
+    --aging=1
+    --refreshinterval={{ dns_refresh }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
 
 - name: Создание обратной - PTR зоны
   command: >
-    samba-tool dns zonecreate {{ inventory_hostname }} {{ ptr_zone }} -U {{ ad_admin_user }}
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+    samba-tool dns zonecreate
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
 
 - name: Добавление записи типа PTR для обратной зоны самого домен контролера
   command: >
-    samba-tool dns add  {{ inventory_hostname }} {{ ptr_zone }} {{ ptr_ip_main_dc }} PTR -U {{ inventory_hostname }} -U {{ ad_admin_user }}
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    {{ ptr_ip_main_dc }} PTR
+    {{ inventory_hostname }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+
+- name: Добавление А записи для вторичного контролера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ad_workgroup }}
+    {{ secondary_dc | upper }}
+    A
+    {{ secondary_dc_ip }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+    - sysvol_replication | bool
+
+- name: Добавление записи типа PTR для обратной зоны вторичного домен контролера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    {{ ptr_ip_second_dc }} PTR
+    {{ secondary_dc }}.{{ ad_workgroup }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  when:
+    - sysvol_replication | bool
 
 - name: Настройка DNS резолвера основного DC
   template:
@@ -1073,9 +1153,14 @@ cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
   notify:
     - restart network
     - restart interface
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+...
+EOF
+```
 
+#### Файл задач развертывания вторичного DC роли Контроллер домена Active Directory
+```bash
+cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
+---
 - name: Определить основной интерфейс вторичного DC
   set_fact:
     primary_iface_name: >-
@@ -1085,16 +1170,33 @@ cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
           | select('match', '^(eth|en)[a-z0-9]*')
           | first
       }}
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Настройка chrony.conf для вторичного DC
+  template:
+    src: krb5.conf.dc_second.j2
+    dest: /etc/krb5.conf
+    backup: true
+
+- name: Получаем kerberos билет на имя входящего в доменную группу Domain Admins
+  shell: |
+    printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
 
 - name: Присоединение вторичного контроллера домена
   command: >
-    samba-tool domain join {{ ad_realm }} DC -U{{ ad_admin_user }}%{{ ad_join_password }} --realm={{ ad_realm }} --option="ad dc functional level={{ func_level }}" --option="dns forwarder={{ dns_forwarder }}" --option='idmap_ldb:use rfc2307 = yes' --option="interfaces= lo {{ primary_iface_name }}" --option="bind interfaces only=yes" --option="dns zone scavenging=yes" --option="allow dns updates=secure only"
+    samba-tool domain join
+    {{ ad_realm }}
+    DC
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+    --realm={{ ad_realm }}
+    --option="ad dc functional level={{ func_level }}"
+    --option="dns forwarder={{ dns_forwarder }}"
+    --option='idmap_ldb:use rfc2307 = yes'
+    --option="interfaces= lo {{ primary_iface_name }}"
+    --option="bind interfaces only=yes"
+    --option="dns zone scavenging=yes"
+    --option="allow dns updates=secure only"
   args:
     creates: /var/lib/samba/private/secrets.tdb
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[1]
   
 - name: Запуск samba AD сервер
   systemd:
@@ -1104,14 +1206,6 @@ cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
     enabled: true
   loop: 
     - samba
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[1]
-
-- name: Добавление записи типа PTR для обратной зоны вторичного домен контролера
-  command: >
-    samba-tool dns add  {{ inventory_hostname }} {{ ptr_zone }} {{ ptr_ip_second_dc }} PTR -U {{ inventory_hostname }} -U {{ ad_admin_user }}
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[1]
 
 - name: Настройка DNS резолвера дополнительного DC
   template:
@@ -1120,9 +1214,34 @@ cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
   notify:
     - restart network dc2
     - restart interface dc2
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Репликация с первого контроллера домена на второй
+  command: >
+    samba-tool drs replicate 
+    {{ inventory_hostname }}.{{ ad_workgroup }}
+    {{ primary_dc }}.{{ ad_workgroup }}
+    {{ ldap_search }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
 ...
+EOF
+```
+#### Шаблон kerberos роли домен контроллеров
+```bash
+cat > roles/samba_ad_dc/templates/resolv.conf_dc_main.j2 <<'EOF'
+cat /etc/krb5.conf
+includedir /etc/krb5.conf.d/
+[logging]
+[libdefaults]
+ dns_lookup_kdc = true
+ dns_lookup_realm = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+ rdns = false
+ default_realm = {{ ad_realm }}
+ default_ccache_name = KEYRING:persistent:%{uid}
+[realms]
+[domain_realm]
 EOF
 ```
 
@@ -1165,10 +1284,11 @@ ptr_zone: "100.168.192.in-addr.arpa"
 ptr_ip_main_dc: 12
 ptr_ip_second_dc: 13
 dns_forwarder: "77.88.8.8"
+ldap_search: "dc=den,dc=skv"
 ...
 EOF
 ```
-#### Обработчики роли Синхронизация времени
+#### Обработчики роли Контроллера домена
 ```bash
 cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
 ---
@@ -1227,6 +1347,92 @@ cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
 EOF
 ```
 
+### `dhcp_server` - DHCP с failover и DDNS
+```bash
+cat > ./dhcp_server.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: DHCP с failover и DDNS
+  hosts: domain_controllers
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - dhcp_server
+...
+EOF
+```
+
+#### Главный файл задач роли DHCP
+```bash
+cat > roles/dhcp_server/tasks/main.yml <<'EOF'
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов Samba DC
+  apt_rpm:
+    name: 
+      - dhcp-server
+    state: present
+
+- name: Создание пользователя для DDNS
+  command: >
+    samba-tool user create dhcpduser --description="Пользователь обновления DNS через DHCP-сервер --random-password
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Добавление пользователя в группу DnsAdmins
+  command: >
+    samba-tool group addmembers 'DnsAdmins' dhcpduser
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Включить пользователя dhcpduser
+  command: >
+    samba-tool user setexpiry dhcpduser --noexpiry
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Экспорт файла keytab
+  command: >
+    samba-tool domain exportkeytab --principal=dhcpduser@"{{ ad_realm }}" /etc/dhcp/dhcpduser.keytab
+  args:
+    creates: /etc/dhcp/dhcpduser.keytab
+
+- name: Change file ownership, group and permissions
+  file:
+    path: /etc/dhcp/dhcpduser.keytab
+    owner: dhcpd
+    group: dhcp
+    mode: '0400'
+ 
+- name: Генерация OMAPI ключа
+  shell: tsig-keygen -a hmac-md5 omapi_key | grep secret | awk '{print $2}' | tr -d '"'
+  register: omapi_secret
+  changed_when: false
+  
+- name: Развертывание конфигурации dhcpd.conf
+  template:
+    src: dhcpd.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+    validate: dhcpd -t -cf %s
+  notify: Restart dhcpd
+  
+- name: Развертывание скрипта обновления DNS
+  copy:
+    src: scripts/dhcp-dyndns.sh
+    dest: /usr/local/bin/dhcp-dyndns.sh
+    mode: '0755'
+    
+- name: Настройка failover мониторинга (для secondary)
+  include_tasks: failover_setup.yml
+  when: dhcp_role == 'secondary'
+...
+EOF
+```
+
 # gitflic_github репозиторий
 ```bash
 # Добавляем ключи агенту ssh от репозитория gitflic и github
@@ -1253,7 +1459,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd5]ansible" \
+git commit -am "[upd6]ansible" \
 && git push \
 --set-upstream \
 altlinux \

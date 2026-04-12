@@ -1,0 +1,84 @@
+---
+- name: Provisioning основного домен-контроллера
+  command: >
+    samba-tool domain provision
+    --realm={{ ad_realm }}
+    --domain={{ ad_domain }}
+    --server-role=dc
+    --dns-backend="{{ ad_backend }}"
+    --use-rfc2307
+    --function-level="{{ func_level }}"
+    --adminpass='{{ ad_admin_password }}'
+    --option="dns forwarder={{ dns_forwarder }}"
+    --option="interfaces= lo {{ primary_iface_name }}"
+    --option="bind interfaces only=yes"
+    --option="dns zone scavenging=yes"
+    --option="allow dns updates=secure only"
+  args:
+    creates: /var/lib/samba/private/sam.ldb
+
+- name: Запуск samba AD сервер
+  systemd:
+    name: "{{ item }}"
+    state: started
+    masked: false
+    enabled: true
+  loop: 
+    - samba
+
+- name: Очистка с интервалом обновления 30 дней
+  command: >
+    samba-tool dns zoneoptions
+    {{ inventory_hostname }}
+    {{ ad_realm }}
+    --aging=1
+    --refreshinterval={{ dns_refresh }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+
+- name: Создание обратной - PTR зоны
+  command: >
+    samba-tool dns zonecreate
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+
+- name: Добавление записи типа PTR для обратной зоны самого домен контролера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    {{ ptr_ip_main_dc }} PTR
+    {{ inventory_hostname }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+
+- name: Добавление А записи для вторичного контролера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ad_workgroup }}
+    {{ secondary_dc | upper }}
+    A
+    {{ secondary_dc_ip }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  when:
+    - sysvol_replication | bool
+
+- name: Добавление записи типа PTR для обратной зоны вторичного домен контролера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    {{ ptr_ip_second_dc }} PTR
+    {{ secondary_dc }}.{{ ad_workgroup }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  when:
+    - sysvol_replication | bool
+
+- name: Настройка DNS резолвера основного DC
+  template:
+    src: resolv.conf_dc_main.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  notify:
+    - restart network
+    - restart interface
+...

@@ -8,9 +8,14 @@
   gather_facts: true
   vars:
     # включаем(true)\выключаем(false)
-    base_setup: true 
-    chrony_sync: false
-    samba_ad_dc: false
+    base_setup: true
+    # Отдельные задачи включения пакетов
+    dist_upd: true # Обновление кеша пакетов
+    dist_upgrd: true # обновление установленных приложений
+    kernel_upd: true # обновление ядра
+
+    chrony_sync: true
+    samba_ad_dc: true
     dhcp_server: false
     sysvol_replication: false
     kerberos_client: false
@@ -38,10 +43,6 @@
 - name: Репликация SysVol между DC
   import_playbook: squid_proxy.yaml
   when: squid_proxy | bool
-
-- name: Настройка Kerberos-клиента
-  import_playbook: kerberos_client.yaml
-  when: kerberos_client | bool
 
 - name: Smb файловый сервер
   import_playbook: smb_shares.yaml

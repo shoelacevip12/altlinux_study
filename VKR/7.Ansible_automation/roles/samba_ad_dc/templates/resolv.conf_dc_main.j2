@@ -1,7 +1,14 @@
-nameserver 127.0.0.1
-{% for server in groups.domain_controllers %}
-{% if inventory_hostname != host %}
-nameserver {{ hostvars[server].ansible_host }}
-{% endif %}
-{% endfor %}
-search {{ ad_workgroup }}
+cat /etc/krb5.conf
+includedir /etc/krb5.conf.d/
+[logging]
+[libdefaults]
+ dns_lookup_kdc = true
+ dns_lookup_realm = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+ rdns = false
+ default_realm = {{ ad_realm }}
+ default_ccache_name = KEYRING:persistent:%{uid}
+[realms]
+[domain_realm]

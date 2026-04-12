@@ -14,7 +14,7 @@ eval $(ssh-agent) \
 
 ssh -t \
 -i ~/.ssh/id_skv_VKR_vpn \
--J skv@158.160.201.144 \
+-J skv@178.154.213.68 \
 -o StrictHostKeyChecking=accept-new \
 sysadmin@172.16.100.2 \
 "su -"

@@ -1,0 +1,63 @@
+---
+- name: Определить основной интерфейс вторичного DC
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+
+- name: Настройка chrony.conf для вторичного DC
+  template:
+    src: krb5.conf.dc_second.j2
+    dest: /etc/krb5.conf
+    backup: true
+
+- name: Получаем kerberos билет на имя входящего в доменную группу Domain Admins
+  shell: |
+    printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
+
+- name: Присоединение вторичного контроллера домена
+  command: >
+    samba-tool domain join
+    {{ ad_realm }}
+    DC
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+    --realm={{ ad_realm }}
+    --option="ad dc functional level={{ func_level }}"
+    --option="dns forwarder={{ dns_forwarder }}"
+    --option='idmap_ldb:use rfc2307 = yes'
+    --option="interfaces= lo {{ primary_iface_name }}"
+    --option="bind interfaces only=yes"
+    --option="dns zone scavenging=yes"
+    --option="allow dns updates=secure only"
+  args:
+    creates: /var/lib/samba/private/secrets.tdb
+  
+- name: Запуск samba AD сервер
+  systemd:
+    name: "{{ item }}"
+    state: started
+    masked: false
+    enabled: true
+  loop: 
+    - samba
+
+- name: Настройка DNS резолвера дополнительного DC
+  template:
+    src: resolv.conf_dc_second.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  notify:
+    - restart network dc2
+    - restart interface dc2
+
+- name: Репликация с первого контроллера домена на второй
+  command: >
+    samba-tool drs replicate 
+    {{ inventory_hostname }}.{{ ad_workgroup }}
+    {{ primary_dc }}.{{ ad_workgroup }}
+    {{ ldap_search }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+...

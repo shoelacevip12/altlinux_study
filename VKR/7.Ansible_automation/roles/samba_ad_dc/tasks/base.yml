@@ -1,0 +1,51 @@
+---
+- name: Остановка конфликтующих служб
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    masked: true
+    enabled: false
+  loop: 
+    - smb
+    - nmb
+    - krb5kdc
+    - slapd
+    - bind
+    - dnsmasq
+
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов Samba DC
+  apt_rpm:
+    name:
+      - task-samba-dc
+      - alterator-net-domain
+      - alterator-datetime
+    state: present
+    
+- name: Очистка дефолтных конфигов Samba
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/samba/smb.conf
+    - /var/lib/samba
+    - /var/cache/samba
+
+- name: создание каталога для работы Домена
+  file:
+    path: /var/lib/samba/sysvol
+    state: directory
+
+- name: Определить основной интерфейс
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+...
