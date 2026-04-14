@@ -1,3 +1,86 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# tasks file for roles/dhcp_server
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов Samba DC
+  apt_rpm:
+    name: 
+      - dhcp-server
+    state: present
+
+- name: Создание пользователя для DDNS
+  command: >
+    samba-tool user create
+    {{ dhcpduser }}
+    --description="Пользователь обновления DNS через DHCP-сервер
+    --random-password
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Добавление пользователя в группу DnsAdmins
+  command: >
+    samba-tool group addmembers
+    'DnsAdmins'
+    {{ dhcpduser }}
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Включить пользователя {{ dhcpduser }}
+  command: >
+    samba-tool user setexpiry
+    {{ dhcpduser }}
+    --noexpiry
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Экспорт файла keytab
+  command: >
+    samba-tool domain exportkeytab
+    --principal={{ dhcpduser }}@"{{ ad_realm }}"
+    {{ keytab_export_path }}
+  args:
+    creates: {{ keytab_export_path }}
+
+- name: Изменение прав на файл kerberos пользователя {{ dhcpduser }}
+  file:
+    path: {{ keytab_export_path }}
+    owner: dhcpd
+    group: dhcp
+    mode: '0400'
+
+- name: Развертывание скрипта обновления DNS
+  template:
+    src: dhcp-dyndns.sh.j2
+    dest: /usr/local/bin/dhcp-dyndns.sh
+    mode: '0755' 
+
+- name: Развертывание конфигурации dhcpd.conf
+  template:
+    src: dhcpd.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+    validate: dhcpd -t -cf %s
+  notify: Restart dhcpd
+  when:
+    - not sysvol_replication | bool
+
+- name: Развертывание конфигурации dhcpd.conf под failover
+  template:
+    src: dhcpd_failover_primary.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+    validate: dhcpd -t -cf %s
+  notify: Restart dhcpd
+  when:
+    - sysvol_replication | bool
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Развертывание конфигурации dhcpd.conf под failover
+  template:
+    src: dhcpd_failover_second.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+    validate: dhcpd -t -cf %s
+  notify: Restart dhcpd
+  when:
+    - sysvol_replication | bool
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+...
