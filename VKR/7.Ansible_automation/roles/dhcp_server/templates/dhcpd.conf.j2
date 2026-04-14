@@ -1,0 +1,56 @@
+authoritative;
+ddns-update-style none;
+
+subnet {{ network_subnet }} netmask {{ network_netmask }} {
+        option broadcast-address        {{ broadcast }};
+        option time-offset              0;
+        option routers                  {{ network_gateway }};
+        option subnet-mask              {{ network_netmask }};
+
+        option nis-domain               "{{ ad_workgroup }}";
+        option domain-name              "{{ ad_workgroup }}";
+        option domain-name-servers      {{ primary_dc_ip }}, {{ dns_forwarder }};
+        option ntp-servers              {{ primary_dc }}.{{ ad_workgroup }};
+
+        pool {
+            default-lease-time {{ lease_time }};
+            max-lease-time {{ max_lease_time }};
+            range {{ dhcp_range }};
+        }
+}
+
+on commit {
+set noname = concat("dhcp-", binary-to-ascii(10, 8, "-", leased-address));
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+set ClientName = pick-first-value(option host-name, config-option host-name, client-name, noname);
+log(concat("Commit: IP: ", ClientIP, " DHCID: ", ClientDHCID, " Name: ", ClientName));
+execute("/usr/local/bin/dhcp-dyndns.sh", "add", ClientIP, ClientDHCID, ClientName);
+}
+
+on release {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+log(concat("Release: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
+}
+
+on expiry {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+log(concat("Expired: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, "", "0");
+}

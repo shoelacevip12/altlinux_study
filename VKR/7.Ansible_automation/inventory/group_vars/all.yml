@@ -6,6 +6,7 @@ ansible_become_password: "{{ vault_su_password }}"
 
 # Общие параметры домена
 ad_workgroup: "den.skv"
+ad_realm: "DEN.SKV"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
 ad_admin_password: "{{ vault_ad_admin_password }}"

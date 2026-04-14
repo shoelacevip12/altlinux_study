@@ -1,10 +1,9 @@
 ---
-ad_realm: "DEN.SKV"
 func_level: 2016
 ad_backend: 'SAMBA_INTERNAL'
 dns_refresh: 720
 ptr_zone: "100.168.192.in-addr.arpa"
 ptr_ip_main_dc: 12
 ptr_ip_second_dc: 13
-dns_forwarder: "77.88.8.8"
+ldap_search: "dc=den,dc=skv"
 ...

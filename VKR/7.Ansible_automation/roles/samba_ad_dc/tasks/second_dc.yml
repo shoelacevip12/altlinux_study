@@ -16,8 +16,7 @@
     backup: true
 
 - name: Получаем kerberos билет на имя входящего в доменную группу Domain Admins
-  shell: |
-    printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
+  shell: printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
 
 - name: Присоединение вторичного контроллера домена
   command: >

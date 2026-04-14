@@ -599,6 +599,7 @@ ansible_become_password: "{{ vault_su_password }}"
 
 # Общие параметры домена
 ad_workgroup: "den.skv"
+ad_realm: "DEN.SKV"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
 ad_admin_password: "{{ vault_ad_admin_password }}"
@@ -736,69 +737,63 @@ EOF
 #### Главный файл задач базовых настроек
 ```bash
 cat > roles/base_setup/tasks/main.yml <<'EOF'
-#!/usr/bin/env ansible-playbook
 ---
-- name: Развертывание гибридной инфраструктуры
-  hosts: all
-  become: true
-  become_method: su
-  become_user: root
-  gather_facts: true
-  vars:
-    # включаем(true)\выключаем(false)
-    base_setup: true
-    # Отдельные задачи включения пакетов
-    dist_upd: true # Обновление кеша пакетов
-    dist_upgrd: true # обновление установленных приложений
-    kernel_upd: true # обновление ядра
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+  when: dist_upd | bool
 
-    chrony_sync: true
-    samba_ad_dc: true
-    second_dc: true # Установка вторичного DC
+- name: Установка базовых пакетов при вводе в домен
+  apt_rpm:
+    name:
+      - task-auth-ad-sssd
+      - chrony
+      - samba-common-tools
+      - samba-client
+    state: installed
+  when:
+    - inventory_hostname not in groups['domain_controllers']
+    - dist_upd | bool
 
-    dhcp_server: false
-    sysvol_replication: false
-    kerberos_client: false
-    smb_shares: false
-    nfs_server: false
-    squid_proxy: false
-    monitoring_scripts: false
+- name: Обновление пакетов
+  apt_rpm:
+    dist_upgrade: true
+  when: dist_upgrd | bool
 
-- name: Базовая настройка хостов
-  import_playbook: base_setup.yaml
-  when: base_setup | bool
+- name: Обновление ядра
+  apt_rpm:
+    update_kernel: true
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/usr/sbin"
+  ignore_errors: true
+  when: kernel_upd | bool
 
-- name: Настройка синхронизации времени
-  import_playbook: chrony_sync.yaml
-  when: chrony_sync | bool
+- name: Установка имени хоста
+  hostname:
+    name: "{{ inventory_hostname }}.{{ ad_workgroup }}"
+    
+- name: Определить основной интерфейс
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
 
-- name: Установка Samba Active Directory DC
-  import_playbook: samba_ad_dc.yaml
-  when: samba_ad_dc | bool
-
-- name: DHCP с failover и DDNS
-  import_playbook: dhcp_server.yaml
-  when: dhcp_server | bool
-
-- name: Репликация SysVol между DC
-  import_playbook: squid_proxy.yaml
-  when: squid_proxy | bool
-
-- name: Smb файловый сервер
-  import_playbook: smb_shares.yaml
-  when: smb_shares | bool
-
-- name: NFS с Kerberos
-  import_playbook: nfs_server.yaml
-  when: nfs_server | bool
-
-- name: SQUID с Kerberos-аутентификацией
-  import_playbook: squid_proxy.yaml
-  when: squid_proxy | bool
-
-- name: Скрипты мониторинга и failover
-  import_playbook: monitoring_scripts.yaml
-  when: monitoring_scripts | bool
+- name: Настройка DNS резолвера
+  template:
+    src: resolv.conf.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  when:
+    - inventory_hostname not in groups['domain_controllers']
+    
+- name: Отключение IPv6
+  sysctl:
+    name: net.ipv6.conf.all.disable_ipv6
+    value: "1"
+    state: present
 ...
 EOF
 ```
@@ -1153,6 +1148,12 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
   notify:
     - restart network
     - restart interface
+
+- name: Заменяем настройки Kerberos для клиентского обращение
+  copy:
+    src: "/var/lib/samba/private/krb5.conf"
+    dest: "/etc/krb5.conf"
+    backup: true
 ...
 EOF
 ```
@@ -1178,8 +1179,7 @@ cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
     backup: true
 
 - name: Получаем kerberos билет на имя входящего в доменную группу Domain Admins
-  shell: |
-    printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
+  shell: printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
 
 - name: Присоединение вторичного контроллера домена
   command: >
@@ -1276,14 +1276,12 @@ EOF
 ```bash
 cat > roles/samba_ad_dc/defaults/main.yml<<'EOF'
 ---
-ad_realm: "DEN.SKV"
 func_level: 2016
 ad_backend: 'SAMBA_INTERNAL'
 dns_refresh: 720
 ptr_zone: "100.168.192.in-addr.arpa"
 ptr_ip_main_dc: 12
 ptr_ip_second_dc: 13
-dns_forwarder: "77.88.8.8"
 ldap_search: "dc=den,dc=skv"
 ...
 EOF
@@ -1353,10 +1351,11 @@ cat > ./dhcp_server.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
 ---
 - name: DHCP с failover и DDNS
-  hosts: domain_controllers
+  hosts: domain_controllers:file_servers:proxy_servers
   become: true
   become_method: su
   become_user: root
+  pre_tasks: []
   roles:
     - dhcp_server
 ...
@@ -1379,31 +1378,40 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
 
 - name: Создание пользователя для DDNS
   command: >
-    samba-tool user create dhcpduser --description="Пользователь обновления DNS через DHCP-сервер --random-password
+    samba-tool user create
+    {{ dhcpduser }}
+    --description="Пользователь обновления DNS через DHCP-сервер
+    --random-password
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
 - name: Добавление пользователя в группу DnsAdmins
   command: >
-    samba-tool group addmembers 'DnsAdmins' dhcpduser
+    samba-tool group addmembers
+    'DnsAdmins'
+    {{ dhcpduser }}
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
-- name: Включить пользователя dhcpduser
+- name: Включить пользователя {{ dhcpduser }}
   command: >
-    samba-tool user setexpiry dhcpduser --noexpiry
+    samba-tool user setexpiry
+    {{ dhcpduser }}
+    --noexpiry
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
 - name: Экспорт файла keytab
   command: >
-    samba-tool domain exportkeytab --principal=dhcpduser@"{{ ad_realm }}" /etc/dhcp/dhcpduser.keytab
+    samba-tool domain exportkeytab
+    --principal={{ dhcpduser }}@"{{ ad_realm }}"
+    {{ keytab_export_path }}
   args:
-    creates: /etc/dhcp/dhcpduser.keytab
+    creates: {{ keytab_export_path }}
 
-- name: Change file ownership, group and permissions
+- name: Изменение прав на файл kerberos пользователя {{ dhcpduser }}
   file:
-    path: /etc/dhcp/dhcpduser.keytab
+    path: {{ keytab_export_path }}
     owner: dhcpd
     group: dhcp
     mode: '0400'
@@ -1412,6 +1420,8 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
   shell: tsig-keygen -a hmac-md5 omapi_key | grep secret | awk '{print $2}' | tr -d '"'
   register: omapi_secret
   changed_when: false
+  when:
+    - sysvol_replication | bool
   
 - name: Развертывание конфигурации dhcpd.conf
   template:
@@ -1419,16 +1429,192 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     dest: /etc/dhcp/dhcpd.conf
     validate: dhcpd -t -cf %s
   notify: Restart dhcpd
-  
+  when:
+    - not sysvol_replication | bool
+
+- name: Развертывание конфигурации dhcpd.conf под failover
+  template:
+    src: dhcpd_failover.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+    validate: dhcpd -t -cf %s
+  notify: Restart dhcpd
+  when:
+    - sysvol_replication | bool
+
 - name: Развертывание скрипта обновления DNS
-  copy:
-    src: scripts/dhcp-dyndns.sh
+  template:
+    src: dhcp-dyndns.sh.j2
     dest: /usr/local/bin/dhcp-dyndns.sh
     mode: '0755'
-    
-- name: Настройка failover мониторинга (для secondary)
-  include_tasks: failover_setup.yml
-  when: dhcp_role == 'secondary'
+...
+EOF
+```
+
+#### Шаблоны конфигурационного файла роли DHCP
+##### Шаблоны конфигурационного файла без failover
+```bash
+cat > roles/dhcp_server/templates/dhcpd.conf.j2 <<'EOF'
+authoritative;
+ddns-update-style none;
+
+subnet {{ network_subnet }} netmask {{ network_netmask }} {
+        option broadcast-address        {{ broadcast }};
+        option time-offset              0;
+        option routers                  {{ network_gateway }};
+        option subnet-mask              {{ network_netmask }};
+
+        option nis-domain               "{{ ad_workgroup }}";
+        option domain-name              "{{ ad_workgroup }}";
+        option domain-name-servers      {{ primary_dc_ip }}, {{ dns_forwarder }};
+        option ntp-servers              {{ primary_dc }}.{{ ad_workgroup }};
+
+        pool {
+            default-lease-time {{ lease_time }};
+            max-lease-time {{ max_lease_time }};
+            range {{ dhcp_range }};
+        }
+}
+
+on commit {
+set noname = concat("dhcp-", binary-to-ascii(10, 8, "-", leased-address));
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+set ClientName = pick-first-value(option host-name, config-option host-name, client-name, noname);
+log(concat("Commit: IP: ", ClientIP, " DHCID: ", ClientDHCID, " Name: ", ClientName));
+execute("/usr/local/bin/dhcp-dyndns.sh", "add", ClientIP, ClientDHCID, ClientName);
+}
+
+on release {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+log(concat("Release: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
+}
+
+on expiry {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+log(concat("Expired: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, "", "0");
+}
+EOF
+```
+
+##### Шаблоны конфигурационного файла с участием failover
+```bash
+cat > roles/dhcp_server/templates/dhcpd.conf.j2 <<'EOF'
+authoritative;
+ddns-update-style none;
+
+omapi-port 7911;
+omapi-key omapi_key;
+key "omapi_key" {
+        algorithm hmac-md5;
+        secret "KsP/KnIQcoQF5fMMjBcOhg==";
+};
+
+failover peer "dhcp-failover" {
+  primary;
+  # Полное DNS-имя основного DHCP-сервера
+  address altsrv2.den.skv;
+  port 847;
+  # Полное DNS-имя имя резервного DHCP-сервера
+  peer address altsrv3.den.skv;
+  peer port 647;
+  max-response-delay 10;
+  max-unacked-updates 5;
+  mclt 1800;
+  split 255;
+  load balance max seconds 2;
+}
+
+subnet {{ network_subnet }} netmask {{ network_netmask }} {
+        option broadcast-address        {{ broadcast }};
+        option time-offset              0;
+        option routers                  {{ network_gateway }};
+        option subnet-mask              {{ network_netmask }};
+
+        option nis-domain               "{{ ad_workgroup }}";
+        option domain-name              "{{ ad_workgroup }}";
+        option domain-name-servers      {{ primary_dc_ip }}, {{ dns_forwarder }};
+        option ntp-servers              {{ primary_dc }}.{{ ad_workgroup }};
+
+        pool {
+            failover peer "dhcp-failover";
+            default-lease-time {{ lease_time }};
+            max-lease-time {{ max_lease_time }};
+            range {{ dhcp_range }};
+        }
+}
+
+        pool {
+
+            default-lease-time 172800;
+            max-lease-time 259200;
+            range 192.168.100.50 192.168.100.254;
+        }
+}
+
+on commit {
+set noname = concat("dhcp-", binary-to-ascii(10, 8, "-", leased-address));
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+set ClientName = pick-first-value(option host-name, config-option host-name, client-name, noname);
+log(concat("Commit: IP: ", ClientIP, " DHCID: ", ClientDHCID, " Name: ", ClientName));
+execute("/usr/local/bin/dhcp-dyndns.sh", "add", ClientIP, ClientDHCID, ClientName);
+}
+
+on release {
+set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+set ClientDHCID = concat (
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,1,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,2,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,3,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,4,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,5,1))),2), ":",
+suffix (concat ("0", binary-to-ascii (16, 8, "", substring(hardware,6,1))),2)
+);
+log(concat("Release: IP: ", ClientIP));
+execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
+}
+EOF
+```
+
+
+#### Переменные по умолчанию
+```bash
+cat > roles/dhcp_server/defaults/main.yml<<'EOF'
+---
+dhcpduser: dhcpduser
+keytab_export_path: "/etc/dhcp/dhcpduser.keytab"
+network_subnet: "192.168.100.0"
+network_netmask: "255.255.255.0"
+network_gateway: "192.168.100.1"
+broadcast: "192.168.100.255"
+lease_time: "172800"
+max_lease_time: "259200"
+dhcp_range: "192.168.100.50 192.168.100.254"
+
 ...
 EOF
 ```

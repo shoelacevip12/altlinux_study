@@ -1,7 +1,7 @@
 #!/usr/bin/env ansible-playbook
 ---
 - name: DHCP с failover и DDNS
-  hosts: domain_controllers
+  hosts: domain_controllers:file_servers:proxy_servers
   become: true
   become_method: su
   become_user: root

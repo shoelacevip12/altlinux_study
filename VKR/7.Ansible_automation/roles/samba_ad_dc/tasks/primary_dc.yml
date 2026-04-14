@@ -81,4 +81,10 @@
   notify:
     - restart network
     - restart interface
+
+- name: Заменяем настройки Kerberos для клиентского обращение
+  copy:
+    src: "/var/lib/samba/private/krb5.conf"
+    dest: "/etc/krb5.conf"
+    backup: true
 ...
