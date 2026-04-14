@@ -1937,7 +1937,7 @@ EOF
 
 ##### Шаблоны конфигурационного файла с участием failover для primary
 ```bash
-cat > roles/dhcp_server/templates/dhcpd_failover.conf.j2 <<'EOF'
+cat > roles/dhcp_server/templates/dhcpd_failover_primary.conf.j2 <<'EOF'
 authoritative;
 ddns-update-style none;
 
@@ -2102,7 +2102,6 @@ broadcast: "192.168.100.255"
 lease_time: "172800"
 max_lease_time: "259200"
 dhcp_range: "192.168.100.50 192.168.100.254"
-
 ...
 EOF
 ```

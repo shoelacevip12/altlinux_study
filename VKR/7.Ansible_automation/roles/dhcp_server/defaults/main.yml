@@ -1,3 +1,11 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for roles/dhcp_server
+dhcpduser: dhcpduser
+keytab_export_path: "/etc/dhcp/dhcpduser.keytab"
+network_subnet: "192.168.100.0"
+network_netmask: "255.255.255.0"
+network_gateway: "192.168.100.1"
+broadcast: "192.168.100.255"
+lease_time: "172800"
+max_lease_time: "259200"
+dhcp_range: "192.168.100.50 192.168.100.254"
+...
