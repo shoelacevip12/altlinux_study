@@ -25,7 +25,37 @@
       - alterator-net-domain
       - alterator-datetime
     state: present
-    
+
+- name: Определить основной интерфейс
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+
+- name: Настройка DNS резолвера дополнительного DC
+  template:
+    src: resolv.conf_second_dc_before.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  notify:
+    - restart network dc2
+    - restart interface dc2
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+    - sysvol_replication | bool
+
+- meta: flush_handlers
+
+- name: Ждём восстановления связи вторичного сервера
+  wait_for_connection:
+    timeout: 120
+  when:
+    - inventory_hostname == groups['domain_controllers'][1]
+    - sysvol_replication | bool
+
 - name: Очистка дефолтных конфигов Samba
   file:
     path: "{{ item }}"
@@ -39,14 +69,4 @@
   file:
     path: /var/lib/samba/sysvol
     state: directory
-
-- name: Определить основной интерфейс
-  set_fact:
-    primary_iface_name: >-
-      {{
-          ansible_interfaces
-          | difference(['lo'])
-          | select('match', '^(eth|en)[a-z0-9]*')
-          | first
-      }}
 ...

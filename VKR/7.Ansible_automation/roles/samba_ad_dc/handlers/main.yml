@@ -1,4 +1,13 @@
 ---
+- name: перезапуск интерфейса основного dc
+  shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
+  listen: "restart interface"
+  async: 10
+  poll: 0
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
 - name: Перезапуск сетевых служб основного dc
   systemd:
     name: "{{ item }}"
@@ -16,16 +25,16 @@
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
-- name: перезапуск интерфейса основного dc
+- name: перезапуск интерфейса вторичного dc
   shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
-  listen: "restart interface"
+  listen: "restart interface dc2"
   async: 10
   poll: 0
   ignore_unreachable: true
   when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
 
-- name: Перезапуск сетевых служб основного dc
+- name: Перезапуск сетевых служб вторичного dc
   systemd:
     name: "{{ item }}"
     state: restarted
@@ -38,15 +47,6 @@
   loop:
     - network
     - samba
-  ignore_unreachable: true
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[1]
-
-- name: перезапуск интерфейса основного dc
-  shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
-  listen: "restart interface dc2"
-  async: 10
-  poll: 0
   ignore_unreachable: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[1]

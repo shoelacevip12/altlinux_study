@@ -1046,6 +1046,36 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
       - alterator-datetime
     state: present
 
+- name: Определить основной интерфейс
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+
+- name: Настройка DNS резолвера дополнительного DC
+  template:
+    src: resolv.conf_second_dc_before.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  notify:
+    - restart network dc2
+    - restart interface dc2
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+    - sysvol_replication | bool
+
+- meta: flush_handlers
+
+- name: Ждём восстановления связи вторичного сервера
+  wait_for_connection:
+    timeout: 120
+  when:
+    - inventory_hostname == groups['domain_controllers'][1]
+    - sysvol_replication | bool
+
 - name: Очистка дефолтных конфигов Samba
   file:
     path: "{{ item }}"
@@ -1059,16 +1089,6 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
   file:
     path: /var/lib/samba/sysvol
     state: directory
-
-- name: Определить основной интерфейс
-  set_fact:
-    primary_iface_name: >-
-      {{
-          ansible_interfaces
-          | difference(['lo'])
-          | select('match', '^(eth|en)[a-z0-9]*')
-          | first
-      }}
 ...
 EOF
 ```
@@ -1180,16 +1200,6 @@ EOF
 ```bash
 cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
 ---
-- name: Определить основной интерфейс вторичного DC
-  set_fact:
-    primary_iface_name: >-
-      {{
-          ansible_interfaces
-          | difference(['lo'])
-          | select('match', '^(eth|en)[a-z0-9]*')
-          | first
-      }}
-
 - name: Настройка krb5.conf для вторичного DC
   template:
     src: krb5.conf.dc_second.j2
@@ -1284,6 +1294,15 @@ EOF
 ```
 
 ##### Шаблон resolver для вторичного DC
+###### до ввода в домен
+```bash
+cat > roles/samba_ad_dc/templates/resolv.conf_second_dc_before.j2 <<'EOF'
+nameserver {{ primary_dc_ip }}
+nameserver {{ dns_forwarder }}
+search {{ ad_workgroup }}
+EOF
+```
+###### после ввода в домен
 ```bash
 cat > roles/samba_ad_dc/templates/resolv.conf_dc_second.j2 <<'EOF'
 nameserver 127.0.0.1
@@ -1315,6 +1334,15 @@ EOF
 ```bash
 cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
 ---
+- name: перезапуск интерфейса основного dc
+  shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
+  listen: "restart interface"
+  async: 10
+  poll: 0
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
 - name: Перезапуск сетевых служб основного dc
   systemd:
     name: "{{ item }}"
@@ -1332,16 +1360,16 @@ cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
-- name: перезапуск интерфейса основного dc
+- name: перезапуск интерфейса вторичного dc
   shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
-  listen: "restart interface"
+  listen: "restart interface dc2"
   async: 10
   poll: 0
   ignore_unreachable: true
   when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
 
-- name: Перезапуск сетевых служб основного dc
+- name: Перезапуск сетевых служб вторичного dc
   systemd:
     name: "{{ item }}"
     state: restarted
@@ -1354,15 +1382,6 @@ cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
   loop:
     - network
     - samba
-  ignore_unreachable: true
-  when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[1]
-
-- name: перезапуск интерфейса основного dc
-  shell: ifdown {{ ansible_interfaces }} && ifup {{ ansible_interfaces }}
-  listen: "restart interface dc2"
-  async: 10
-  poll: 0
   ignore_unreachable: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[1]

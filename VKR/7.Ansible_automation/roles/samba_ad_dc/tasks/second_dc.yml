@@ -1,14 +1,4 @@
 ---
-- name: Определить основной интерфейс вторичного DC
-  set_fact:
-    primary_iface_name: >-
-      {{
-          ansible_interfaces
-          | difference(['lo'])
-          | select('match', '^(eth|en)[a-z0-9]*')
-          | first
-      }}
-
 - name: Настройка krb5.conf для вторичного DC
   template:
     src: krb5.conf.dc_second.j2
