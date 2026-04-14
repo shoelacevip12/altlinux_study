@@ -1,3 +1,17 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# handlers file for roles/dhcp_server
+- name: Перезапуск dhcp 
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "Restart dhcpd"
+  async: 10
+  poll: 0
+  loop:
+    - dhcpd
+  ignore_unreachable: true
+  when:
+    - inventory_hostname in groups['domain_controllers']
+...

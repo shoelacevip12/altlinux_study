@@ -6,23 +6,6 @@
   become_method: su
   become_user: root
   gather_facts: true
-  vars:
-    # включаем(true)\выключаем(false)
-    base_setup: true
-    # Отдельные задачи включения пакетов
-    dist_upd: true # Обновление кеша пакетов
-    dist_upgrd: true # обновление установленных приложений
-    kernel_upd: true # обновление ядра
-
-    chrony_sync: true
-    samba_ad_dc: true
-    dhcp_server: true
-    sysvol_replication: true
-    kerberos_client: false
-    smb_shares: false
-    nfs_server: false
-    squid_proxy: false
-    monitoring_scripts: false
 
 - name: Базовая настройка хостов
   import_playbook: base_setup.yaml
@@ -41,8 +24,8 @@
   when: dhcp_server | bool
 
 - name: Репликация SysVol между DC
-  import_playbook: squid_proxy.yaml
-  when: squid_proxy | bool
+  import_playbook: sysvol_replication.yaml
+  when: sysvol_replication | bool
 
 - name: Smb файловый сервер
   import_playbook: smb_shares.yaml

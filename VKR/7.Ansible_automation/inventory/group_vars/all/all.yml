@@ -17,4 +17,21 @@ secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
 network_subnet: "192.168.100.0"
 network_netmask: "255.255.255.0"
 network_gateway: "192.168.100.1"
+
+# включаем(true)\выключаем(false) роли
+base_setup: false
+# Отдельные задачи включения пакетов
+dist_upd: false # Обновление кеша пакетов
+dist_upgrd: false # обновление установленных приложений
+kernel_upd: false # обновление ядра
+
+chrony_sync: false
+samba_ad_dc: false
+dhcp_server: true
+sysvol_replication: true
+kerberos_client: false
+smb_shares: false
+nfs_server: false
+squid_proxy: false
+monitoring_scripts: false
 ...

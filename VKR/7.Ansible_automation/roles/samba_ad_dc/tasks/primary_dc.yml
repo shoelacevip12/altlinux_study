@@ -54,7 +54,7 @@
     {{ inventory_hostname }}
     {{ ptr_zone }}
     {{ ptr_ip_main_dc }} PTR
-    {{ inventory_hostname }}
+    {{ inventory_hostname }}.{{ ad_workgroup }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
 
 - name: Добавление А записи для вторичного контролера

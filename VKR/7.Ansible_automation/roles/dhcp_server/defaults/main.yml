@@ -1,5 +1,5 @@
 ---
-dhcp_server: false
+dhcp_server: true
 dhcpduser: dhcpduser
 keytab_export_path: "/etc/dhcp/dhcpduser.keytab"
 network_subnet: "192.168.100.0"

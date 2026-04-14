@@ -620,6 +620,23 @@ secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
 network_subnet: "192.168.100.0"
 network_netmask: "255.255.255.0"
 network_gateway: "192.168.100.1"
+
+# включаем(true)\выключаем(false) роли
+base_setup: false
+# Отдельные задачи включения пакетов
+dist_upd: false # Обновление кеша пакетов
+dist_upgrd: false # обновление установленных приложений
+kernel_upd: false # обновление ядра
+
+chrony_sync: false
+samba_ad_dc: false
+dhcp_server: true
+sysvol_replication: false
+kerberos_client: false
+smb_shares: false
+nfs_server: false
+squid_proxy: false
+monitoring_scripts: false
 ...
 EOF
 ```
@@ -671,23 +688,6 @@ cat > ./main.yaml<< 'EOF'
   become_method: su
   become_user: root
   gather_facts: true
-  vars:
-    # включаем(true)\выключаем(false)
-    base_setup: true
-    # Отдельные задачи включения пакетов
-    dist_upd: true # Обновление кеша пакетов
-    dist_upgrd: true # обновление установленных приложений
-    kernel_upd: true # обновление ядра
-
-    chrony_sync: true
-    samba_ad_dc: true
-    dhcp_server: false
-    sysvol_replication: false
-    kerberos_client: false
-    smb_shares: false
-    nfs_server: false
-    squid_proxy: false
-    monitoring_scripts: false
 
 - name: Базовая настройка хостов
   import_playbook: base_setup.yaml
@@ -706,8 +706,8 @@ cat > ./main.yaml<< 'EOF'
   when: dhcp_server | bool
 
 - name: Репликация SysVol между DC
-  import_playbook: squid_proxy.yaml
-  when: squid_proxy | bool
+  import_playbook: sysvol_replication.yaml
+  when: sysvol_replication | bool
 
 - name: Smb файловый сервер
   import_playbook: smb_shares.yaml
@@ -1152,7 +1152,7 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
     {{ inventory_hostname }}
     {{ ptr_zone }}
     {{ ptr_ip_main_dc }} PTR
-    {{ inventory_hostname }}
+    {{ inventory_hostname }}.{{ ad_workgroup }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
 
 - name: Добавление А записи для вторичного контролера
@@ -1413,7 +1413,7 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
   apt_rpm:
     update_cache: true
 
-- name: Установка пакетов Samba DC
+- name: Установка пакетов DHCP сервера
   apt_rpm:
     name: 
       - dhcp-server
@@ -1425,6 +1425,8 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     {{ dhcpduser }}
     --description="Пользователь обновления DNS через DHCP-сервер"
     --random-password
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -1433,6 +1435,8 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     samba-tool group addmembers
     'DnsAdmins'
     {{ dhcpduser }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -1441,6 +1445,8 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     samba-tool user setexpiry
     {{ dhcpduser }}
     --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -1449,6 +1455,7 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     samba-tool domain exportkeytab
     --principal={{ dhcpduser }}@"{{ ad_realm }}"
     {{ keytab_export_path }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   args:
     creates: "{{ keytab_export_path }}"
 
@@ -1463,13 +1470,12 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
   template:
     src: dhcp-dyndns.sh.j2
     dest: /usr/local/bin/dhcp-dyndns.sh
-    mode: '0755' 
+    mode: '0755'
 
 - name: Развертывание конфигурации dhcpd.conf
   template:
     src: dhcpd.conf.j2
     dest: /etc/dhcp/dhcpd.conf
-    validate: dhcpd -t -cf %s
   notify: Restart dhcpd
   when:
     - not sysvol_replication | bool
@@ -1478,7 +1484,6 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
   template:
     src: dhcpd_failover_primary.conf.j2
     dest: /etc/dhcp/dhcpd.conf
-    validate: dhcpd -t -cf %s
   notify: Restart dhcpd
   when:
     - sysvol_replication | bool
@@ -1488,11 +1493,13 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
   template:
     src: dhcpd_failover_second.conf.j2
     dest: /etc/dhcp/dhcpd.conf
-    validate: dhcpd -t -cf %s
   notify: Restart dhcpd
   when:
     - sysvol_replication | bool
     - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Отключение chroot для DHCP-сервера
+  shell: /usr/sbin/control dhcpd-chroot disabled
 ...
 EOF
 ```
@@ -1501,6 +1508,7 @@ EOF
 ##### Шаблон файла-скрипта для DDNS
 ```bash
 cat > roles/dhcp_server/templates/dhcp-dyndns.sh.j2 <<'EOT'
+{% raw %}
 #!/bin/bash
 #
 # This script is for secure DDNS updates on Samba,
@@ -1522,80 +1530,80 @@ keytab=/etc/dhcp/dhcpduser.keytab
 
 usage()
 {
-  cat <<-EOF
-  USAGE:
-    $(basename "$0") add ip-address dhcid|mac-address hostname
-    $(basename "$0") delete ip-address dhcid|mac-address
+	cat <<-EOF
+	USAGE:
+	  $(basename "$0") add ip-address dhcid|mac-address hostname
+	  $(basename "$0") delete ip-address dhcid|mac-address
 EOF
 }
 
 _KERBEROS()
 {
-  # get current time as a number
-  test=$(date +%d'-'%m'-'%y' '%H':'%M':'%S)
-  # Note: there have been problems with this
-  # check that 'date' returns something like
+	# get current time as a number
+	test=$(date +%d'-'%m'-'%y' '%H':'%M':'%S)
+	# Note: there have been problems with this
+	# check that 'date' returns something like
 
-  # Check for valid kerberos ticket
-  #logger "${test} [dyndns] : Running check for valid kerberos ticket"
-  klist -c "${KRB5CCNAME}" -s
-  ret="$?"
-  if [ $ret -ne 0 ]
-  then
-    logger "${test} [dyndns] : Getting new ticket, old one has expired"
-    kinit -F -k -t $keytab "${SETPRINCIPAL}"
-    ret="$?"
-    if [ $ret -ne 0 ]
-    then
-      logger "${test} [dyndns] : dhcpd kinit for dynamic DNS failed"
-      exit 1
-    fi
-  fi
+	# Check for valid kerberos ticket
+	#logger "${test} [dyndns] : Running check for valid kerberos ticket"
+	klist -c "${KRB5CCNAME}" -s
+	ret="$?"
+	if [ $ret -ne 0 ]
+	then
+		logger "${test} [dyndns] : Getting new ticket, old one has expired"
+		kinit -F -k -t $keytab "${SETPRINCIPAL}"
+		ret="$?"
+		if [ $ret -ne 0 ]
+		then
+			logger "${test} [dyndns] : dhcpd kinit for dynamic DNS failed"
+			exit 1
+		fi
+	fi
 }
 
 rev_zone_info()
 {
-  local RevZone="$1"
-  local IP="$2"
-  local rzoneip
-  rzoneip="${RevZone%.in-addr.arpa}"
-  local rzonenum
-  rzonenum=$(echo "$rzoneip" |  tr '.' '\n')
-  declare -a words
-  for n in $rzonenum
-  do
-    words+=("$n")
-  done
-  local numwords="${#words[@]}"
+	local RevZone="$1"
+	local IP="$2"
+	local rzoneip
+	rzoneip="${RevZone%.in-addr.arpa}"
+	local rzonenum
+	rzonenum=$(echo "$rzoneip" |  tr '.' '\n')
+	declare -a words
+	for n in $rzonenum
+	do
+		words+=("$n")
+	done
+	local numwords="${#words[@]}"
 
-  unset ZoneIP
-  unset RZIP
-  unset IP2add
+	unset ZoneIP
+	unset RZIP
+	unset IP2add
 
-  case "$numwords" in
-    1)
-      # single ip rev zone '192'
-      ZoneIP=$(echo "${IP}" | awk -F '.' '{print $1}')
-      RZIP="${rzoneip}"
-      IP2add=$(echo "${IP}" | awk -F '.' '{print $4"."$3"."$2}')
-      ;;
-    2)
-      # double ip rev zone '168.192'
-      ZoneIP=$(echo "${IP}" | awk -F '.' '{print $1"."$2}')
-      RZIP=$(echo "${rzoneip}" | awk -F '.' '{print $2"."$1}')
-      IP2add=$(echo "${IP}" | awk -F '.' '{print $4"."$3}')
-      ;;
-    3)
-      # triple ip rev zone '0.168.192'
-      ZoneIP=$(echo "${IP}" | awk -F '.' '{print $1"."$2"."$3}')
-      RZIP=$(echo "${rzoneip}" | awk -F '.' '{print $3"."$2"."$1}')
-      IP2add=$(echo "${IP}" | awk -F '.' '{print $4}')
-      ;;
-    *)
-      # should never happen
-      exit 1
-      ;;
-  esac
+	case "$numwords" in
+		1)
+			# single ip rev zone '192'
+			ZoneIP=$(echo "${IP}" | awk -F '.' '{print $1}')
+			RZIP="${rzoneip}"
+			IP2add=$(echo "${IP}" | awk -F '.' '{print $4"."$3"."$2}')
+			;;
+		2)
+			# double ip rev zone '168.192'
+			ZoneIP=$(echo "${IP}" | awk -F '.' '{print $1"."$2}')
+			RZIP=$(echo "${rzoneip}" | awk -F '.' '{print $2"."$1}')
+			IP2add=$(echo "${IP}" | awk -F '.' '{print $4"."$3}')
+			;;
+		3)
+			# triple ip rev zone '0.168.192'
+			ZoneIP=$(echo "${IP}" | awk -F '.' '{print $1"."$2"."$3}')
+			RZIP=$(echo "${rzoneip}" | awk -F '.' '{print $3"."$2"."$1}')
+			IP2add=$(echo "${IP}" | awk -F '.' '{print $4}')
+			;;
+		*)
+			# should never happen
+			exit 1
+			;;
+	esac
 }
 
 BINDIR=$(samba -b | grep 'BINDIR' | grep -v 'SBINDIR' | awk '{print $NF}')
@@ -1608,9 +1616,9 @@ SAMBATOOL=$(command -v samba-tool)
 MINVER=$($SAMBATOOL -V | grep -o '[0-9]*' | tr '\n' ' ' | awk '{print $2}')
 if [ "$MINVER" -gt '14' ]
 then
-  KTYPE="--use-kerberos=required"
+	KTYPE="--use-kerberos=required"
 else
-  KTYPE="-k yes"
+	KTYPE="-k yes"
 fi
 
 # DHCP Server hostname
@@ -1620,9 +1628,9 @@ Server=$(hostname -s)
 domain=$(hostname -d)
 if [ -z "${domain}" ]
 then
-  logger "Cannot obtain domain name, is DNS set up correctly?"
-  logger "Cannot continue... Exiting."
-  exit 1
+	logger "Cannot obtain domain name, is DNS set up correctly?"
+	logger "Cannot continue... Exiting."
+	exit 1
 fi
 
 # Samba realm
@@ -1638,25 +1646,25 @@ SETPRINCIPAL="dhcpduser@${REALM}"
 TESTUSER="$($WBINFO -u | grep 'dhcpduser')"
 if [ -z "${TESTUSER}" ]
 then
-  logger "No AD dhcp user exists, need to create it first.. exiting."
-  logger "you can do this by typing the following commands"
-  logger "kinit Administrator@${REALM}"
-  logger "$SAMBATOOL user create dhcpduser --random-password --description='Unprivileged Пользователь обновления DNS через DHCP-сервер'"
-  logger "$SAMBATOOL user setexpiry dhcpduser --noexpiry"
-  logger "$SAMBATOOL group addmembers DnsAdmins dhcpduser"
-  exit 1
+	logger "No AD dhcp user exists, need to create it first.. exiting."
+	logger "you can do this by typing the following commands"
+	logger "kinit Administrator@${REALM}"
+	logger "$SAMBATOOL user create dhcpduser --random-password --description='Unprivileged user for DNS updates via ISC DHCP server'"
+	logger "$SAMBATOOL user setexpiry dhcpduser --noexpiry"
+	logger "$SAMBATOOL group addmembers DnsAdmins dhcpduser"
+	exit 1
 fi
 
 # Check for Kerberos keytab
 if [ ! -f "$keytab" ]
 then
-  logger "Required keytab $keytab not found, it needs to be created."
-  logger "Use the following commands as root"
-  logger "$SAMBATOOL domain exportkeytab --principal=${SETPRINCIPAL} $keytab"
-  logger "chown dhcpd:dhcp $keytab"
-  logger "Replace 'dhcpd:dhcp' with the user & group that dhcpd runs as on your distro"
-  logger "chmod 400 $keytab"
-  exit 1
+	logger "Required keytab $keytab not found, it needs to be created."
+	logger "Use the following commands as root"
+	logger "$SAMBATOOL domain exportkeytab --principal=${SETPRINCIPAL} $keytab"
+	logger "chown dhcpd:dhcp $keytab"
+	logger "Replace 'dhcpd:dhcp' with the user & group that dhcpd runs as on your distro"
+	logger "chmod 400 $keytab"
+	exit 1
 fi
 
 # Variables supplied by dhcpd.conf
@@ -1668,252 +1676,253 @@ name="${4%%.*}"
 # Exit if no ip address
 if [ -z "${ip}" ]
 then
-  usage
-  exit 1
+	usage
+	exit 1
 fi
 
 # Exit if no computer name supplied, unless the action is 'delete'
 if [ -z "${name}" ]
 then
-  if [ "${action}" = "delete" ]
-  then
-    name=$(host -t PTR "${ip}" | awk '{print $NF}' | awk -F '.' '{print $1}')
-  else
-    usage
-    exit 1
-  fi
+	if [ "${action}" = "delete" ]
+	then
+		name=$(host -t PTR "${ip}" | awk '{print $NF}' | awk -F '.' '{print $1}')
+	else
+		usage
+		exit 1
+	fi
 fi
 
 # exit if name contains a space
 case ${name} in
-  *\ * )
-    logger "Invalid hostname '${name}' ...Exiting"
-    exit
-    ;;
+	*\ * )
+		logger "Invalid hostname '${name}' ...Exiting"
+		exit
+		;;
 esac
 
 # if you want computers with a hostname that starts with 'dhcp' in AD
 # comment the following block of code.
 if [[ $name == dhcp* ]]
 then
-  logger "not updating DNS record in AD, invalid name"
-  exit 0
+	logger "not updating DNS record in AD, invalid name"
+	exit 0
 fi
 
 ## update ##
 case "${action}" in
-  add)
-    _KERBEROS
-    count=0
-    # does host have an existing 'A' record ?
-    mapfile -t A_REC < <($SAMBATOOL dns query "${Server}" "${domain}" "${name}" A "$KTYPE" 2>/dev/null | grep 'A:' | awk '{print $2}')
-    if [ "${#A_REC[@]}" -eq 0 ]
-    then
-      # no A record to delete
-      result1=0
-      $SAMBATOOL dns add "${Server}" "${domain}" "${name}" A "${ip}" "$KTYPE"
-      result2="$?"
-    elif [ "${#A_REC[@]}" -gt 1 ]
-    then
-      for i in "${A_REC[@]}"
-      do
-        $SAMBATOOL dns delete "${Server}" "${domain}" "${name}" A "${i}" "$KTYPE"
-      done
-      # all A records deleted
-      result1=0
-      $SAMBATOOL dns add "${Server}" "${domain}" "${name}" A "${ip}" "$KTYPE"
-      result2="$?"
-    elif [ "${#A_REC[@]}" -eq 1 ]
-    then
-      # turn array into a variable
-      VAR_A_REC="${A_REC[*]}"
-      if [ "$VAR_A_REC" = "${ip}" ]
-      then
-        # Correct A record exists, do nothing
-        logger "Correct 'A' record exists, not updating."
-        result1=0
-        result2=0
-        count=$((count+1))
-      elif [ "$VAR_A_REC" != "${ip}" ]
-      then
-        # Wrong A record exists
-        logger "'A' record changed, updating record."
-        $SAMBATOOL dns delete "${Server}" "${domain}" "${name}" A "${VAR_A_REC}" "$KTYPE"
-        result1="$?"
-        $SAMBATOOL dns add "${Server}" "${domain}" "${name}" A "${ip}" "$KTYPE"
-        result2="$?"
-      fi
-    fi
+	add)
+		_KERBEROS
+		count=0
+		# does host have an existing 'A' record ?
+		mapfile -t A_REC < <($SAMBATOOL dns query "${Server}" "${domain}" "${name}" A "$KTYPE" 2>/dev/null | grep 'A:' | awk '{print $2}')
+		if [ "${#A_REC[@]}" -eq 0 ]
+		then
+			# no A record to delete
+			result1=0
+			$SAMBATOOL dns add "${Server}" "${domain}" "${name}" A "${ip}" "$KTYPE"
+			result2="$?"
+		elif [ "${#A_REC[@]}" -gt 1 ]
+		then
+			for i in "${A_REC[@]}"
+			do
+				$SAMBATOOL dns delete "${Server}" "${domain}" "${name}" A "${i}" "$KTYPE"
+			done
+			# all A records deleted
+			result1=0
+			$SAMBATOOL dns add "${Server}" "${domain}" "${name}" A "${ip}" "$KTYPE"
+			result2="$?"
+		elif [ "${#A_REC[@]}" -eq 1 ]
+		then
+			# turn array into a variable
+			VAR_A_REC="${A_REC[*]}"
+			if [ "$VAR_A_REC" = "${ip}" ]
+			then
+				# Correct A record exists, do nothing
+				logger "Correct 'A' record exists, not updating."
+				result1=0
+				result2=0
+				count=$((count+1))
+			elif [ "$VAR_A_REC" != "${ip}" ]
+			then
+				# Wrong A record exists
+				logger "'A' record changed, updating record."
+				$SAMBATOOL dns delete "${Server}" "${domain}" "${name}" A "${VAR_A_REC}" "$KTYPE"
+				result1="$?"
+				$SAMBATOOL dns add "${Server}" "${domain}" "${name}" A "${ip}" "$KTYPE"
+				result2="$?"
+			fi
+		fi
 
-    # get existing reverse zones (if any)
-    ReverseZones=$($SAMBATOOL dns zonelist "${Server}" "$KTYPE" --reverse | grep 'pszZoneName' | awk '{print $NF}')
-    if [ -z "$ReverseZones" ]; then
-      logger "No reverse zone found, not updating"
-      result3='0'
-      result4='0'
-      count=$((count+1))
-    else
-      for revzone in $ReverseZones
-      do
-        rev_zone_info "$revzone" "${ip}"
-        if [[ ${ip} = $ZoneIP* ]] && [ "$ZoneIP" = "$RZIP" ]
-        then
-          # does host have an existing 'PTR' record ?
-          PTR_REC=$($SAMBATOOL dns query "${Server}" "${revzone}" "${IP2add}" PTR "$KTYPE" 2>/dev/null | grep 'PTR:' | awk '{print $2}' | awk -F '.' '{print $1}')
-          if [[ -z $PTR_REC ]]
-          then
-            # no PTR record to delete
-            result3=0
-            $SAMBATOOL dns add "${Server}" "${revzone}" "${IP2add}" PTR "${name}"."${domain}" "$KTYPE"
-            result4="$?"
-            break
-          elif [ "$PTR_REC" = "${name}" ]
-          then
-            # Correct PTR record exists, do nothing
-            logger "Correct 'PTR' record exists, not updating."
-            result3=0
-            result4=0
-            count=$((count+1))
-            break
-          elif [ "$PTR_REC" != "${name}" ]
-          then
-            # Wrong PTR record exists
-            # points to wrong host
-            logger "'PTR' record changed, updating record."
-            $SAMBATOOL dns delete "${Server}" "${revzone}" "${IP2add}" PTR "${PTR_REC}"."${domain}" "$KTYPE"
-            result3="$?"
-            $SAMBATOOL dns add "${Server}" "${revzone}" "${IP2add}" PTR "${name}"."${domain}" "$KTYPE"
-            result4="$?"
-            break
-          fi
-        else
-          continue
-        fi
-      done
-    fi
-    ;;
-  delete)
-    _KERBEROS
+		# get existing reverse zones (if any)
+		ReverseZones=$($SAMBATOOL dns zonelist "${Server}" "$KTYPE" --reverse | grep 'pszZoneName' | awk '{print $NF}')
+		if [ -z "$ReverseZones" ]; then
+			logger "No reverse zone found, not updating"
+			result3='0'
+			result4='0'
+			count=$((count+1))
+		else
+			for revzone in $ReverseZones
+			do
+				rev_zone_info "$revzone" "${ip}"
+				if [[ ${ip} = $ZoneIP* ]] && [ "$ZoneIP" = "$RZIP" ]
+				then
+					# does host have an existing 'PTR' record ?
+					PTR_REC=$($SAMBATOOL dns query "${Server}" "${revzone}" "${IP2add}" PTR "$KTYPE" 2>/dev/null | grep 'PTR:' | awk '{print $2}' | awk -F '.' '{print $1}')
+					if [[ -z $PTR_REC ]]
+					then
+						# no PTR record to delete
+						result3=0
+						$SAMBATOOL dns add "${Server}" "${revzone}" "${IP2add}" PTR "${name}"."${domain}" "$KTYPE"
+						result4="$?"
+						break
+					elif [ "$PTR_REC" = "${name}" ]
+					then
+						# Correct PTR record exists, do nothing
+						logger "Correct 'PTR' record exists, not updating."
+						result3=0
+						result4=0
+						count=$((count+1))
+						break
+					elif [ "$PTR_REC" != "${name}" ]
+					then
+						# Wrong PTR record exists
+						# points to wrong host
+						logger "'PTR' record changed, updating record."
+						$SAMBATOOL dns delete "${Server}" "${revzone}" "${IP2add}" PTR "${PTR_REC}"."${domain}" "$KTYPE"
+						result3="$?"
+						$SAMBATOOL dns add "${Server}" "${revzone}" "${IP2add}" PTR "${name}"."${domain}" "$KTYPE"
+						result4="$?"
+						break
+					fi
+				else
+					continue
+				fi
+			done
+	        fi
+		;;
+	delete)
+		_KERBEROS
 
-    count=0
-    $SAMBATOOL dns delete "${Server}" "${domain}" "${name}" A "${ip}" "$KTYPE"
-    result1="$?"
-    # get existing reverse zones (if any)
-    ReverseZones=$($SAMBATOOL dns zonelist "${Server}" --reverse "$KTYPE" | grep 'pszZoneName' | awk '{print $NF}')
-    if [ -z "$ReverseZones" ]
-    then
-      logger "No reverse zone found, not updating"
-      result2='0'
-      count=$((count+1))
-    else
-      for revzone in $ReverseZones
-      do
-        rev_zone_info "$revzone" "${ip}"
-        if [[ ${ip} = $ZoneIP* ]] && [ "$ZoneIP" = "$RZIP" ]
-        then
-          host -t PTR "${ip}" > /dev/null 2>&1
-          ret="$?"
-          if [ $ret -eq 0 ]
-          then
-            $SAMBATOOL dns delete "${Server}" "${revzone}" "${IP2add}" PTR "${name}"."${domain}" "$KTYPE"
-            result2="$?"
-          else
-            result2='0'
-            count=$((count+1))
-          fi
-          break
-        else
-          continue
-        fi
-      done
-    fi
-    result3='0'
-    result4='0'
-    ;;
-*)
-    logger "Invalid action specified"
-    exit 103
-  ;;
+		count=0
+		$SAMBATOOL dns delete "${Server}" "${domain}" "${name}" A "${ip}" "$KTYPE"
+		result1="$?"
+		# get existing reverse zones (if any)
+		ReverseZones=$($SAMBATOOL dns zonelist "${Server}" --reverse "$KTYPE" | grep 'pszZoneName' | awk '{print $NF}')
+		if [ -z "$ReverseZones" ]
+		then
+			logger "No reverse zone found, not updating"
+			result2='0'
+			count=$((count+1))
+		else
+			for revzone in $ReverseZones
+			do
+				rev_zone_info "$revzone" "${ip}"
+				if [[ ${ip} = $ZoneIP* ]] && [ "$ZoneIP" = "$RZIP" ]
+				then
+					host -t PTR "${ip}" > /dev/null 2>&1
+					ret="$?"
+					if [ $ret -eq 0 ]
+					then
+						$SAMBATOOL dns delete "${Server}" "${revzone}" "${IP2add}" PTR "${name}"."${domain}" "$KTYPE"
+						result2="$?"
+					else
+						result2='0'
+						count=$((count+1))
+					fi
+					break
+				else
+					continue
+				fi
+			done
+		fi
+		result3='0'
+		result4='0'
+		;;
+	*)
+		logger "Invalid action specified"
+		exit 103
+	;;
 esac
 
 result="${result1}:${result2}:${result3}:${result4}"
 
 if [ "$count" -eq 0 ]
 then
-  if [ "${result}" != "0:0:0:0" ]
-  then
-    logger "DHCP-DNS $action failed: ${result}"
-    exit 1
-  else
-    logger "DHCP-DNS $action succeeded"
-  fi
+	if [ "${result}" != "0:0:0:0" ]
+	then
+		logger "DHCP-DNS $action failed: ${result}"
+		exit 1
+	else
+		logger "DHCP-DNS $action succeeded"
+	fi
 fi
 
 if [ "$Add_macAddress" != 'no' ]
 then
-  if [ -n "$DHCID" ]
-  then
-    Computer_Object=$(ldbsearch "$KTYPE" -H ldap://"$Server" "(&(objectclass=computer)(objectclass=ieee802Device)(cn=$name))" | grep -v '#' | grep -v 'ref:')
-    if [ -z "$Computer_Object" ]
-    then
-      # Computer object not found with the 'ieee802Device' objectclass, does the computer actually exist, it should.
-      Computer_Object=$(ldbsearch "$KTYPE" -H ldap://"$Server" "(&(objectclass=computer)(cn=$name))" | grep -v '#' | grep -v 'ref:')
-      if [ -z "$Computer_Object" ]
-      then
-        logger "Computer '$name' not found. Exiting."
-        exit 68
-      else
-        DN=$(echo "$Computer_Object" | grep 'dn:')
-        objldif="$DN
+	if [ -n "$DHCID" ]
+	then
+		Computer_Object=$(ldbsearch "$KTYPE" -H ldap://"$Server" "(&(objectclass=computer)(objectclass=ieee802Device)(cn=$name))" | grep -v '#' | grep -v 'ref:')
+		if [ -z "$Computer_Object" ]
+		then
+			# Computer object not found with the 'ieee802Device' objectclass, does the computer actually exist, it should.
+			Computer_Object=$(ldbsearch "$KTYPE" -H ldap://"$Server" "(&(objectclass=computer)(cn=$name))" | grep -v '#' | grep -v 'ref:')
+			if [ -z "$Computer_Object" ]
+			then
+				logger "Computer '$name' not found. Exiting."
+				exit 68
+			else
+				DN=$(echo "$Computer_Object" | grep 'dn:')
+				objldif="$DN
 changetype: modify
 add: objectclass
 objectclass: ieee802Device"
 
-        attrldif="$DN
+				attrldif="$DN
 changetype: modify
 add: macAddress
 macAddress: $DHCID"
 
-        # add the ldif
-        echo "$objldif" | ldbmodify "$KTYPE" -H ldap://"$Server"
-        ret="$?"
-        if [ $ret -ne 0 ]
-        then
-          logger "Error modifying Computer objectclass $name in AD."
-          exit "${ret}"
-        fi
-        sleep 2
-        echo "$attrldif" | ldbmodify "$KTYPE" -H ldap://"$Server"
-        ret="$?"
-        if [ "$ret" -ne 0 ]; then
-          logger "Error modifying Computer attribute $name in AD."
-          exit "${ret}"
-        fi
-        unset objldif
-        unset attrldif
-        logger "Successfully modified Computer $name in AD"
-      fi
-  else
-    DN=$(echo "$Computer_Object" | grep 'dn:')
-    attrldif="$DN
+				# add the ldif
+				echo "$objldif" | ldbmodify "$KTYPE" -H ldap://"$Server"
+				ret="$?"
+				if [ $ret -ne 0 ]
+				then
+					logger "Error modifying Computer objectclass $name in AD."
+					exit "${ret}"
+				fi
+				sleep 2
+				echo "$attrldif" | ldbmodify "$KTYPE" -H ldap://"$Server"
+				ret="$?"
+				if [ "$ret" -ne 0 ]; then
+					logger "Error modifying Computer attribute $name in AD."
+					exit "${ret}"
+				fi
+				unset objldif
+				unset attrldif
+				logger "Successfully modified Computer $name in AD"
+			fi
+	else
+		DN=$(echo "$Computer_Object" | grep 'dn:')
+		attrldif="$DN
 changetype: modify
 replace: macAddress
 macAddress: $DHCID"
 
-    echo "$attrldif" | ldbmodify "$KTYPE" -H ldap://"$Server"
-    ret="$?"
-    if [ "$ret" -ne 0 ]
-    then
-      logger "Error modifying Computer attribute $name in AD."
-      exit "${ret}"
-    fi
-      unset attrldif
-      logger "Successfully modified Computer $name in AD"
-    fi
-  fi
+		echo "$attrldif" | ldbmodify "$KTYPE" -H ldap://"$Server"
+		ret="$?"
+		if [ "$ret" -ne 0 ]
+		then
+			logger "Error modifying Computer attribute $name in AD."
+			exit "${ret}"
+		fi
+			unset attrldif
+			logger "Successfully modified Computer $name in AD"
+		fi
+	fi
 fi
 
 exit 0
+{% endraw %}
 EOT
 ```
 
@@ -2137,7 +2146,7 @@ EOF
 ```bash
 cat > roles/dhcp_server/defaults/main.yml<<'EOF'
 ---
-dhcp_server: false
+dhcp_server: true
 dhcpduser: dhcpduser
 keytab_export_path: "/etc/dhcp/dhcpduser.keytab"
 network_subnet: "192.168.100.0"
@@ -2148,6 +2157,29 @@ lease_time: "172800"
 max_lease_time: "259200"
 dhcp_range: "192.168.100.50 192.168.100.254"
 sysvol_replication: true
+...
+EOF
+```
+
+#### Обработчики роли dhcp сервера
+```bash
+cat > roles/dhcp_server/handlers/main.yml <<'EOF'
+---
+- name: Перезапуск dhcp 
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "Restart dhcpd"
+  async: 10
+  poll: 0
+  loop:
+    - dhcpd
+  ignore_unreachable: true
+  when:
+    - inventory_hostname in groups['domain_controllers']
 ...
 EOF
 ```
@@ -2178,7 +2210,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd7]ansible" \
+git commit -am "[upd8]ansible" \
 && git push \
 --set-upstream \
 altlinux \

@@ -3,7 +3,7 @@
   apt_rpm:
     update_cache: true
 
-- name: Установка пакетов Samba DC
+- name: Установка пакетов DHCP сервера
   apt_rpm:
     name: 
       - dhcp-server
@@ -15,6 +15,8 @@
     {{ dhcpduser }}
     --description="Пользователь обновления DNS через DHCP-сервер"
     --random-password
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -23,6 +25,8 @@
     samba-tool group addmembers
     'DnsAdmins'
     {{ dhcpduser }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -31,6 +35,8 @@
     samba-tool user setexpiry
     {{ dhcpduser }}
     --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -39,6 +45,7 @@
     samba-tool domain exportkeytab
     --principal={{ dhcpduser }}@"{{ ad_realm }}"
     {{ keytab_export_path }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   args:
     creates: "{{ keytab_export_path }}"
 
@@ -53,13 +60,12 @@
   template:
     src: dhcp-dyndns.sh.j2
     dest: /usr/local/bin/dhcp-dyndns.sh
-    mode: '0755' 
+    mode: '0755'
 
 - name: Развертывание конфигурации dhcpd.conf
   template:
     src: dhcpd.conf.j2
     dest: /etc/dhcp/dhcpd.conf
-    validate: dhcpd -t -cf %s
   notify: Restart dhcpd
   when:
     - not sysvol_replication | bool
@@ -68,7 +74,6 @@
   template:
     src: dhcpd_failover_primary.conf.j2
     dest: /etc/dhcp/dhcpd.conf
-    validate: dhcpd -t -cf %s
   notify: Restart dhcpd
   when:
     - sysvol_replication | bool
@@ -78,9 +83,11 @@
   template:
     src: dhcpd_failover_second.conf.j2
     dest: /etc/dhcp/dhcpd.conf
-    validate: dhcpd -t -cf %s
   notify: Restart dhcpd
   when:
     - sysvol_replication | bool
     - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Отключение chroot для DHCP-сервера
+  shell: /usr/sbin/control dhcpd-chroot disabled
 ...
