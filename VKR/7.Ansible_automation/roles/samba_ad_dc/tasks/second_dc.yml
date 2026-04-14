@@ -9,7 +9,7 @@
           | first
       }}
 
-- name: Настройка chrony.conf для вторичного DC
+- name: Настройка krb5.conf для вторичного DC
   template:
     src: krb5.conf.dc_second.j2
     dest: /etc/krb5.conf
@@ -25,7 +25,6 @@
     DC
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
     --realm={{ ad_realm }}
-    --option="ad dc functional level={{ func_level }}"
     --option="dns forwarder={{ dns_forwarder }}"
     --option='idmap_ldb:use rfc2307 = yes'
     --option="interfaces= lo {{ primary_iface_name }}"
@@ -43,6 +42,13 @@
     enabled: true
   loop: 
     - samba
+
+- name: Ожидание готовности Samba
+  wait_for:
+    port: 53
+    host: 127.0.0.1
+    timeout: 60
+    delay: 5
 
 - name: Настройка DNS резолвера дополнительного DC
   template:

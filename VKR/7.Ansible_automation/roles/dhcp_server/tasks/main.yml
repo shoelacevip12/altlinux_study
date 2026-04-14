@@ -13,7 +13,7 @@
   command: >
     samba-tool user create
     {{ dhcpduser }}
-    --description="Пользователь обновления DNS через DHCP-сервер
+    --description="Пользователь обновления DNS через DHCP-сервер"
     --random-password
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
@@ -40,11 +40,11 @@
     --principal={{ dhcpduser }}@"{{ ad_realm }}"
     {{ keytab_export_path }}
   args:
-    creates: {{ keytab_export_path }}
+    creates: "{{ keytab_export_path }}"
 
 - name: Изменение прав на файл kerberos пользователя {{ dhcpduser }}
   file:
-    path: {{ keytab_export_path }}
+    path: "{{ keytab_export_path }}"
     owner: dhcpd
     group: dhcp
     mode: '0400'

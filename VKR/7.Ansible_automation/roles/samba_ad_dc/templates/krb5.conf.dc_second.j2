@@ -1,0 +1,14 @@
+cat /etc/krb5.conf
+includedir /etc/krb5.conf.d/
+[logging]
+[libdefaults]
+ dns_lookup_kdc = true
+ dns_lookup_realm = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+ rdns = false
+ default_realm = {{ ad_realm }}
+ default_ccache_name = KEYRING:persistent:%{uid}
+[realms]
+[domain_realm]

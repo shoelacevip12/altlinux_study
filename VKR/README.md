@@ -10,7 +10,7 @@ export ANSIBLE_CONFIG=./ansible.cfg
 # Команда вызова редактирования файла с паролями
 EDITOR=nano \
 ansible-vault edit \
-./inventory/group_vars/all/vault.yml \
+./inventory/group_vars/all/vault \
 --vault-password-file ./va_pa
 ```
 ```bash
@@ -575,34 +575,42 @@ export ANSIBLE_CONFIG=./ansible.cfg
 
 #### Создаем файл Управляемых хостов
 ```bash
-cat > ./inventory/hosts.ini << 'EOF'
-[domain_controllers]
-altsrv2 ansible_host=192.168.100.12
-altsrv3 ansible_host=192.168.100.13
-
-[file_servers]
-altsrv4 ansible_host=192.168.100.14
-
-[proxy_servers]
-altsrv1 ansible_host=192.168.100.11
+cat > ./inventory/inventory.yaml << 'EOF'
+---
+all:
+  hosts: {}
+  children:
+    domain_controllers:
+      hosts:
+        altsrv2:
+          ansible_host: 192.168.100.12
+        altsrv3:
+          ansible_host: 192.168.100.13
+    file_servers:
+      hosts:
+        altsrv4:
+          ansible_host: 192.168.100.14
+    proxy_servers:
+      hosts:
+        altsrv1:
+          ansible_host: 192.168.100.11
+...
 EOF
 ```
 
 #### создание переменных для всех групп в 
 ```bash
-cat > inventory/group_vars/all.yml <<'EOF'
+cat > inventory/group_vars/all/all.yml <<'EOF'
 ---
 # параметры суперпользователя
-ansible_ssh_private_key_file: " ~/.ssh/id_skv_VKR_vpn"
-ansible_user: "{{ vault_su_wheel_user }}"
-ansible_become_password: "{{ vault_su_password }}"
+ansible_ssh_private_key_file: "~/.ssh/id_skv_VKR_vpn"
 
 # Общие параметры домена
 ad_workgroup: "den.skv"
 ad_realm: "DEN.SKV"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
-ad_admin_password: "{{ vault_ad_admin_password }}"
+dns_forwarder: "77.88.8.8"
 primary_dc: "{{ groups['domain_controllers'][0] }}"
 primary_dc_ip: "{{ hostvars[primary_dc]['ansible_host'] }}"
 secondary_dc: "{{ groups['domain_controllers'][1] }}"
@@ -628,7 +636,7 @@ tee ./va_pa <<< $(pwgen -1) \
 ansible-vault create \
 --encrypt-vault-id default \
 --vault-password-file ./va_pa \
-./inventory/group_vars/all/vault.yml
+./inventory/group_vars/all/vault
 ```
 
 <details>
@@ -636,10 +644,10 @@ ansible-vault create \
 
 ```yaml
 ---
-vault_ad_admin_password: "1qaz@WSX"
 vault_omapi_secret: "KsP/KnIQcoQF5fMMjBcOhg=="
-vault_su_wheel_user: sysadmin
-vault_su_password: netlab123
+ad_admin_password: "1qaz@WSX"
+ansible_user: "sysadmin"
+ansible_become_password: "netlab123"
 ...
 ```
 
@@ -649,7 +657,7 @@ vault_su_password: netlab123
 ```bash
 EDITOR=nano \
 ansible-vault edit \
-./inventory/group_vars/all/vault.yml \
+./inventory/group_vars/all/vault \
 --vault-password-file ./va_pa
 ```
 ### создание основы главного playbook
@@ -770,8 +778,8 @@ cat > roles/base_setup/tasks/main.yml <<'EOF'
 
 - name: Установка имени хоста
   hostname:
-    name: "{{ inventory_hostname }}.{{ ad_workgroup }}"
-    
+    name: "{{ inventory_hostname ~'.'~ ad_workgroup }}"
+
 - name: Определить основной интерфейс
   set_fact:
     primary_iface_name: >-
@@ -805,6 +813,7 @@ cat > roles/base_setup/defaults/main.yml <<'EOF'
 dist_upd: true # Обновление кеша пакетов
 dist_upgrd: true # обновление установленных приложений
 kernel_upd: true # обновление ядра
+base_setup: true
 ...
 EOF
 ```
@@ -960,6 +969,7 @@ EOF
 ```bash
 cat > roles/chrony_sync/defaults/main.yml<<'EOF'
 ---
+chrony_sync: true
 exter_ntp: ntp3.vniiftri.ru
 allow_clients: "192.168.100.0/24"
 ...
@@ -1022,6 +1032,7 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
     - slapd
     - bind
     - dnsmasq
+  ignore_errors: true
 
 - name: Обновление кеша пакетов
   apt_rpm:
@@ -1034,7 +1045,7 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
       - alterator-net-domain
       - alterator-datetime
     state: present
-    
+
 - name: Очистка дефолтных конфигов Samba
   file:
     path: "{{ item }}"
@@ -1074,7 +1085,6 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
     --server-role=dc
     --dns-backend="{{ ad_backend }}"
     --use-rfc2307
-    --function-level="{{ func_level }}"
     --adminpass='{{ ad_admin_password }}'
     --option="dns forwarder={{ dns_forwarder }}"
     --option="interfaces= lo {{ primary_iface_name }}"
@@ -1093,11 +1103,18 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
   loop: 
     - samba
 
+- name: Ожидание готовности Samba
+  wait_for:
+    port: 53
+    host: 127.0.0.1
+    timeout: 60
+    delay: 5
+
 - name: Очистка с интервалом обновления 30 дней
   command: >
     samba-tool dns zoneoptions
     {{ inventory_hostname }}
-    {{ ad_realm }}
+    {{ ad_workgroup }}
     --aging=1
     --refreshinterval={{ dns_refresh }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
@@ -1153,6 +1170,7 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
   copy:
     src: "/var/lib/samba/private/krb5.conf"
     dest: "/etc/krb5.conf"
+    remote_src: true
     backup: true
 ...
 EOF
@@ -1172,7 +1190,7 @@ cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
           | first
       }}
 
-- name: Настройка chrony.conf для вторичного DC
+- name: Настройка krb5.conf для вторичного DC
   template:
     src: krb5.conf.dc_second.j2
     dest: /etc/krb5.conf
@@ -1188,7 +1206,6 @@ cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
     DC
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
     --realm={{ ad_realm }}
-    --option="ad dc functional level={{ func_level }}"
     --option="dns forwarder={{ dns_forwarder }}"
     --option='idmap_ldb:use rfc2307 = yes'
     --option="interfaces= lo {{ primary_iface_name }}"
@@ -1206,6 +1223,13 @@ cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
     enabled: true
   loop: 
     - samba
+
+- name: Ожидание готовности Samba
+  wait_for:
+    port: 53
+    host: 127.0.0.1
+    timeout: 60
+    delay: 5
 
 - name: Настройка DNS резолвера дополнительного DC
   template:
@@ -1227,7 +1251,7 @@ EOF
 ```
 #### Шаблон kerberos роли домен контроллеров
 ```bash
-cat > roles/samba_ad_dc/templates/resolv.conf_dc_main.j2 <<'EOF'
+cat > roles/samba_ad_dc/templates/krb5.conf.dc_second.j2 <<'EOF'
 cat /etc/krb5.conf
 includedir /etc/krb5.conf.d/
 [logging]
@@ -1250,8 +1274,8 @@ EOF
 ```bash
 cat > roles/samba_ad_dc/templates/resolv.conf_dc_main.j2 <<'EOF'
 nameserver 127.0.0.1
-{% for server in groups.domain_controllers %}
-{% if inventory_hostname != host %}
+{% for server in groups['domain_controllers'] %}
+{% if inventory_hostname != server %}
 nameserver {{ hostvars[server].ansible_host }}
 {% endif %}
 {% endfor %}
@@ -1263,8 +1287,8 @@ EOF
 ```bash
 cat > roles/samba_ad_dc/templates/resolv.conf_dc_second.j2 <<'EOF'
 nameserver 127.0.0.1
-{% for server in groups.domain_controllers %}
-{% if inventory_hostname != host %}
+{% for server in groups['domain_controllers'] %}
+{% if inventory_hostname != server %}
 nameserver {{ hostvars[server].ansible_host }}
 {% endif %}
 {% endfor %}
@@ -1276,13 +1300,14 @@ EOF
 ```bash
 cat > roles/samba_ad_dc/defaults/main.yml<<'EOF'
 ---
-func_level: 2016
+samba_ad_dc: true
 ad_backend: 'SAMBA_INTERNAL'
 dns_refresh: 720
 ptr_zone: "100.168.192.in-addr.arpa"
 ptr_ip_main_dc: 12
 ptr_ip_second_dc: 13
 ldap_search: "dc=den,dc=skv"
+sysvol_replication: true
 ...
 EOF
 ```
@@ -1379,7 +1404,7 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
   command: >
     samba-tool user create
     {{ dhcpduser }}
-    --description="Пользователь обновления DNS через DHCP-сервер
+    --description="Пользователь обновления DNS через DHCP-сервер"
     --random-password
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
@@ -1406,11 +1431,11 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     --principal={{ dhcpduser }}@"{{ ad_realm }}"
     {{ keytab_export_path }}
   args:
-    creates: {{ keytab_export_path }}
+    creates: "{{ keytab_export_path }}"
 
 - name: Изменение прав на файл kerberos пользователя {{ dhcpduser }}
   file:
-    path: {{ keytab_export_path }}
+    path: "{{ keytab_export_path }}"
     owner: dhcpd
     group: dhcp
     mode: '0400'
@@ -2093,6 +2118,7 @@ EOF
 ```bash
 cat > roles/dhcp_server/defaults/main.yml<<'EOF'
 ---
+dhcp_server: false
 dhcpduser: dhcpduser
 keytab_export_path: "/etc/dhcp/dhcpduser.keytab"
 network_subnet: "192.168.100.0"
@@ -2102,6 +2128,7 @@ broadcast: "192.168.100.255"
 lease_time: "172800"
 max_lease_time: "259200"
 dhcp_range: "192.168.100.50 192.168.100.254"
+sysvol_replication: true
 ...
 EOF
 ```

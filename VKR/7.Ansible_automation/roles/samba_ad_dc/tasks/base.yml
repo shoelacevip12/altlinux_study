@@ -12,6 +12,7 @@
     - slapd
     - bind
     - dnsmasq
+  ignore_errors: true
 
 - name: Обновление кеша пакетов
   apt_rpm:

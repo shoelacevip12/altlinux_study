@@ -1,6 +1,6 @@
 nameserver 127.0.0.1
-{% for server in groups.domain_controllers %}
-{% if inventory_hostname != host %}
+{% for server in groups['domain_controllers'] %}
+{% if inventory_hostname != server %}
 nameserver {{ hostvars[server].ansible_host }}
 {% endif %}
 {% endfor %}

@@ -1,0 +1,19 @@
+---
+all:
+  hosts: {}
+  children:
+    domain_controllers:
+      hosts:
+        altsrv2:
+          ansible_host: 192.168.100.12
+        altsrv3:
+          ansible_host: 192.168.100.13
+    file_servers:
+      hosts:
+        altsrv4:
+          ansible_host: 192.168.100.14
+    proxy_servers:
+      hosts:
+        altsrv1:
+          ansible_host: 192.168.100.11
+...

@@ -31,8 +31,8 @@
 
 - name: Установка имени хоста
   hostname:
-    name: "{{ inventory_hostname }}.{{ ad_workgroup }}"
-    
+    name: "{{ inventory_hostname ~'.'~ ad_workgroup }}"
+
 - name: Определить основной интерфейс
   set_fact:
     primary_iface_name: >-

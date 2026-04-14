@@ -16,8 +16,8 @@
 
     chrony_sync: true
     samba_ad_dc: true
-    dhcp_server: false
-    sysvol_replication: false
+    dhcp_server: true
+    sysvol_replication: true
     kerberos_client: false
     smb_shares: false
     nfs_server: false
