@@ -603,10 +603,10 @@ roles/$r \
 
 </details>
 
-#### Настройка конфигурации ansible локального проекта
+#### Настройка конфигурации ansible локального проекта `ansible.cfg`
 
 <details>
-<summary>создание локального файла конфигурации ansible</summary>
+<summary>./ansible.cfg</summary>
 
 ```bash
 cat > ansible.cfg <<'EOF'
@@ -1109,7 +1109,7 @@ EOF
 #### Обработчики роли Синхронизация времени
 
 <details>
-<summary>xxxx</summary>
+<summary>./roles/chrony_sync/handlers/main.yml</summary>
 
 ```bash
 cat > roles/chrony_sync/handlers/main.yml <<'EOF'
@@ -2486,6 +2486,258 @@ EOF
 
 </details>
 
+### Роль `sysvol_replication` - репликация SysVol
+#### Playbook роли репликации SysVol
+
+<details>
+<summary>./sysvol_replication.yaml</summary>
+
+```bash
+cat > ./sysvol_replication.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: Двунаправленная репликации SysVol
+  hosts: domain_controllers
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - sysvol_replication
+...
+EOF
+```
+
+</details>
+
+#### Главный файл задач роли репликации SysVol
+
+<details>
+<summary>./roles/sysvol_replication/tasks/main.yml</summary>
+
+```bash
+cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов для стнхронизации
+  apt_rpm:
+    name:
+      - unison
+      - rsync
+      - openssh-clients
+    state: installed
+    
+- name: Генерация SSH-ключей для репликации sysvol
+  openssh_keypair:
+    path: "{{ ssh_sysvol_path }}"
+    owner: root
+    group: root
+    mode: '0600'
+    type: ed25519
+    comment: "rsync SysVol"
+    force: no
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Изменение прав на публичный ключ
+  file:
+    path: ""{{ ssh_sysvol_path }}".pub"
+    owner: root
+    group: root
+    mode: '0640'
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Копирование публичного ключа на вторичный DC
+  authorized_key:
+    user: root
+    key: "{{ lookup('file', '"{{ ssh_sysvol_path }}".pub') }}"
+    state: present
+    delegate_to: "{{ (groups['domain_controllers'] | list)[1] }}"
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Развертывание конфига Unison
+  template:
+    src: sync_dc2.prf.j2
+    dest: /root/.unison/sync_dc2.prf
+    mode: '0600'
+
+- name: Ручной запуск синхронизации rsync
+  synchronize:
+    src: "{{ synchron_path }}"
+    dest: "{{ synchron_path }}"
+    rsync_opts:
+      - "--rsh="ssh -p 22 -i {{ ssh_sysvol_path }}""
+      - "--log-file /var/log/sysvol-sync.log"
+      - "--delete-after -f"+ */" -f"- *" {{ synchron_path }}"
+    delegate_to: "{{ (groups['domain_controllers'] | list)[1] }}"
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Ручной запуск синхронизации unison
+  command: /usr/bin/unison
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Установка systemd timer для синхронизации
+  template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+  loop:
+    - sysvol-sync.service
+    - sysvol-sync.timer
+  notify:
+    - Enable sysvol-sync timer
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Обновление конфигурации systemd
+  systemd:
+    name: "{{ item }}"
+    masked: false
+    daemon_reload: true
+  loop:
+    - sysvol-sync.service
+    - sysvol-sync.timer
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+...
+EOF
+```
+
+</details>
+
+#### Шаблоны роли репликации SysVol
+##### Шаблон Файла настроек синхронизации роли репликации SysVol
+
+<details>
+<summary>./roles/sysvol_replication/templates/sync_dc2.prf.j2</summary>
+
+```bash
+cat >  roles/sysvol_replication/templates/sync_dc2.prf.j2 <<'EOF'
+root = /var/lib/samba
+root = ssh://root@{{ secondary_dc }}.{{ ad_workgroup }}//var/lib/samba
+# Список подкаталогов, которые нужно синхронизировать
+path = sysvol
+# Список подкаталогов, которые нужно игнорировать
+#ignore = Path
+auto=true
+batch=true
+perms=0
+rsync=true
+maxthreads=1
+retry=3
+confirmbigdeletes=false
+servercmd=/usr/bin/unison
+copythreshold=0
+copyprog = /usr/bin/rsync -XAavz --rsh="ssh -o StrictHostKeyChecking=accept-new -i "{{ ssh_sysvol_path }}" -p 22" --inplace --compress
+copyprogrest = /usr/bin/rsync -XAavz --rsh="ssh -o StrictHostKeyChecking=accept-new -i "{{ ssh_sysvol_path }}" -p 22" --partial --inplace --compress
+copyquoterem = true
+copymax = 1
+copyquoterem = false
+
+# Сохранять журнал с результатами работы в отдельном файле
+logfile = /var/log/sysvol-sync.log
+EOF
+```
+
+</details>
+
+##### Шаблон службы systemd разового запуска роли репликации SysVol
+
+<details>
+<summary>./roles/sysvol_replication/templates/sysvol-sync.service.j2</summary>
+
+```bash
+cat > ./roles/sysvol_replication/templates/sysvol-sync.service.j2 <<'EOF'
+[Unit]
+Description=Sysvol sync
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=SSH_AUTH_SOCK=/run/sysvol-ssh-agent.sock
+ExecStartPre=/usr/bin/ssh-agent -a /run/sysvol-ssh-agent.sock
+ExecStart=/usr/bin/ssh-add {{ ssh_sysvol_path }}
+ExecStart=/usr/bin/unison sync_dc2 -silent
+ExecStartPost=/usr/bin/pkill -f "ssh-agent -a /run/sysvol-ssh-agent.sock"
+EOF
+```
+
+</details>
+
+##### Шаблон таймера systemd запуска службы роли репликации SysVol
+
+<details>
+<summary>./roles/sysvol_replication/templates/sysvol-sync.timer.j2</summary>
+
+```bash
+cat > ./roles/sysvol_replication/templates/sysvol-sync.timer.j2 <<'EOF'
+[Unit]
+Description=Cинхронизация sysvol каждые 5 минуты с основного DC
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=sysvol-syn.service
+
+[Install]
+WantedBy=timers.target
+EOF
+```
+
+</details>
+
+#### Переменные по умолчанию роли репликации SysVol
+
+<details>
+<summary>./roles/sysvol_replication/defaults/main.yml</summary>
+
+```bash
+cat >roles/sysvol_replication/defaults/main.yml<<'EOF'
+---
+ssh_sysvol_path: "/root/.ssh/id_sysvol_ed25519"
+synchron_path: "/var/lib/samba/sysvol"
+...
+EOF
+```
+
+</details>
+
+#### Обработчики роли репликации SysVol
+
+<details>
+<summary>./roles/sysvol_replication/handlers/main.yml</summary>
+
+```bash
+cat > ./roles/sysvol_replication/handlers/main.yml <<'EOF'
+---
+- name: Включение таймера sysvol-sync
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "Enable sysvol-sync timer"
+  async: 10
+  poll: 0
+  loop:
+    - sysvol-sync.timer
+  ignore_unreachable: true
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+...
+EOF
+```
+
+</details>
+
+
 # gitflic_github репозиторий
 ```bash
 # Добавляем ключи агенту ssh от репозитория gitflic и github
@@ -2512,7 +2764,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd9]ansible" \
+git commit -am "[upd10]ansible" \
 && git push \
 --set-upstream \
 altlinux \

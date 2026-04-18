@@ -1,0 +1,10 @@
+#!/usr/bin/env ansible-playbook
+---
+- name: Двунаправленная репликации SysVol
+  hosts: domain_controllers
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - sysvol_replication
+...

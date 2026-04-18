@@ -1,0 +1,10 @@
+[Unit]
+Description=Cинхронизация sysvol каждые 5 минуты с основного DC
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=sysvol-syn.service
+
+[Install]
+WantedBy=timers.target

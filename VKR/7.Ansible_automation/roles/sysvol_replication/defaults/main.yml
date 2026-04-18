@@ -1,3 +1,4 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for roles/sysvol_replication
+ssh_sysvol_path: "/root/.ssh/id_sysvol_ed25519"
+synchron_path: "/var/lib/samba/sysvol"
+...

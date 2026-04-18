@@ -1,0 +1,12 @@
+[Unit]
+Description=Sysvol sync
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=SSH_AUTH_SOCK=/run/sysvol-ssh-agent.sock
+ExecStartPre=/usr/bin/ssh-agent -a /run/sysvol-ssh-agent.sock
+ExecStart=/usr/bin/ssh-add {{ ssh_sysvol_path }}
+ExecStart=/usr/bin/unison sync_dc2 -silent
+ExecStartPost=/usr/bin/pkill -f "ssh-agent -a /run/sysvol-ssh-agent.sock"
