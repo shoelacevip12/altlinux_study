@@ -1,3 +1,6 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# vars file for roles/dhcp_server
+dhcpduser: dhcpduser
+keytab_export_path: "/etc/dhcp/dhcpduser.keytab"
+lease_time: "172800"
+max_lease_time: "259200"
+...

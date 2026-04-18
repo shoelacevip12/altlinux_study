@@ -41,16 +41,31 @@ cd  VKR/0.vpn/tf
 # Вывод рабочего облака
 yc config get cloud-id
 ```
+
+<details>
+<summary>yandex cloud-id</summary>
+
 ```log
 b1gkumrn87pei2831blp
 ```
+
+</details>
+
+
 ```bash
 # вывод рабочего каталога YC
 yc config get folder-id
 ```
+
+<details>
+<summary>yandex folder-id</summary>
+
 ```log
-b1g7qviodfc9v4k81sr5
+b1gkumrn87pei2831blp
 ```
+
+</details>
+
 ```bash
 # Проверка готовых конфигов проекта и вывод плана развертывания
 terraform validate \
@@ -268,7 +283,11 @@ openvpn-server@tun0
 # Проверка соединения
 ping -c2 172.16.100.2
 ```
-```
+
+<details>
+<summary>ping</summary>
+
+```log
 PING 172.16.100.2 (172.16.100.2) 56(84) bytes of data.
 64 bytes from 172.16.100.2: icmp_seq=1 ttl=64 time=16.6 ms
 64 bytes from 172.16.100.2: icmp_seq=2 ttl=64 time=16.2 ms
@@ -277,6 +296,10 @@ PING 172.16.100.2 (172.16.100.2) 56(84) bytes of data.
 2 packets transmitted, 2 received, 0% packet loss, time 1001ms
 rtt min/avg/max/mdev = 16.166/16.386/16.606/0.220 ms
 ```
+
+</details>
+
+
 ### SSH обмен ключами
 ```bash
 eval $(ssh-agent) \
@@ -350,11 +373,18 @@ exit
 sysadmin@172.16.100.2 \
 "hostname && hostname -i"
 ```
+
+<details>
+<summary>Тестовое подключение</summary>
+
 ```log
 altwks1
 192.168.1.186 192.168.100.1 172.16.100.2
 Connection to 172.16.100.2 closed.
 ```
+
+</details>
+
 ### Подготовка Управляющего узла
 ```bash
 # вход на bastion хост по ключу по ssh через yandex cloud
@@ -496,9 +526,17 @@ ansible-galaxy collection \
 init \
 VKR.ans_vkr_skv
 ```
+
+<details>
+<summary>Collection was created successfully</summary>
+
 ```log
 - Collection VKR.ans_vkr_skv was created successfully
 ```
+
+</details>
+
+
 #### создание ролей
 ```bash
 #  Вход в namespace коллекции Ansible
@@ -534,8 +572,11 @@ roles/$r \
 </details>
 
 #### Настройка конфигурации ansible локального проекта
+
+<details>
+<summary>создание локального файла конфигурации ansible</summary>
+
 ```bash
-# создание локального файла конфигурации ansible
 cat > ansible.cfg <<'EOF'
 [defaults]
 home=./
@@ -561,12 +602,17 @@ host_key_checking=False
 [ssh_connection]
 host_key_checking=False
 EOF
+```
 
+</details>
+
+```bash
 # создание каталога inventory и глобальных переменных для хостов
 mkdir -vp inventory/{group_vars,host_vars}
 
 mkdir -vp inventory/group_vars/all
-
+```
+```bash
 # Для nfs сетевого хранилища и отключения сообщения
 # "Ansible is being run in a world writable directory ...
 # ignoring it as an ansible.cfg source"
@@ -574,6 +620,10 @@ export ANSIBLE_CONFIG=./ansible.cfg
 ```
 
 #### Создаем файл Управляемых хостов
+
+<details>
+<summary>./inventory/inventory.yaml</summary>
+
 ```bash
 cat > ./inventory/inventory.yaml << 'EOF'
 ---
@@ -598,7 +648,14 @@ all:
 EOF
 ```
 
-#### создание переменных для всех групп в 
+</details>
+
+
+#### создание переменных для всех групп
+
+<details>
+<summary>./inventory/group_vars/all/all.yml</summary>
+
 ```bash
 cat > inventory/group_vars/all/all.yml <<'EOF'
 ---
@@ -641,6 +698,8 @@ monitoring_scripts: false
 EOF
 ```
 
+</details>
+
 ```bash
 # Archlinux
 # Генерация пароля (pwgen) и запись значения в файл 
@@ -678,6 +737,10 @@ ansible-vault edit \
 --vault-password-file ./va_pa
 ```
 ### создание основы главного playbook
+
+<details>
+<summary>./main.yaml</summary>
+
 ```bash
 cat > ./main.yaml<< 'EOF'
 #!/usr/bin/env ansible-playbook
@@ -727,7 +790,14 @@ cat > ./main.yaml<< 'EOF'
 ...
 EOF
 ```
-### playbook базовых настроек хостов
+
+</details>
+
+### playbook Роли базовых настроек хостов
+
+<details>
+<summary>./base_setup.yaml</summary>
+
 ```bash
 cat > ./base_setup.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
@@ -742,7 +812,15 @@ cat > ./base_setup.yaml << 'EOF'
 ...
 EOF
 ```
-#### Главный файл задач базовых настроек
+
+</details>
+
+
+#### Главный файл задач Роли базовых настроек
+
+<details>
+<summary>./roles/base_setup/tasks/main.yml</summary>
+
 ```bash
 cat > roles/base_setup/tasks/main.yml <<'EOF'
 ---
@@ -806,7 +884,15 @@ cat > roles/base_setup/tasks/main.yml <<'EOF'
 EOF
 ```
 
+</details>
+
+
+
 #### Файл переменных по умолчанию роли базовых настроек
+
+<details>
+<summary>./roles/base_setup/defaults/main.yml</summary>
+
 ```bash
 cat > roles/base_setup/defaults/main.yml <<'EOF'
 ---
@@ -817,7 +903,14 @@ base_setup: true
 ...
 EOF
 ```
-#### Шаблон resolver роли базовых настроек
+
+</details>
+
+#### Шаблон resolver Роли базовых настроек
+
+<details>
+<summary>./roles/base_setup/templates/resolv.conf.j2</summary>
+
 ```bash
 cat > roles/base_setup/templates/resolv.conf.j2 <<'EOF'
 {% for server in groups.domain_controllers %}
@@ -828,7 +921,14 @@ options rotate
 EOF
 ```
 
-### `chrony_sync` - Синхронизация времени
+</details>
+
+### Роль `chrony_sync` - Синхронизация времени
+#### Playbook роли Синхронизации времени
+
+<details>
+<summary>./chrony_sync.yaml</summary>
+
 ```bash
 cat > ./chrony_sync.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
@@ -844,7 +944,13 @@ cat > ./chrony_sync.yaml << 'EOF'
 EOF
 ```
 
-#### Главный файл задач Синхронизация времени
+</details>
+
+#### Главный файл задач Роли Синхронизация времени
+
+<details>
+<summary>./roles/chrony_sync/tasks/main.yml</summary>
+
 ```bash
 cat > roles/chrony_sync/tasks/main.yml <<'EOF'
 ---
@@ -897,8 +1003,15 @@ cat > roles/chrony_sync/tasks/main.yml <<'EOF'
 ...
 EOF
 ```
+
+</details>
+
 #### Шаблоны сервера времени роли Синхронизация времени
-##### Для основного сервера времени
+##### Для основного сервера времени Роли Синхронизация времени
+
+<details>
+<summary>./roles/chrony_sync/templates/chrony.conf.dc_main.j2</summary>
+
 ```bash
 cat > roles/chrony_sync/templates/chrony.conf.dc_main.j2 <<'EOF'
 server {{ exter_ntp }} iburst
@@ -916,7 +1029,14 @@ ntsdumpdir /var/lib/chrony
 logdir /var/log/chrony
 EOF
 ```
-##### Для вторичного сервера времени
+
+</details>
+
+##### Для вторичного сервера времени Роли Синхронизация времени
+
+<details>
+<summary>./roles/chrony_sync/templates/chrony.conf.dc_second.j2</summary>
+
 ```bash
 cat > roles/chrony_sync/templates/chrony.conf.dc_second.j2 <<'EOF'
 {% for host in groups['domain_controllers'] %}
@@ -934,7 +1054,14 @@ ntsdumpdir /var/lib/chrony
 logdir /var/log/chrony
 EOF
 ```
-##### Для пользователей домена
+
+</details>
+
+##### Для пользователей домена Роли Синхронизация времени
+
+<details>
+<summary>./roles/chrony_sync/templates/chrony.conf.members.j2</summary>
+
 ```bash
 cat > roles/chrony_sync/templates/chrony.conf.members.j2 <<'EOF'
 driftfile /var/lib/chrony/drift
@@ -948,7 +1075,13 @@ server {{ host }}.{{ ad_workgroup }} iburst
 EOF
 ```
 
+</details>
+
 #### Обработчики роли Синхронизация времени
+
+<details>
+<summary>xxxx</summary>
+
 ```bash
 cat > roles/chrony_sync/handlers/main.yml <<'EOF'
 ---
@@ -965,7 +1098,14 @@ cat > roles/chrony_sync/handlers/main.yml <<'EOF'
 ...
 EOF
 ```
-### Переменные по умолчанию
+
+</details>
+
+### Переменные по умолчанию роли Синхронизация времени
+
+<details>
+<summary>./roles/chrony_sync/defaults/main.yml</summary>
+
 ```bash
 cat > roles/chrony_sync/defaults/main.yml<<'EOF'
 ---
@@ -976,7 +1116,14 @@ allow_clients: "192.168.100.0/24"
 EOF
 ```
 
-### `samba_ad_dc` - Контроллер домена Active Directory
+</details>
+
+### Роль `samba_ad_dc` - Контроллер домена Active Directory
+#### Playbook роли Контроллер домена Active Directory
+
+<details>
+<summary>./samba_ad_dc.yaml</summary>
+
 ```bash
 cat > ./samba_ad_dc.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
@@ -992,7 +1139,13 @@ cat > ./samba_ad_dc.yaml << 'EOF'
 EOF
 ```
 
+</details>
+
 #### Главный файл задач роли Контроллер домена Active Directory
+
+<details>
+<summary>./roles/samba_ad_dc/tasks/main.yml</summary>
+
 ```bash
 cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
 ---
@@ -1015,7 +1168,13 @@ cat > roles/samba_ad_dc/tasks/main.yml <<'EOF'
 EOF
 ```
 
+</details>
+
 #### Файл базовых задач роли Контроллер домена Active Directory
+
+<details>
+<summary>xxxx</summary>
+
 ```bash
 cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
 ---
@@ -1093,7 +1252,13 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
 EOF
 ```
 
+</details>
+
 #### Файл задач развертывания основного DC роли Контроллер домена Active Directory
+
+<details>
+<summary>./roles/samba_ad_dc/tasks/primary_dc.yml</summary>
+
 ```bash
 cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
 ---
@@ -1196,7 +1361,13 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
 EOF
 ```
 
+</details>
+
 #### Файл задач развертывания вторичного DC роли Контроллер домена Active Directory
+
+<details>
+<summary>./roles/samba_ad_dc/tasks/second_dc.yml</summary>
+
 ```bash
 cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
 ---
@@ -1259,7 +1430,14 @@ cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
 ...
 EOF
 ```
+
+</details>
+
 #### Шаблон kerberos роли домен контроллеров
+
+<details>
+<summary>./roles/samba_ad_dc/templates/krb5.conf.dc_second.j2</summary>
+
 ```bash
 cat > roles/samba_ad_dc/templates/krb5.conf.dc_second.j2 <<'EOF'
 cat /etc/krb5.conf
@@ -1279,8 +1457,14 @@ includedir /etc/krb5.conf.d/
 EOF
 ```
 
+</details>
+
 #### Шаблон resolver роли домен контроллеров
-##### Шаблон resolver для основного DC
+##### Шаблон resolver для основного DC роли домен контроллеров
+
+<details>
+<summary>./roles/samba_ad_dc/templates/resolv.conf_dc_main.j2</summary>
+
 ```bash
 cat > roles/samba_ad_dc/templates/resolv.conf_dc_main.j2 <<'EOF'
 nameserver 127.0.0.1
@@ -1293,8 +1477,14 @@ search {{ ad_workgroup }}
 EOF
 ```
 
-##### Шаблон resolver для вторичного DC
-###### до ввода в домен
+</details>
+
+##### Шаблон resolver для вторичного DC роли домен контроллеров
+###### до ввода в домен роли домен контроллеров
+
+<details>
+<summary>./roles/samba_ad_dc/templates/resolv.conf_second_dc_before.j2</summary>
+
 ```bash
 cat > roles/samba_ad_dc/templates/resolv.conf_second_dc_before.j2 <<'EOF'
 nameserver {{ primary_dc_ip }}
@@ -1302,7 +1492,14 @@ nameserver {{ dns_forwarder }}
 search {{ ad_workgroup }}
 EOF
 ```
-###### после ввода в домен
+
+</details>
+
+###### после ввода в домен роли домен контроллеров
+
+<details>
+<summary>./roles/samba_ad_dc/templates/resolv.conf_dc_second.j2</summary>
+
 ```bash
 cat > roles/samba_ad_dc/templates/resolv.conf_dc_second.j2 <<'EOF'
 nameserver 127.0.0.1
@@ -1315,7 +1512,13 @@ search {{ ad_workgroup }}
 EOF
 ```
 
-#### Переменные по умолчанию
+</details>
+
+#### Переменные по умолчанию роли домен контроллеров
+
+<details>
+<summary>./roles/samba_ad_dc/defaults/main.yml</summary>
+
 ```bash
 cat > roles/samba_ad_dc/defaults/main.yml<<'EOF'
 ---
@@ -1330,7 +1533,14 @@ sysvol_replication: true
 ...
 EOF
 ```
+
+</details>
+
 #### Обработчики роли Контроллера домена
+
+<details>
+<summary>./roles/samba_ad_dc/handlers/main.yml</summary>
+
 ```bash
 cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
 ---
@@ -1389,7 +1599,14 @@ cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
 EOF
 ```
 
-### `dhcp_server` - DHCP с failover и DDNS
+</details>
+
+### Роль `dhcp_server` - DHCP с failover и DDNS
+#### Playbook роли DHCP с failover и DDNS
+
+<details>
+<summary>./dhcp_server.yaml</summary>
+
 ```bash
 cat > ./dhcp_server.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
@@ -1405,7 +1622,13 @@ cat > ./dhcp_server.yaml << 'EOF'
 EOF
 ```
 
+</details>
+
 #### Главный файл задач роли DHCP
+
+<details>
+<summary>./roles/dhcp_server/tasks/main.yml</summary>
+
 ```bash
 cat > roles/dhcp_server/tasks/main.yml <<'EOF'
 ---
@@ -1504,8 +1727,14 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
 EOF
 ```
 
+</details>
+
 #### Шаблоны конфигурационного файла роли DHCP
-##### Шаблон файла-скрипта для DDNS
+##### Шаблон файла-скрипта для DDNS роли DHCP
+
+<details>
+<summary>./roles/dhcp_server/files/dhcp-dyndns.sh</summary>
+
 ```bash
 cat > roles/dhcp_server/files/dhcp-dyndns.sh <<'EOT'
 #!/bin/bash
@@ -1924,7 +2153,13 @@ exit 0
 EOT
 ```
 
-##### Шаблон конфигурационного файла без failover
+</details>
+
+##### Шаблон конфигурационного файла без failover роли DHCP
+
+<details>
+<summary>./roles/dhcp_server/templates/dhcpd.conf.j2</summary>
+
 ```bash
 cat > roles/dhcp_server/templates/dhcpd.conf.j2 <<'EOF'
 authoritative;
@@ -1986,7 +2221,13 @@ execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, "", "0");
 EOF
 ```
 
-##### Шаблоны конфигурационного файла с участием failover для primary
+</details>
+
+##### Шаблоны конфигурационного файла с участием failover для primary роли DHCP
+
+<details>
+<summary>roles/dhcp_server/templates/dhcpd_failover_primary.conf.j2</summary>
+
 ```bash
 cat > roles/dhcp_server/templates/dhcpd_failover_primary.conf.j2 <<'EOF'
 authoritative;
@@ -2065,7 +2306,13 @@ execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
 EOF
 ```
 
-##### Шаблоны конфигурационного файла с участием failover для secondray
+</details>
+
+##### Шаблоны конфигурационного файла с участием failover для secondray роли DHCP
+
+<details>
+<summary>./roles/dhcp_server/templates/dhcpd_failover_second.conf.j2</summary>
+
 ```bash
 cat > roles/dhcp_server/templates/dhcpd_failover_second.conf.j2 <<'EOF'
 authoritative;
@@ -2140,26 +2387,52 @@ execute("/usr/local/bin/dhcp-dyndns.sh", "delete", ClientIP, ClientDHCID);
 EOF
 ```
 
-#### Переменные по умолчанию
+</details>
+
+#### Переменные по умолчанию роли DHCP
+
+<details>
+<summary>./roles/dhcp_server/defaults/main.yml</summary>
+
 ```bash
 cat > roles/dhcp_server/defaults/main.yml<<'EOF'
 ---
 dhcp_server: true
-dhcpduser: dhcpduser
-keytab_export_path: "/etc/dhcp/dhcpduser.keytab"
+sysvol_replication: true
 network_subnet: "192.168.100.0"
 network_netmask: "255.255.255.0"
 network_gateway: "192.168.100.1"
 broadcast: "192.168.100.255"
-lease_time: "172800"
-max_lease_time: "259200"
 dhcp_range: "192.168.100.50 192.168.100.254"
-sysvol_replication: true
 ...
 EOF
 ```
 
+</details>
+
+#### Постоянные переменные роли DHCP
+
+<details>
+<summary>./roles/dhcp_server/vars/main.yml</summary>
+
+```bash
+cat > roles/dhcp_server/vars/main.yml<<'EOF'
+---
+dhcpduser: dhcpduser
+keytab_export_path: "/etc/dhcp/dhcpduser.keytab"
+lease_time: "172800"
+max_lease_time: "259200"
+...
+EOF
+```
+
+</details>
+
 #### Обработчики роли dhcp сервера
+
+<details>
+<summary>./roles/dhcp_server/handlers/main.yml</summary>
+
 ```bash
 cat > roles/dhcp_server/handlers/main.yml <<'EOF'
 ---
@@ -2181,6 +2454,8 @@ cat > roles/dhcp_server/handlers/main.yml <<'EOF'
 ...
 EOF
 ```
+
+</details>
 
 # gitflic_github репозиторий
 ```bash
@@ -2208,7 +2483,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd8]ansible" \
+git commit -am "[upd9]ansible" \
 && git push \
 --set-upstream \
 altlinux \
