@@ -2528,7 +2528,7 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
       - rsync
       - openssh-clients
     state: installed
-    
+
 - name: Генерация SSH-ключей для репликации sysvol
   openssh_keypair:
     path: "{{ ssh_sysvol_path }}"
@@ -2537,27 +2537,44 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
     mode: '0600'
     type: ed25519
     comment: "rsync SysVol"
-    force: no
+    force: false
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
 - name: Изменение прав на публичный ключ
   file:
-    path: ""{{ ssh_sysvol_path }}".pub"
+    path: "{{ ssh_sysvol_path }}.pub"
     owner: root
     group: root
     mode: '0640'
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
-- name: Копирование публичного ключа на вторичный DC
+- name: Чтение содержимого публичного ключа
+  slurp:
+    src: "{{ ssh_sysvol_path ~'.pub' }}"
+  register: public_key_content
+  changed_when: false
+  delegate_to: "{{ (groups['domain_controllers'] | list)[0] }}"
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+- name: Добавление публичного ключа в authorized_keys
   authorized_key:
     user: root
-    key: "{{ lookup('file', '"{{ ssh_sysvol_path }}".pub') }}"
     state: present
-    delegate_to: "{{ (groups['domain_controllers'] | list)[1] }}"
+    key: "{{ public_key_content.content | b64decode }}"
   when:
-    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+    - inventory_hostname == (groups['domain_controllers'] | list)[1]
+
+# - name: Копирование публичного ключа на вторичный DC
+#   authorized_key:
+#     user: root
+#     key: "{{ lookup('file', ssh_sysvol_path ~'.pub') }}"
+#     state: present
+#     delegate_to: "{{ (groups['domain_controllers'] | list)[1] }}"
+#   when:
+#     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
 - name: Развертывание конфига Unison
   template:
@@ -2570,15 +2587,20 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
     src: "{{ synchron_path }}"
     dest: "{{ synchron_path }}"
     rsync_opts:
-      - "--rsh="ssh -p 22 -i {{ ssh_sysvol_path }}""
-      - "--log-file /var/log/sysvol-sync.log"
-      - "--delete-after -f"+ */" -f"- *" {{ synchron_path }}"
+      - '--rsh="ssh -p 22 -i {{ ssh_sysvol_path }}"'
+      - "--log-file=/var/log/sysvol-sync.log"
+      - "--delete-after"
+      - "-f"
+      - "+ */"
+      - "-f"
+      - "- *"
     delegate_to: "{{ (groups['domain_controllers'] | list)[1] }}"
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
 - name: Ручной запуск синхронизации unison
   command: /usr/bin/unison
+  no_log: false
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -2586,6 +2608,9 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
   template:
     src: "{{ item }}.j2"
     dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: '0775'
   loop:
     - sysvol-sync.service
     - sysvol-sync.timer
