@@ -37,7 +37,8 @@ sysadmin@172.16.100.2 \
 ```bash
 # Вход в каталога с подготовленным terraform для развертывания openvpn-сервер узла
 cd  VKR/0.vpn/tf
-
+```
+```bash
 # Вывод рабочего облака
 yc config get cloud-id
 ```
@@ -50,7 +51,6 @@ b1gkumrn87pei2831blp
 ```
 
 </details>
-
 
 ```bash
 # вывод рабочего каталога YC
@@ -114,12 +114,14 @@ cd /srv \
 ```bash
 # Группа Диффи-Хелмана
 easyrsa gen-dh
-
+```
+```bash
 # сертификат\ключ VPN-сервера
 easyrsa build-server-full \
 vkr \
 nopass
-
+```
+```bash
 # сертификат\ключ VPN-клиента
 easyrsa build-client-full \
 altwks1 \
@@ -130,8 +132,10 @@ nopass
 cp /srv/pki/{ca.crt,dh.pem} \
 /srv/pki/{private,issued}/altwks1.* \
 /home/skv/
-
+```
+```bash
 chow skv:skv /home/skv/altwks1*
+
 chow skv:skv /home/skv/{ca.crt,dh.pem}
 ```
 
@@ -154,7 +158,8 @@ skv@158.160.201.144:~/{ca.crt,dh.pem} \
 ```bash
 # вход под суперпользователем
 su -
-
+```
+```bash
 # обновление системы и установка openvpn easy-rsa на клиенте соединения
 apt-get update \
 && update-kernel -y \
@@ -173,7 +178,8 @@ secret \
 # Копируем сгенерированный HMAC в домашний каталог для обмена через файловое облако между VPN-сервер\клиентом
 cp /etc/openvpn/keys/ta.key \
 /home/sysadmin/
-
+```
+```bash
 # взаимодействовать с файлом на уровне пользователя
 chown sysadmin:sysadmin \
 /home/sysadmin/ta.key
@@ -190,7 +196,8 @@ skv@158.160.201.144:~/ \
 # Копирование всех необходимых файлов для настройки клиента
 cp /home/sysadmin/{altwks1.*,ta.key,ca.crt,dh.pem} \
 /etc/openvpn/keys/
-
+```
+```bash
 # Выставление желательных прав для ключей\сертификатов
 chmod -R 600 /etc/openvpn/keys
 ```
@@ -202,8 +209,13 @@ echo "158.160.201.144 \
 vkr" \
 >> /etc/hosts
 ```
+
+#### Создание конфига туннельного соединения-клиента по subnet топологии
+
+<details>
+<summary>/etc/openvpn/client/tun0.conf</summary>
+
 ```bash
-# Создание конфига туннельного соединения-клиента по subnet топологии
 cat > /etc/openvpn/client/tun0.conf <<'EOF'
 dev tun0
   client
@@ -223,6 +235,9 @@ dev tun0
   auth-nocache
 EOF
 ```
+
+</details>
+
 ```bash
 # Включение и запуск службы VPN-клиента
 systemctl enable \
@@ -232,29 +247,39 @@ openvpn-client@tun0
 ```bash
 # =====| На стороне сервера openVPN |=====
 # Создание каталога для пары ключей и сертификатов
-sudo mkdir -p \
+mkdir -p \
 /etc/openvpn/keys/
-
+```
+```bash
 # Копирование подготовленных файлов пары ключей и сертификатов для сервера
 cp pki/{issued,private}/vkr.* \
 /srv/pki/{ca.crt,dh.pem} \
 /etc/openvpn/keys/
-
+```
+```bash
 # Копирование Ключа HMAC созданного с VPN-клиента
 cp /home/skv/ta.key \
 /etc/openvpn/keys/
-
-sudo chown \
+```
+```bash
+# Смена владельцев пользования ключами
+chown \
 root:openvpn -R \
 /etc/openvpn/keys
-
+```
+```bash
 # Выставление желательных прав для ключей\сертификатов
 chmod -R 600 \
 /etc/openvpn/keys
 ```
+
+#### Создание конфига туннельного соединения-клиента по subnet топологии
+
+<details>
+<summary>/etc/openvpn/server/tun0.conf</summary>
+
 ```bash
-# Создание конфига туннельного соединения-клиента по subnet топологии
-sudo cat > /etc/openvpn/server/tun0.conf <<'EOF'
+cat > /etc/openvpn/server/tun0.conf <<'EOF'
 dev tun0
   local 10.10.10.254
   port 1194
@@ -273,6 +298,9 @@ dev tun0
   tls-auth /etc/openvpn/keys/ta.key 0
 EOF
 ```
+
+</details>
+
 ```bash
 # ЗАпуск службы
 systemctl enable \
@@ -299,36 +327,36 @@ rtt min/avg/max/mdev = 16.166/16.386/16.606/0.220 ms
 
 </details>
 
-
 ### SSH обмен ключами
 ```bash
+# Запуск агента
 eval $(ssh-agent) \
 && ssh-add  \
 ~/.ssh/id_skv_VKR_vpn
-
+```
+```bash
 # копирование ключа на промежуточный сервер на YC
 scp -v \
 -o StrictHostKeyChecking=accept-new \
 -i ~/.ssh/id_skv_VKR_vpn.pub \
 ~/.ssh/id_skv_VKR_vp* \
 skv@158.160.201.144:~/.ssh/
-
+```
+```bash
 # Вход на промежуточный сервер с Openvpn
 ssh \
 -i ~/.ssh/id_skv_VKR_vpn \
 -o StrictHostKeyChecking=accept-new \
 skv@158.160.201.144
-
+```
+```bash
 # Изменение прав 
 chmod 640 \
 ~/.ssh/id_skv_VKR_vpn.pub
 chmod 600 \
 ~/.ssh/id_skv_VKR_vpn
-
-eval $(ssh-agent) \
-&& ssh-add  \
-~/.ssh/id_skv_VKR_vpn
-
+```
+```bash
 # проброс ключа до altwks1 через Openvpn
 > ~/.ssh/known_hosts \
 && ssh-copy-id \
@@ -359,7 +387,8 @@ scp -v \
 -i ~/.ssh/id_skv_VKR_vpn.pub \
 ~/.ssh/id_skv_VKR_vp* \
 sysadmin@172.16.100.2:~/.ssh/
-
+```
+```bash
 # Выход с сервера openvpn-server
 exit
 ```
@@ -394,7 +423,8 @@ ssh -t \
 -o StrictHostKeyChecking=accept-new \
 sysadmin@172.16.100.2 \
 "su -"
-
+```
+```bash
 # Смена прав на использование ssh ключей
 chown -v sysadmin:sysadmin \
 /home/sysadmin/.ssh/id_skv_VKR_vp* \
@@ -435,7 +465,8 @@ ssh -t \
 -o StrictHostKeyChecking=accept-new \
 sysadmin@172.16.100.2 \
 "su -"
-
+```
+```bash
 # проброс ключа до Управляемых хостов
 > ~/.ssh/known_hosts
 for ip in {2,11,12,13,14}; do \
@@ -536,16 +567,17 @@ VKR.ans_vkr_skv
 
 </details>
 
-
 #### создание ролей
 ```bash
 #  Вход в namespace коллекции Ansible
 cd VKR/
-
+```
+```bash
 # Переименование коллекции Ansible
 mv ans_vkr_skv \
 7.Ansible_automation
-
+```
+```bash
 # Создание ролей ansible
 for r in {base_setup,chrony_sync,samba_ad_dc,dhcp_server,smb_shares,nfs_server,squid_proxy,sysvol_replication,monitoring_scripts}; do \
 ansible-galaxy role \
@@ -649,7 +681,6 @@ EOF
 ```
 
 </details>
-
 
 #### создание переменных для всех групп
 
@@ -885,8 +916,6 @@ EOF
 ```
 
 </details>
-
-
 
 #### Файл переменных по умолчанию роли базовых настроек
 
@@ -1173,7 +1202,7 @@ EOF
 #### Файл базовых задач роли Контроллер домена Active Directory
 
 <details>
-<summary>xxxx</summary>
+<summary>./roles/samba_ad_dc/tasks/base.yml</summary>
 
 ```bash
 cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
