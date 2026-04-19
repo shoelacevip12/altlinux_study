@@ -27,9 +27,9 @@
   import_playbook: sysvol_replication.yaml
   when: sysvol_replication | bool
 
-# - name: Smb файловый сервер
-#   import_playbook: smb_shares.yaml
-#   when: smb_shares | bool
+- name: Smb файловый сервер
+  import_playbook: smb_shares.yaml
+  when: smb_shares | bool
 
 # - name: NFS с Kerberos
 #   import_playbook: nfs_server.yaml

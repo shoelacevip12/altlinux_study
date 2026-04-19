@@ -1,3 +1,46 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for roles/smb_shares
+smb_shares_config:
+  trash:
+    comment: "TyT /7OJLHbIU TRASH"
+    path: "/srv/smb/trash"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Users' '+Domain Admins'"
+    write_list: "'+Domain Users' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "2775"
+    directory_mask: "1775"
+
+  IT:
+    comment: "Для администраторов"
+    path: "/srv/smb/NOTadmins"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Admins'"
+    write_list: "'+Domain Admins'"
+    browseable: "no"
+    create_mask: "0770"
+    directory_mask: "0770"
+
+  Work:
+    comment: "Для работы пользователям домена"
+    path: "/srv/smb/work"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Users' '+Domain Admins'"
+    write_list: "'+Domain Users' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "0770"
+    directory_mask: "0770"
+
+  VG:
+    comment: "Для работы специальной группе"
+    path: "/srv/smb/spec_GR1"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Users' '+Domain Admins'"
+    write_list: "'+Domain Users' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "0770"
+    directory_mask: "0770"
+...

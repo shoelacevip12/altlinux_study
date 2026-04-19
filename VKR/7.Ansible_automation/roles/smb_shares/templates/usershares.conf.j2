@@ -1,0 +1,12 @@
+{%- for share_name, share_opts in smb_shares_config.items() %}
+[{{ share_name }}]
+        comment = {{ share_opts.comment }}
+        path = {{ share_opts.path }}
+        writable = {{ share_opts.writable }}
+        guest ok = {{ share_opts.guest_ok }}
+        read list = {{ share_opts.read_list }}
+        write list = {{ share_opts.write_list }}
+        browseable = {{ share_opts.browseable }}
+        create mask = {{ share_opts.create_mask }}
+        directory mask = {{ share_opts.directory_mask }}
+{% endfor %}

@@ -2765,6 +2765,292 @@ EOF
 
 </details>
 
+### Роль `smb_shares` - Smb файловый сервер
+#### Playbook роли Smb сервер
+
+<details>
+<summary>./smb_shares.yaml</summary>
+
+```bash
+cat > ./smb_shares.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: Smb файловый сервер
+  hosts: file_servers
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - smb_shares
+...
+EOF
+```
+
+</details>
+
+#### Главный файл задач роли Smb сервер
+
+<details>
+<summary>./roles/smb_shares/tasks/main.yml</summary>
+
+```bash
+cat > roles/smb_shares/tasks/main.yml <<'EOF'
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов для SMB
+  apt_rpm:
+    name:
+      - samba
+      - avahi-daemon
+      - libnss-role
+    state: installed
+
+- name: Включение работы с ролями
+  command: >
+      /usr/sbin/control
+      libnss-role
+      enabled
+
+- name: Присоединение к домену через system-auth с паролем администратора
+  shell: |
+      /bin/bash -lc \
+      '/usr/sbin/system-auth write ad \
+      {{ ad_workgroup }} \
+      {{ inventory_hostname }} \
+      {{ ad_domain | lower }} \
+      {{ ad_admin_user }} \
+      {{ ad_admin_password }}'
+  environment:
+    PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+
+- name: Развертывание конфига SMB
+  template:
+    src: smb.conf.j2
+    dest: /etc/samba/smb.conf
+    backup: true
+    mode: '0644'
+  notify: Перезапуск smb
+
+- name: Включение службу avahi-daemon
+  systemd:
+    name: "{{ item }}"
+    state: started
+    masked: false
+    enabled: true
+    daemon_reload: true
+  loop:
+    - avahi-daemon
+    - smb
+
+# - name: Перезагрузка после ввода в домен
+#   reboot:
+#     reboot_timeout: 240
+
+- name: Предварительное создание ресурсов smb
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '0755'
+  loop:
+    - /srv/smb
+    - /srv/smb/work
+    - /srv/smb/NOTadmins
+    - /srv/smb/trash
+    - /srv/smb/spec_GR1
+
+- name: Распределение ресурсов для папок общего обмена
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '2775'
+  loop:
+    - /srv/smb/trash
+
+- name: Распределение ресурсов для папок административного доступа
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: Administrator
+    group: Domain Admins
+    mode: '0770'
+  loop:
+    - /srv/smb/NOTadmins
+
+- name: Распределение ресурсов для рабочих папок
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '0770'
+  loop:
+    - /srv/smb/work
+
+- name: Распределение ресурсов для специальной группы
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '0770'
+  loop:
+    - /srv/smb/spec_GR1
+
+- name: Развертывание дополнительного конфига SMB под сетевые ресурсы
+  template:
+    src: usershares.conf.j2
+    dest: /etc/samba/usershares.conf
+    mode: '0644'
+  notify: Перезапуск smb
+...
+EOF
+```
+
+</details>
+
+#### Шаблоны роли Smb сервер
+##### Шаблон общих настроек роли Smb сервер
+<details>
+<summary>./roles/smb_shares/templates/smb.conf.j2</summary>
+
+```bash
+cat >  roles/smb_shares/templates/smb.conf.j2 <<'EOF'
+[global]
+        security = ads
+        realm = {{ ad_realm }}
+        workgroup = {{ ad_domain }}
+        netbios name = {{ inventory_hostname | upper}}
+        template shell = /bin/bash
+        kerberos method = system keytab
+        wins support = no
+        winbind use default domain = yes
+        winbind enum users = no
+        winbind enum groups = no
+        template homedir = /home/{{ ad_realm }}/%U
+        idmap config * : range = 200000-2000200000
+        idmap config * : backend = sss
+        machine password timeout = 0
+EOF
+```
+
+</details>
+
+##### Шаблон настроек сетевых ресурсов роли Smb сервер
+<details>
+<summary>./roles/smb_shares/templates/susershares.conf.j2</summary>
+
+```bash
+cat >  roles/smb_shares/templates/usershares.conf.j2 <<'EOF'
+{%- for share_name, share_opts in smb_shares_config.items() %}
+[{{ share_name }}]
+        comment = {{ share_opts.comment }}
+        path = {{ share_opts.path }}
+        writable = {{ share_opts.writable }}
+        guest ok = {{ share_opts.guest_ok }}
+        read list = {{ share_opts.read_list }}
+        write list = {{ share_opts.write_list }}
+        browseable = {{ share_opts.browseable }}
+        create mask = {{ share_opts.create_mask }}
+        directory mask = {{ share_opts.directory_mask }}
+{% endfor %}
+EOF
+```
+
+</details>
+
+
+#### Переменные по умолчанию роли Smb сервер
+
+<details>
+<summary>./roles/smb_shares/defaults/main.yml</summary>
+
+```bash
+cat > roles/smb_shares/defaults/main.yml<<'EOF'
+---
+smb_shares_config:
+  trash:
+    comment: "TyT /7OJLHbIU TRASH"
+    path: "/srv/smb/trash"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Users' '+Domain Admins'"
+    write_list: "'+Domain Users' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "2775"
+    directory_mask: "1775"
+
+  IT:
+    comment: "Для администраторов"
+    path: "/srv/smb/NOTadmins"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Admins'"
+    write_list: "'+Domain Admins'"
+    browseable: "no"
+    create_mask: "0770"
+    directory_mask: "0770"
+
+  Work:
+    comment: "Для работы пользователям домена"
+    path: "/srv/smb/work"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Users' '+Domain Admins'"
+    write_list: "'+Domain Users' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "0770"
+    directory_mask: "0770"
+
+  VG:
+    comment: "Для работы специальной группе"
+    path: "/srv/smb/spec_GR1"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Users' '+Domain Admins'"
+    write_list: "'+Domain Users' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "0770"
+    directory_mask: "0770"
+...
+EOF
+```
+
+</details>
+
+#### Обработчики роли Smb сервер
+
+<details>
+<summary>./roles/smb_shares/handlers/main.yml</summary>
+
+```bash
+cat > roles/smb_shares/handlers/main.yml <<'EOF'
+---
+- name: Перезапуск smb
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "Перезапуск smb"
+  async: 10
+  poll: 0
+  loop:
+    - smb
+    - avahi-daemon
+...
+EOF
+```
+
+</details>
+
 
 # gitflic_github репозиторий
 ```bash
@@ -2792,7 +3078,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd11]ansible" \
+git commit -am "[upd12]ansible" \
 && git push \
 --set-upstream \
 altlinux \

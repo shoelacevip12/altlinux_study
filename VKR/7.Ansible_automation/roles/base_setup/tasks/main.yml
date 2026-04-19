@@ -11,6 +11,8 @@
       - chrony
       - samba-common-tools
       - samba-client
+      - avahi-daemon
+      - libnss-role
     state: installed
   when:
     - inventory_hostname not in groups['domain_controllers']

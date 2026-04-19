@@ -1,0 +1,15 @@
+[global]
+        security = ads
+        realm = {{ ad_realm }}
+        workgroup = {{ ad_domain }}
+        netbios name = {{ inventory_hostname | upper}}
+        template shell = /bin/bash
+        kerberos method = system keytab
+        wins support = no
+        winbind use default domain = yes
+        winbind enum users = no
+        winbind enum groups = no
+        template homedir = /home/{{ ad_realm }}/%U
+        idmap config * : range = 200000-2000200000
+        idmap config * : backend = sss
+        machine password timeout = 0
