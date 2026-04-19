@@ -1,0 +1,62 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  # Путь к ISO образу altlinux 10.4
+  ubuntu_iso_path = "/home/shoel/iso/alt-server-10.4-x86_64.iso"
+
+  # Общие настройки для провайдера libvirt
+  config.vm.provider :libvirt do |libvirt|
+    libvirt.driver = "kvm"
+    libvirt.uri = 'qemu:///system'
+
+    # Характеристики 3 ГБ ОЗУ
+    # 2 vCPU
+    # Прямой Проброс CPU хоста
+    # включение вложенной виртуализации
+    libvirt.memory = 3072
+    libvirt.cpus = 2
+    libvirt.cpu_mode = 'host-passthrough'
+    libvirt.nested = true
+
+    # Настройка загрузки с диска и CDROM
+    libvirt.boot 'hd'
+    libvirt.disk_driver :cache => 'none'
+    libvirt.disk_bus = "virtio"
+    libvirt.boot 'cdrom'
+
+    # Управление сетью через внешний мост, а не через Vagrant
+    libvirt.management_network_mode = "none"
+    libvirt.nic_model_type = "virtio"
+
+    # Настройка диска
+    libvirt.storage :file, :size => '40G', :type => 'qcow2', :bus => 'virtio'
+  end
+
+  # --- Создание ВМ для altlinux с именами из списка ---
+  vm_names = ["1", "2", "3", "4"]
+
+  vm_names.each do |name| # Используем переменную name внутри цикла
+    config.vm.define "altsrv#{name}" do |node_2|
+      node_2.vm.hostname = "#{name}" # Устанавливаем имя хоста для ВМ
+      node_2.vm.communicator = "none" # Отключаем стандартный communicator (SSH), так как используется ISO
+
+      # Подключение к существующему мосту br0
+      node_2.vm.network "public_network",
+                        dev: "br0",
+                        type: "bridge",
+                        mode: "bridge"
+
+      # Настройки провайдера libvirt для конкретной ВМ
+      node_2.vm.provider :libvirt do |libvirt_specific|
+        # Указываем ISO образ
+        libvirt_specific.storage :file, :device => :cdrom, :path => ubuntu_iso_path
+        libvirt_specific.storage_pool_name = "VMs"
+      end
+
+      # Заглушка для provisioner
+      node_2.vm.provision "shell", inline: "echo '#{name} VM created.'", run: "never"
+    end
+  end
+end

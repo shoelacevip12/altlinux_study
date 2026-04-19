@@ -7,6 +7,9 @@
 ```bash
 export ANSIBLE_CONFIG=./ansible.cfg
 
+# Для вывода playbook с первым уровнем детализации в yaml формате
+export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
+
 # Команда вызова редактирования файла с паролями
 EDITOR=nano \
 ansible-vault edit \
@@ -2567,42 +2570,40 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[1]
 
-# - name: Копирование публичного ключа на вторичный DC
-#   authorized_key:
-#     user: root
-#     key: "{{ lookup('file', ssh_sysvol_path ~'.pub') }}"
-#     state: present
-#     delegate_to: "{{ (groups['domain_controllers'] | list)[1] }}"
-#   when:
-#     - inventory_hostname == (groups['domain_controllers'] | list)[0]
+- name: создание каталога для конфига Unison
+  file:
+    path: /root/.unison
+    state: directory
 
 - name: Развертывание конфига Unison
   template:
     src: sync_dc2.prf.j2
     dest: /root/.unison/sync_dc2.prf
     mode: '0600'
-
-- name: Ручной запуск синхронизации rsync
-  synchronize:
-    src: "{{ synchron_path }}"
-    dest: "{{ synchron_path }}"
-    rsync_opts:
-      - '--rsh="ssh -p 22 -i {{ ssh_sysvol_path }}"'
-      - "--log-file=/var/log/sysvol-sync.log"
-      - "--delete-after"
-      - "-f"
-      - "+ */"
-      - "-f"
-      - "- *"
-    delegate_to: "{{ (groups['domain_controllers'] | list)[1] }}"
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
-- name: Ручной запуск синхронизации unison
-  command: /usr/bin/unison
+- name: Ручной запуск синхронизации rsync
+  command: >
+    /usr/bin/rsync -XAavz
+    --rsh='ssh -p 22 -o StrictHostKeyChecking=accept-new
+    -i {{ ssh_sysvol_path }}'
+    --log-file /var/log/sysvol-sync.log \
+    --delete-after -f"+ */" -f"- *" {{ synchron_path }}
+    root@{{ secondary_dc }}:/var/lib/samba
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Ручной запуск синхронизации unison через ssh-agent
+  shell: >
+    ssh-agent bash -c "ssh-add /root/.ssh/id_sysvol_ed25519 && /usr/bin/unison sync_dc2"
+  environment:
+    HOME: /root
   no_log: false
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
+  become: true
+  become_user: root
 
 - name: Установка systemd timer для синхронизации
   template:
@@ -2664,6 +2665,8 @@ copyquoterem = true
 copymax = 1
 copyquoterem = false
 
+sshargs=-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/.ssh/known_hosts_unison
+
 # Сохранять журнал с результатами работы в отдельном файле
 logfile = /var/log/sysvol-sync.log
 EOF
@@ -2708,7 +2711,7 @@ Description=Cинхронизация sysvol каждые 5 минуты с ос
 [Timer]
 OnBootSec=1min
 OnUnitActiveSec=5min
-Unit=sysvol-syn.service
+Unit=sysvol-sync.service
 
 [Install]
 WantedBy=timers.target
@@ -2789,7 +2792,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd10]ansible" \
+git commit -am "[upd11]ansible" \
 && git push \
 --set-upstream \
 altlinux \

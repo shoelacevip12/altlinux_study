@@ -12,11 +12,15 @@ primary_dc: "{{ groups['domain_controllers'][0] }}"
 primary_dc_ip: "{{ hostvars[primary_dc]['ansible_host'] }}"
 secondary_dc: "{{ groups['domain_controllers'][1] }}"
 secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
+# DHCP роль
+allow_clients: "192.168.89.0/24"
+#AD роль
+ptr_zone: "89.168.192.in-addr.arpa"
 
 # Сеть
-network_subnet: "192.168.100.0"
+network_subnet: "192.168.89.0"
 network_netmask: "255.255.255.0"
-network_gateway: "192.168.100.1"
+network_gateway: "192.168.89.1"
 
 # включаем(true)\выключаем(false) роли
 base_setup: false
@@ -27,7 +31,7 @@ kernel_upd: false # обновление ядра
 
 chrony_sync: false
 samba_ad_dc: false
-dhcp_server: true
+dhcp_server: false
 sysvol_replication: true
 kerberos_client: false
 smb_shares: false

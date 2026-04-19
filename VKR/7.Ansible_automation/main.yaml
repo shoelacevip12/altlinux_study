@@ -27,19 +27,19 @@
   import_playbook: sysvol_replication.yaml
   when: sysvol_replication | bool
 
-- name: Smb файловый сервер
-  import_playbook: smb_shares.yaml
-  when: smb_shares | bool
+# - name: Smb файловый сервер
+#   import_playbook: smb_shares.yaml
+#   when: smb_shares | bool
 
-- name: NFS с Kerberos
-  import_playbook: nfs_server.yaml
-  when: nfs_server | bool
+# - name: NFS с Kerberos
+#   import_playbook: nfs_server.yaml
+#   when: nfs_server | bool
 
-- name: SQUID с Kerberos-аутентификацией
-  import_playbook: squid_proxy.yaml
-  when: squid_proxy | bool
+# - name: SQUID с Kerberos-аутентификацией
+#   import_playbook: squid_proxy.yaml
+#   when: squid_proxy | bool
 
-- name: Скрипты мониторинга и failover
-  import_playbook: monitoring_scripts.yaml
-  when: monitoring_scripts | bool
+# - name: Скрипты мониторинга и failover
+#   import_playbook: monitoring_scripts.yaml
+#   when: monitoring_scripts | bool
 ...
