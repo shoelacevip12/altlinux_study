@@ -1,41 +1,50 @@
 ---
+#====| Общие параметры |===#
 # параметры суперпользователя
 ansible_ssh_private_key_file: "~/.ssh/id_skv_VKR_vpn"
 
-# Общие параметры домена
+# параметры домена
 ad_workgroup: "den.skv"
 ad_realm: "DEN.SKV"
 ad_domain: "DEN"
 ad_admin_user: "Administrator"
 dns_forwarder: "77.88.8.8"
+
+# Хост имена и ip контроллеров домена
 primary_dc: "{{ groups['domain_controllers'][0] }}"
 primary_dc_ip: "{{ hostvars[primary_dc]['ansible_host'] }}"
 secondary_dc: "{{ groups['domain_controllers'][1] }}"
 secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
-# роль chrony
-allow_clients: "192.168.89.0/24"
-#AD роль
-ptr_zone: "89.168.192.in-addr.arpa"
 
 # Сеть
 network_subnet: "192.168.89.0"
 network_netmask: "255.255.255.0"
 network_gateway: "192.168.89.1"
 
+#====| Переназначенные параметры ролей |===#
+# роль chrony
+allow_clients: "192.168.89.0/24"
+#AD роль
+ptr_zone: "89.168.192.in-addr.arpa"
+
+
 # включаем(true)\выключаем(false) роли
 base_setup: true
+
 # Отдельные задачи включения пакетов
 dist_upd: true # Обновление кеша пакетов
 dist_upgrd: false # обновление установленных приложений
 kernel_upd: false # обновление ядра
 
 chrony_sync: false
+
+sysvol_replication: false # на эту переменную завязаны репликации служб AD и DHCP
+monitoring_scripts: false
 samba_ad_dc: false
 dhcp_server: false
-sysvol_replication: false
-# kerberos_client: false
+
 smb_shares: true
 nfs_server: false
+
 squid_proxy: false
-monitoring_scripts: false
 ...
