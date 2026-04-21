@@ -52,6 +52,10 @@
   when:
     - inventory_hostname not in groups['domain_controllers']
     
+- name: Перезагрузка после обновлений
+  reboot:
+    reboot_timeout: 240
+
 - name: Отключение IPv6
   sysctl:
     name: net.ipv6.conf.all.disable_ipv6

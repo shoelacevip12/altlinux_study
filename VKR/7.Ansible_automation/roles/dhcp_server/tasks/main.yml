@@ -5,7 +5,7 @@
 
 - name: Установка пакетов DHCP сервера
   apt_rpm:
-    name: 
+    name:
       - dhcp-server
     state: present
 
@@ -57,8 +57,8 @@
     mode: '0400'
 
 - name: Развертывание скрипта обновления DNS
-  template:
-    src: dhcp-dyndns.sh.j2
+  copy:
+    src: dhcp-dyndns.sh
     dest: /usr/local/bin/dhcp-dyndns.sh
     mode: '0755'
 

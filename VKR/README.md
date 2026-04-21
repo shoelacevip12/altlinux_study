@@ -94,7 +94,7 @@ yc compute instance list
 ssh \
 -o StrictHostKeyChecking=accept-new \
 -i ~/.ssh/id_skv_VKR_vpn \
-skv@158.160.201.144
+skv@81.26.176.3
 ```
 ```bash
 # вход под сперпользователем YC ВМ
@@ -920,6 +920,10 @@ cat > roles/base_setup/tasks/main.yml <<'EOF'
   when:
     - inventory_hostname not in groups['domain_controllers']
     
+- name: Перезагрузка после обновлений
+  reboot:
+    reboot_timeout: 240
+
 - name: Отключение IPv6
   sysctl:
     name: net.ipv6.conf.all.disable_ipv6
@@ -1681,7 +1685,7 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
 
 - name: Установка пакетов DHCP сервера
   apt_rpm:
-    name: 
+    name:
       - dhcp-server
     state: present
 
@@ -3063,6 +3067,8 @@ EOF
 </details>
 
 
+### Создаг
+
 # gitflic_github репозиторий
 ```bash
 # Добавляем ключи агенту ssh от репозитория gitflic и github
@@ -3089,7 +3095,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd12]ansible" \
+git commit -am "[upd13]ansible" \
 && git push \
 --set-upstream \
 altlinux \
