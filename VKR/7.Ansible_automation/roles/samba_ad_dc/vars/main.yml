@@ -1,2 +1,21 @@
 ---
+smaba_conflicts:
+  - smb
+  - nmb
+  - krb5kdc
+  - slapd
+  - bind
+  - dnsmasq
+smaba_conflicts_files:
+  - /etc/samba/smb.conf
+  - /var/lib/samba
+  - /var/cache/samba
+samba_ad_pkg:
+  - task-samba-dc
+  - alterator-net-domain
+  - alterator-datetime
+
+samba_handlers:
+  - network
+  - samba
 ...

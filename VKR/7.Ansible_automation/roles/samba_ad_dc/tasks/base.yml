@@ -5,13 +5,7 @@
     state: stopped
     masked: true
     enabled: false
-  loop: 
-    - smb
-    - nmb
-    - krb5kdc
-    - slapd
-    - bind
-    - dnsmasq
+  loop: "{{ smaba_conflicts }}"
   ignore_errors: true
 
 - name: Обновление кеша пакетов
@@ -20,10 +14,7 @@
 
 - name: Установка пакетов Samba DC
   apt_rpm:
-    name:
-      - task-samba-dc
-      - alterator-net-domain
-      - alterator-datetime
+    name: "{{ samba_ad_pkg }}"
     state: present
 
 - name: Определить основной интерфейс
@@ -60,10 +51,7 @@
   file:
     path: "{{ item }}"
     state: absent
-  loop:
-    - /etc/samba/smb.conf
-    - /var/lib/samba
-    - /var/cache/samba
+  loop: "{{ smaba_conflicts_files }}"
 
 - name: создание каталога для работы Домена
   file:

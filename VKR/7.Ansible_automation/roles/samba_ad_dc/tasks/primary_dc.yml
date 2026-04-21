@@ -15,6 +15,7 @@
     --option="allow dns updates=secure only"
   args:
     creates: /var/lib/samba/private/sam.ldb
+  no_log: true
 
 - name: Запуск samba AD сервер
   systemd:
@@ -40,6 +41,7 @@
     --aging=1
     --refreshinterval={{ dns_refresh }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
 
 - name: Создание обратной - PTR зоны
   command: >
@@ -47,6 +49,7 @@
     {{ inventory_hostname }}
     {{ ptr_zone }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
 
 - name: Добавление записи типа PTR для обратной зоны самого домен контролера
   command: >
@@ -56,6 +59,7 @@
     {{ ptr_ip_main_dc }} PTR
     {{ inventory_hostname }}.{{ ad_workgroup }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
 
 - name: Добавление А записи для вторичного контролера
   command: >
@@ -66,6 +70,7 @@
     A
     {{ secondary_dc_ip }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
   when:
     - sysvol_replication | bool
 
@@ -77,6 +82,7 @@
     {{ ptr_ip_second_dc }} PTR
     {{ secondary_dc }}.{{ ad_workgroup }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
   when:
     - sysvol_replication | bool
 

@@ -7,6 +7,7 @@
 
 - name: Получаем kerberos билет на имя входящего в доменную группу Domain Admins
   shell: printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
+  no_log: true
 
 - name: Присоединение вторичного контроллера домена
   command: >
@@ -21,6 +22,7 @@
     --option="bind interfaces only=yes"
     --option="dns zone scavenging=yes"
     --option="allow dns updates=secure only"
+  no_log: true
   args:
     creates: /var/lib/samba/private/secrets.tdb
   
@@ -55,4 +57,5 @@
     {{ primary_dc }}.{{ ad_workgroup }}
     {{ ldap_search }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
 ...

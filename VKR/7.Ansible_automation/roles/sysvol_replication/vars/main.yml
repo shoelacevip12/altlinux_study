@@ -1,2 +1,12 @@
 ---
+sysvol_pkg:
+  - unison
+  - rsync
+  - openssh-clients
+
+sysvol_services:
+  - sysvol-sync.service
+  - sysvol-sync.timer
+
+usnison_dir: "/root/.unison"
 ...

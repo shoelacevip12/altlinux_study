@@ -874,13 +874,7 @@ cat > roles/base_setup/tasks/main.yml <<'EOF'
 
 - name: Установка базовых пакетов при вводе в домен
   apt_rpm:
-    name:
-      - task-auth-ad-sssd
-      - chrony
-      - samba-common-tools
-      - samba-client
-      - avahi-daemon
-      - libnss-role
+    name: "{{ base_pkg }}"
     state: installed
   when:
     - inventory_hostname not in groups['domain_controllers']
@@ -920,22 +914,40 @@ cat > roles/base_setup/tasks/main.yml <<'EOF'
   when:
     - inventory_hostname not in groups['domain_controllers']
     
-- name: Перезагрузка после обновлений
-  reboot:
-    reboot_timeout: 240
-
-- name: Отключение IPv6
+- name: Отключение IPv6 прописываем конфиг
   sysctl:
     name: net.ipv6.conf.all.disable_ipv6
     value: "1"
     state: present
+    sysctl_file: /etc/sysctl.conf
+    reload: true
+  
+- name: Отключение IPv6 применение конфига
+  command: /sbin/sysctl -p
+
+- name: Создание службы применения sysctl после загрузки
+  copy:
+    src: apply-sysctl.service
+    dest: /etc/systemd/system/apply-sysctl.service
+    mode: '0755'
+
+- name: Включить сервис apply-sysctl
+  systemd:
+    name: apply-sysctl
+    enabled: true
+    masked: false
+    daemon_reload: true
+
+- name: Перезагрузка после обновлений
+  reboot:
+    reboot_timeout: 240
 ...
 EOF
 ```
 
 </details>
 
-#### Файл переменных по умолчанию роли базовых настроек
+#### Переменные по умолчанию роли базовых настроек
 
 <details>
 <summary>./roles/base_setup/defaults/main.yml</summary>
@@ -953,7 +965,29 @@ EOF
 
 </details>
 
-#### Шаблон resolver Роли базовых настроек
+#### Постоянные переменные роли базовых настроек
+
+<details>
+<summary>./roles/base_setup/vars/main.yml</summary>
+
+```bash
+cat > roles/base_setup/vars/main.yml <<'EOF'
+---
+base_pkg:
+  - task-auth-ad-sssd
+  - chrony
+  - samba-common-tools
+  - samba-client
+  - avahi-daemon
+  - libnss-role
+...
+EOF
+```
+
+</details>
+
+#### Шаблоны Роли базовых настроек
+##### Шаблон resolver Роли базовых настроек
 
 <details>
 <summary>./roles/base_setup/templates/resolv.conf.j2</summary>
@@ -965,6 +999,29 @@ nameserver {{ hostvars[server].ansible_host }}
 {% endfor %}
 search {{ ad_workgroup }}
 options rotate
+EOF
+```
+
+</details>
+
+##### Шаблон службы применения настроек sysctl Роли базовых настроек
+
+<details>
+<summary>./roles/base_setup/files/apply-sysctl.service</summary>
+
+```bash
+cat > roles/base_setup/files/apply-sysctl.service <<'EOF'
+[Unit]
+Description=Apply sysctl settings after boot
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/sysctl -p
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
 EOF
 ```
 
@@ -1231,13 +1288,7 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
     state: stopped
     masked: true
     enabled: false
-  loop: 
-    - smb
-    - nmb
-    - krb5kdc
-    - slapd
-    - bind
-    - dnsmasq
+  loop: "{{ smaba_conflicts }}"
   ignore_errors: true
 
 - name: Обновление кеша пакетов
@@ -1246,10 +1297,7 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
 
 - name: Установка пакетов Samba DC
   apt_rpm:
-    name:
-      - task-samba-dc
-      - alterator-net-domain
-      - alterator-datetime
+    name: "{{ samba_ad_pkg }}"
     state: present
 
 - name: Определить основной интерфейс
@@ -1286,10 +1334,7 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
   file:
     path: "{{ item }}"
     state: absent
-  loop:
-    - /etc/samba/smb.conf
-    - /var/lib/samba
-    - /var/cache/samba
+  loop: "{{ smaba_conflicts_files }}"
 
 - name: создание каталога для работы Домена
   file:
@@ -1325,6 +1370,7 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
     --option="allow dns updates=secure only"
   args:
     creates: /var/lib/samba/private/sam.ldb
+  no_log: true
 
 - name: Запуск samba AD сервер
   systemd:
@@ -1350,6 +1396,7 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
     --aging=1
     --refreshinterval={{ dns_refresh }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
 
 - name: Создание обратной - PTR зоны
   command: >
@@ -1357,6 +1404,7 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
     {{ inventory_hostname }}
     {{ ptr_zone }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
 
 - name: Добавление записи типа PTR для обратной зоны самого домен контролера
   command: >
@@ -1366,6 +1414,7 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
     {{ ptr_ip_main_dc }} PTR
     {{ inventory_hostname }}.{{ ad_workgroup }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
 
 - name: Добавление А записи для вторичного контролера
   command: >
@@ -1376,6 +1425,7 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
     A
     {{ secondary_dc_ip }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
   when:
     - sysvol_replication | bool
 
@@ -1387,6 +1437,7 @@ cat > roles/samba_ad_dc/tasks/primary_dc.yml <<'EOF'
     {{ ptr_ip_second_dc }} PTR
     {{ secondary_dc }}.{{ ad_workgroup }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
   when:
     - sysvol_replication | bool
 
@@ -1426,6 +1477,7 @@ cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
 
 - name: Получаем kerberos билет на имя входящего в доменную группу Domain Admins
   shell: printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
+  no_log: true
 
 - name: Присоединение вторичного контроллера домена
   command: >
@@ -1440,6 +1492,7 @@ cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
     --option="bind interfaces only=yes"
     --option="dns zone scavenging=yes"
     --option="allow dns updates=secure only"
+  no_log: true
   args:
     creates: /var/lib/samba/private/secrets.tdb
   
@@ -1474,6 +1527,7 @@ cat > roles/samba_ad_dc/tasks/second_dc.yml <<'EOF'
     {{ primary_dc }}.{{ ad_workgroup }}
     {{ ldap_search }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
 ...
 EOF
 ```
@@ -1583,6 +1637,39 @@ EOF
 
 </details>
 
+#### Постоянные Переменные роли домен контроллеров
+
+<details>
+<summary>./roles/samba_ad_dc/vars/main.yml</summary>
+
+```bash
+cat > roles/samba_ad_dc/vars/main.yml<<'EOF'
+---
+smaba_conflicts:
+  - smb
+  - nmb
+  - krb5kdc
+  - slapd
+  - bind
+  - dnsmasq
+smaba_conflicts_files:
+  - /etc/samba/smb.conf
+  - /var/lib/samba
+  - /var/cache/samba
+samba_ad_pkg:
+  - task-samba-dc
+  - alterator-net-domain
+  - alterator-datetime
+
+samba_handlers:
+  - network
+  - samba
+...
+EOF
+```
+
+</details>
+
 #### Обработчики роли Контроллера домена
 
 <details>
@@ -1610,9 +1697,7 @@ cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
   listen: "restart network"
   async: 10
   poll: 0
-  loop:
-    - network
-    - samba
+  loop: "{{ samba_handlers }}"
   ignore_unreachable: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
@@ -1636,9 +1721,7 @@ cat > roles/samba_ad_dc/handlers/main.yml <<'EOF'
   listen: "restart network dc2"
   async: 10
   poll: 0
-  loop:
-    - network
-    - samba
+  loop: "{{ samba_handlers }}"
   ignore_unreachable: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[1]
@@ -1697,6 +1780,7 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     --random-password
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   ignore_errors: true
+  no_log: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -1707,6 +1791,7 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     {{ dhcpduser }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   ignore_errors: true
+  no_log: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -1717,6 +1802,7 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     --noexpiry
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   ignore_errors: true
+  no_log: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -1726,6 +1812,7 @@ cat > roles/dhcp_server/tasks/main.yml <<'EOF'
     --principal={{ dhcpduser }}@"{{ ad_realm }}"
     {{ keytab_export_path }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
   args:
     creates: "{{ keytab_export_path }}"
 
@@ -2541,10 +2628,7 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
 
 - name: Установка пакетов для стнхронизации
   apt_rpm:
-    name:
-      - unison
-      - rsync
-      - openssh-clients
+    name: "{{ sysvol_pkg }}"
     state: installed
 
 - name: Генерация SSH-ключей для репликации sysvol
@@ -2587,13 +2671,13 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
 
 - name: создание каталога для конфига Unison
   file:
-    path: /root/.unison
+    path: "{{ usnison_dir }}"
     state: directory
 
 - name: Развертывание конфига Unison
   template:
     src: sync_dc2.prf.j2
-    dest: /root/.unison/sync_dc2.prf
+    dest: "{{ usnison_dir }}/sync_dc2.prf"
     mode: '0600'
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
@@ -2611,7 +2695,7 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
 
 - name: Ручной запуск синхронизации unison через ssh-agent
   shell: >
-    ssh-agent bash -c "ssh-add /root/.ssh/id_sysvol_ed25519 && /usr/bin/unison sync_dc2"
+    ssh-agent bash -c "ssh-add {{ ssh_sysvol_path }} && /usr/bin/unison sync_dc2"
   environment:
     HOME: /root
   no_log: false
@@ -2627,9 +2711,7 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
     owner: root
     group: root
     mode: '0775'
-  loop:
-    - sysvol-sync.service
-    - sysvol-sync.timer
+  loop: "{{ sysvol_services }}"
   notify:
     - Enable sysvol-sync timer
   when:
@@ -2640,9 +2722,7 @@ cat > roles/sysvol_replication/tasks/main.yml <<'EOF'
     name: "{{ item }}"
     masked: false
     daemon_reload: true
-  loop:
-    - sysvol-sync.service
-    - sysvol-sync.timer
+  loop: "{{ sysvol_services }}"
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 ...
@@ -2751,6 +2831,30 @@ EOF
 
 </details>
 
+#### Постоянные Переменные роли репликации SysVol
+
+<details>
+<summary>./roles/sysvol_replication/vars/main.yml</summary>
+
+```bash
+cat >roles/sysvol_replication/vars/main.yml<<'EOF'
+---
+sysvol_pkg:
+  - unison
+  - rsync
+  - openssh-clients
+
+sysvol_services:
+  - sysvol-sync.service
+  - sysvol-sync.timer
+
+usnison_dir: "/root/.unison"
+...
+EOF
+```
+
+</details>
+
 #### Обработчики роли репликации SysVol
 
 <details>
@@ -2817,10 +2921,7 @@ cat > roles/smb_shares/tasks/main.yml <<'EOF'
 
 - name: Установка пакетов для SMB
   apt_rpm:
-    name:
-      - samba
-      - avahi-daemon
-      - libnss-role
+    name: "{{ smb_pkg }}"
     state: installed
 
 - name: Включение работы с ролями
@@ -2828,6 +2929,13 @@ cat > roles/smb_shares/tasks/main.yml <<'EOF'
       /usr/sbin/control
       libnss-role
       enabled
+  changed_when: false
+
+- name: Проверка Присоединения к домену
+  shell: net ads testjoin
+  register: join_status_result
+  ignore_errors: true
+  changed_when: false
 
 - name: Присоединение к домену через system-auth с паролем администратора
   shell: |
@@ -2840,6 +2948,11 @@ cat > roles/smb_shares/tasks/main.yml <<'EOF'
       {{ ad_admin_password }}'
   environment:
     PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+  no_log: true
+  when: >
+    join_status_result.rc != 0
+    or ('Join is OK' not in join_status_result.stdout)
+    or join_status_result.stderr != ""
 
 - name: Развертывание конфига SMB
   template:
@@ -2847,7 +2960,7 @@ cat > roles/smb_shares/tasks/main.yml <<'EOF'
     dest: /etc/samba/smb.conf
     backup: true
     mode: '0644'
-  notify: Перезапуск smb
+  notify: перезапуск smb
 
 - name: Включение службу avahi-daemon
   systemd:
@@ -2856,74 +2969,55 @@ cat > roles/smb_shares/tasks/main.yml <<'EOF'
     masked: false
     enabled: true
     daemon_reload: true
-  loop:
-    - avahi-daemon
-    - smb
-
-# - name: Перезагрузка после ввода в домен
-#   reboot:
-#     reboot_timeout: 240
+  loop: "{{ smb_services }}"
 
 - name: Предварительное создание ресурсов smb
   file:
-    path: "{{ item }}"
+    path: "{{ item.value.path }}"
     state: directory
     owner: Administrator
     group: Domain Users
     mode: '0755'
-  loop:
-    - /srv/smb
-    - /srv/smb/work
-    - /srv/smb/NOTadmins
-    - /srv/smb/trash
-    - /srv/smb/spec_GR1
+  loop: "{{ smb_shares_config | dict2items }}"
 
 - name: Распределение ресурсов для папок общего обмена
   file:
-    path: "{{ item }}"
+    path: '{{ smb_shares_config.trash.path }}'
     state: directory
     owner: Administrator
     group: Domain Users
     mode: '2775'
-  loop:
-    - /srv/smb/trash
 
 - name: Распределение ресурсов для папок административного доступа
   file:
-    path: "{{ item }}"
+    path: '{{ smb_shares_config.IT.path }}'
     state: directory
     owner: Administrator
     group: Domain Admins
     mode: '0770'
-  loop:
-    - /srv/smb/NOTadmins
 
 - name: Распределение ресурсов для рабочих папок
   file:
-    path: "{{ item }}"
+    path: '{{ smb_shares_config.Work.path }}'
     state: directory
     owner: Administrator
     group: Domain Users
     mode: '0770'
-  loop:
-    - /srv/smb/work
 
 - name: Распределение ресурсов для специальной группы
   file:
-    path: "{{ item }}"
+    path: '{{ smb_shares_config.VG.path }}'
     state: directory
     owner: Administrator
     group: Domain Users
     mode: '0770'
-  loop:
-    - /srv/smb/spec_GR1
 
 - name: Развертывание дополнительного конфига SMB под сетевые ресурсы
   template:
     src: usershares.conf.j2
     dest: /etc/samba/usershares.conf
     mode: '0644'
-  notify: Перезапуск smb
+  notify: перезапуск smb
 ...
 EOF
 ```
@@ -2952,12 +3046,14 @@ cat >  roles/smb_shares/templates/smb.conf.j2 <<'EOF'
         idmap config * : range = 200000-2000200000
         idmap config * : backend = sss
         machine password timeout = 0
+        include = /etc/samba/usershares.conf
 EOF
 ```
 
 </details>
 
 ##### Шаблон настроек сетевых ресурсов роли Smb сервер
+
 <details>
 <summary>./roles/smb_shares/templates/susershares.conf.j2</summary>
 
@@ -2979,7 +3075,6 @@ EOF
 ```
 
 </details>
-
 
 #### Переменные по умолчанию роли Smb сервер
 
@@ -3039,6 +3134,28 @@ EOF
 
 </details>
 
+#### Постоянные Переменные роли Smb сервер
+
+<details>
+<summary>./roles/smb_shares/vars/main.yml</summary>
+
+```bash
+cat > roles/smb_shares/vars/main.yml<<'EOF'
+---
+smb_pkg:
+  - samba
+  - avahi-daemon
+  - libnss-role
+
+smb_services:
+  - smb
+  - avahi-daemon
+...
+EOF
+```
+
+</details>
+
 #### Обработчики роли Smb сервер
 
 <details>
@@ -3054,12 +3171,10 @@ cat > roles/smb_shares/handlers/main.yml <<'EOF'
     enabled: true
     masked: false
     daemon_reload: true
-  listen: "Перезапуск smb"
+  listen: "перезапуск smb"
   async: 10
   poll: 0
-  loop:
-    - smb
-    - avahi-daemon
+  loop: "{{ smb_services }}"
 ...
 EOF
 ```
@@ -3067,7 +3182,234 @@ EOF
 </details>
 
 
-### Создаг
+### Роль `nfs_server` - nfs файловый сервер
+#### Playbook роли nfs сервер
+
+<details>
+<summary>./nfs_server.yaml</summary>
+
+```bash
+cat > ./nfs_server.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: NFS файловый сервер
+  hosts: file_servers
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - nfs_server
+...
+EOF
+```
+
+</details>
+
+#### Главный файл задач роли nfs сервер
+
+<details>
+<summary>./roles/nfs_server/tasks/main.yml</summary>
+
+```bash
+cat > roles/nfs_server/tasks/main.yml <<'EOF'
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов для NFS
+  apt_rpm:
+    name: "{{ nfs_pkg }}"
+    state: installed
+
+- name: Включение SECURE_NFS
+  copy:
+    src: nfs
+    dest: /etc/sysconfig/nfs
+
+- name: Проверка Присоединения к домену
+  shell: net ads testjoin
+  register: join_status_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Присоединение к домену через system-auth с паролем администратора
+  shell: |
+      /bin/bash -lc \
+      '/usr/sbin/system-auth write ad \
+      {{ ad_workgroup }} \
+      {{ inventory_hostname }} \
+      {{ ad_domain | lower }} \
+      {{ ad_admin_user }} \
+      {{ ad_admin_password }}'
+  environment:
+    PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+  no_log: true
+  when: >
+    join_status_result.rc != 0
+    or ('Join is OK' not in join_status_result.stdout)
+    or join_status_result.stderr != ""
+
+- name: Проверка существования каталогов
+  file:
+    path: "{{ item.value.path }}"
+    state: directory
+  loop: "{{ nfs_shares | dict2items }}"
+  register: dir_check_result
+
+- name: Предварительное создание ресурсов nfs ресурсов
+  file:
+    path: "{{ item.value.path }}"
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '0755'
+  loop: "{{ nfs_shares | dict2items }}"
+  when: dir_check_result.changed
+
+- name: Распределение ресурсов для папок общего обмена
+  file:
+    path: '{{ nfs_shares.root.path }}'
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '2775'
+  when: dir_check_result.changed
+
+- name: Распределение ресурсов для папок административного доступа
+  file:
+    path: '{{ nfs_shares.NOTadmins.path }}'
+    state: directory
+    owner: Administrator
+    group: Domain Admins
+    mode: '0770'
+  when: dir_check_result.changed
+
+- name: Распределение ресурсов для рабочих папок
+  file:
+    path: '{{ nfs_shares.work.path }}'
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '0770'
+  when: dir_check_result.changed
+
+- name: Распределение ресурсов для специальной группы
+  file:
+    path: '{{ nfs_shares.spec_GR1.path }}'
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '0770'
+  when: dir_check_result.changed
+
+- name: Развертывание конфига экспорта NFS
+  template:
+    src: exports.j2
+    dest: /etc/exports
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Получение Принципала для службы nfs
+  shell: |
+    printf '%s\n' '{{ ad_admin_password }}' \
+    | /usr/bin/net ads keytab add nfs -U{{ ad_admin_user }}
+  no_log: true
+
+- name: Запуск и включение служб связности до kdc и nfs сервера
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    masked: false
+    daemon_reload: true
+  loop: "{{ nfs_services }}"
+
+- name: Экспорт NFS ресурсов
+  command: /usr/sbin/exportfs -vra
+...
+EOF
+```
+
+</details>
+
+#### Шаблоны конфигурационного файла роли nfs сервер
+##### Шаблон файла sysconfig для работы NFS-сервера в защищенном режиме
+
+<details>
+<summary>./roles/nfs_server/files/nfs</summary>
+
+```bash
+cat > roles/nfs_server/files/nfs <<'EOF'
+SECURE_NFS=yes
+EOF
+```
+
+</details>
+
+##### Шаблон файла sysconfig для работы NFS-сервера в защищенном режиме
+
+<details>
+<summary>./roles/nfs_server/templates/exports.j2</summary>
+
+```bash
+cat > roles/nfs_server/templates/exports.j2 <<'EOF'
+{% for name, fullpath in nfs_shares.items() %}
+{{ fullpath.path }} {{ network_subnet }}/24({{ main_nfs_options }}{{ secure_nfs_options }}{% if name == 'root' %},fsid=0{% endif %})
+{% endfor %}
+EOF
+```
+</details>
+
+#### Переменные по умолчанию роли nfs сервер
+
+<details>
+<summary>./roles/nfs_server/defaults/main.yml</summary>
+
+```bash
+cat > roles/nfs_server/defaults/main.yml<<'EOF'
+---
+nfs_shares:
+  root:
+    path: "/srv/smb"
+  trash:
+    path: "/srv/smb/trash"
+  NOTadmins:
+    path: "/srv/smb/NOTadmins"
+  work:
+    path: "/srv/smb/work"
+  spec_GR1:
+    path: "/srv/smb/spec_GR1"
+main_nfs_options: "rw,no_subtree_check"
+secure_nfs_options: ",sec=krb5:krb5i:krb5p"
+...
+EOF
+```
+
+</details>
+
+#### Постоянные Переменные роли nfs сервер
+
+<details>
+<summary>./roles/nfs_server/vars/main.yml</summary>
+
+```bash
+cat > roles/nfs_server/vars/main.yml<<'EOF'
+---
+nfs_pkg:
+  - rpcbind
+  - nfs-clients
+  - nfs-server
+
+nfs_services:
+  - rpc-gssd.service
+  - nfs-server
+...
+EOF
+```
+
+<details>
 
 # gitflic_github репозиторий
 ```bash
@@ -3095,7 +3437,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd13]ansible" \
+git commit -am "[upd14]ansible" \
 && git push \
 --set-upstream \
 altlinux \

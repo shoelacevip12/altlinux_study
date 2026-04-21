@@ -6,13 +6,7 @@
 
 - name: Установка базовых пакетов при вводе в домен
   apt_rpm:
-    name:
-      - task-auth-ad-sssd
-      - chrony
-      - samba-common-tools
-      - samba-client
-      - avahi-daemon
-      - libnss-role
+    name: "{{ base_pkg }}"
     state: installed
   when:
     - inventory_hostname not in groups['domain_controllers']
@@ -52,13 +46,31 @@
   when:
     - inventory_hostname not in groups['domain_controllers']
     
-- name: Перезагрузка после обновлений
-  reboot:
-    reboot_timeout: 240
-
-- name: Отключение IPv6
+- name: Отключение IPv6 прописываем конфиг
   sysctl:
     name: net.ipv6.conf.all.disable_ipv6
     value: "1"
     state: present
+    sysctl_file: /etc/sysctl.conf
+    reload: true
+  
+- name: Отключение IPv6 применение конфига
+  command: /sbin/sysctl -p
+
+- name: Создание службы применения sysctl после загрузки
+  copy:
+    src: apply-sysctl.service
+    dest: /etc/systemd/system/apply-sysctl.service
+    mode: '0755'
+
+- name: Включить сервис apply-sysctl
+  systemd:
+    name: apply-sysctl
+    enabled: true
+    masked: false
+    daemon_reload: true
+
+- name: Перезагрузка после обновлений
+  reboot:
+    reboot_timeout: 240
 ...

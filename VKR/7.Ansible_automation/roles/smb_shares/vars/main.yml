@@ -1,2 +1,10 @@
 ---
+smb_pkg:
+  - samba
+  - avahi-daemon
+  - libnss-role
+
+smb_services:
+  - smb
+  - avahi-daemon
 ...

@@ -6,10 +6,8 @@
     enabled: true
     masked: false
     daemon_reload: true
-  listen: "Перезапуск smb"
+  listen: "перезапуск smb"
   async: 10
   poll: 0
-  loop:
-    - smb
-    - avahi-daemon
+  loop: "{{ smb_services }}"
 ...

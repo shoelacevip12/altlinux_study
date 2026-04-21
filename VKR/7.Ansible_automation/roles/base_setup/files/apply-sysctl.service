@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply sysctl settings after boot
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/sysctl -p
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

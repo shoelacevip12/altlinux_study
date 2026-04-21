@@ -1,3 +1,15 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for roles/nfs_server
+nfs_shares:
+  root:
+    path: "/srv/smb"
+  trash:
+    path: "/srv/smb/trash"
+  NOTadmins:
+    path: "/srv/smb/NOTadmins"
+  work:
+    path: "/srv/smb/work"
+  spec_GR1:
+    path: "/srv/smb/spec_GR1"
+main_nfs_options: "rw,no_subtree_check"
+secure_nfs_options: ",sec=krb5:krb5i:krb5p"
+...

@@ -1,2 +1,9 @@
 ---
+base_pkg:
+  - task-auth-ad-sssd
+  - chrony
+  - samba-common-tools
+  - samba-client
+  - avahi-daemon
+  - libnss-role
 ...

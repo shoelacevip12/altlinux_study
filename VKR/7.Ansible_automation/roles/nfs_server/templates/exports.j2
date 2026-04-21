@@ -1,0 +1,3 @@
+{% for name, fullpath in nfs_shares.items() %}
+{{ fullpath.path }} {{ network_subnet }}/24({{ main_nfs_options }}{{ secure_nfs_options }}{% if name == 'root' %},fsid=0{% endif %})
+{% endfor %}

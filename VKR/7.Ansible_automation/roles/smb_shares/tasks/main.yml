@@ -5,10 +5,7 @@
 
 - name: Установка пакетов для SMB
   apt_rpm:
-    name:
-      - samba
-      - avahi-daemon
-      - libnss-role
+    name: "{{ smb_pkg }}"
     state: installed
 
 - name: Включение работы с ролями
@@ -16,6 +13,13 @@
       /usr/sbin/control
       libnss-role
       enabled
+  changed_when: false
+
+- name: Проверка Присоединения к домену
+  shell: net ads testjoin
+  register: join_status_result
+  ignore_errors: true
+  changed_when: false
 
 - name: Присоединение к домену через system-auth с паролем администратора
   shell: |
@@ -28,6 +32,11 @@
       {{ ad_admin_password }}'
   environment:
     PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+  no_log: true
+  when: >
+    join_status_result.rc != 0
+    or ('Join is OK' not in join_status_result.stdout)
+    or join_status_result.stderr != ""
 
 - name: Развертывание конфига SMB
   template:
@@ -35,7 +44,7 @@
     dest: /etc/samba/smb.conf
     backup: true
     mode: '0644'
-  notify: Перезапуск smb
+  notify: перезапуск smb
 
 - name: Включение службу avahi-daemon
   systemd:
@@ -44,72 +53,53 @@
     masked: false
     enabled: true
     daemon_reload: true
-  loop:
-    - avahi-daemon
-    - smb
-
-# - name: Перезагрузка после ввода в домен
-#   reboot:
-#     reboot_timeout: 240
+  loop: "{{ smb_services }}"
 
 - name: Предварительное создание ресурсов smb
   file:
-    path: "{{ item }}"
+    path: "{{ item.value.path }}"
     state: directory
     owner: Administrator
     group: Domain Users
     mode: '0755'
-  loop:
-    - /srv/smb
-    - /srv/smb/work
-    - /srv/smb/NOTadmins
-    - /srv/smb/trash
-    - /srv/smb/spec_GR1
+  loop: "{{ smb_shares_config | dict2items }}"
 
 - name: Распределение ресурсов для папок общего обмена
   file:
-    path: "{{ item }}"
+    path: '{{ smb_shares_config.trash.path }}'
     state: directory
     owner: Administrator
     group: Domain Users
     mode: '2775'
-  loop:
-    - /srv/smb/trash
 
 - name: Распределение ресурсов для папок административного доступа
   file:
-    path: "{{ item }}"
+    path: '{{ smb_shares_config.IT.path }}'
     state: directory
     owner: Administrator
     group: Domain Admins
     mode: '0770'
-  loop:
-    - /srv/smb/NOTadmins
 
 - name: Распределение ресурсов для рабочих папок
   file:
-    path: "{{ item }}"
+    path: '{{ smb_shares_config.Work.path }}'
     state: directory
     owner: Administrator
     group: Domain Users
     mode: '0770'
-  loop:
-    - /srv/smb/work
 
 - name: Распределение ресурсов для специальной группы
   file:
-    path: "{{ item }}"
+    path: '{{ smb_shares_config.VG.path }}'
     state: directory
     owner: Administrator
     group: Domain Users
     mode: '0770'
-  loop:
-    - /srv/smb/spec_GR1
 
 - name: Развертывание дополнительного конфига SMB под сетевые ресурсы
   template:
     src: usershares.conf.j2
     dest: /etc/samba/usershares.conf
     mode: '0644'
-  notify: Перезапуск smb
+  notify: перезапуск smb
 ...

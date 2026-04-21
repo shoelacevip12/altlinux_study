@@ -18,9 +18,7 @@
   listen: "restart network"
   async: 10
   poll: 0
-  loop:
-    - network
-    - samba
+  loop: "{{ samba_handlers }}"
   ignore_unreachable: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
@@ -44,9 +42,7 @@
   listen: "restart network dc2"
   async: 10
   poll: 0
-  loop:
-    - network
-    - samba
+  loop: "{{ samba_handlers }}"
   ignore_unreachable: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[1]

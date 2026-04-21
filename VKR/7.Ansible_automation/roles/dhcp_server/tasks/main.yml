@@ -17,6 +17,7 @@
     --random-password
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   ignore_errors: true
+  no_log: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -27,6 +28,7 @@
     {{ dhcpduser }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   ignore_errors: true
+  no_log: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -37,6 +39,7 @@
     --noexpiry
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
   ignore_errors: true
+  no_log: true
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
@@ -46,6 +49,7 @@
     --principal={{ dhcpduser }}@"{{ ad_realm }}"
     {{ keytab_export_path }}
     -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  no_log: true
   args:
     creates: "{{ keytab_export_path }}"
 

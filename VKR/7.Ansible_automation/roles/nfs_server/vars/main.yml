@@ -1,3 +1,10 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# vars file for roles/nfs_server
+nfs_pkg:
+  - rpcbind
+  - nfs-clients
+  - nfs-server
+
+nfs_services:
+  - rpc-gssd.service
+  - nfs-server
+...
