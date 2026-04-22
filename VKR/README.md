@@ -3615,13 +3615,15 @@ cat > roles/squid_proxy/tasks/install_squid.yml <<'EOF'
     enabled: true
     masked: false
     daemon_reload: true
-  async: 10
-  poll: 0
+  async: 30
+  poll: 3
   loop:
     - squid
 
 - name: Перепрочтение конфигурации
   command: /usr/sbin/squid -k reconfigure
+  ignore_errors: true
+  changed_when: false
 ...
 EOF
 ```
@@ -3750,8 +3752,8 @@ cat > roles/squid_proxy/handlers/main.yml <<'EOF'
     masked: false
     daemon_reload: true
   listen: "Перезапуск squid"
-  async: 10
-  poll: 0
+  async: 30
+  poll: 3
   loop:
     - squid
   ignore_unreachable: true

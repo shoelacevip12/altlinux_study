@@ -64,11 +64,13 @@
     enabled: true
     masked: false
     daemon_reload: true
-  async: 10
-  poll: 0
+  async: 30
+  poll: 3
   loop:
     - squid
 
 - name: Перепрочтение конфигурации
   command: /usr/sbin/squid -k reconfigure
+  ignore_errors: true
+  changed_when: false
 ...
