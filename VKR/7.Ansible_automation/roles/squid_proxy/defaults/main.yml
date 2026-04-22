@@ -1,3 +1,22 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for roles/squid_proxy
+squid_proxy: true
+proxy_group: proxy_acc
+
+samba_users:
+  user1:
+    name: "samba_u1"
+    password: "1qaz@WSX"
+    given_name: 'Василий Иванович Чапаев'
+    mail: 'chapay_vi@den.skv'
+  user2:
+    name: "samba_u2"
+    password: "1qaz@WSX"
+    given_name: 'Моледцев Владимир Александрович'
+    mail: 'syn_polka@den.skv'
+
+negotiate_param: "children 20 startup=0 idle=1"
+cache_mem: "1024 MB"
+cache_dir: "ufs /var/spool/squid 2048 16 256"
+max_obj_size: "100 MB"
+max_obj_size_mem: "1 MB"
+...

@@ -1,0 +1,74 @@
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов squid
+  apt_rpm:
+    name: "{{ proxy_pkg }}"
+    state: installed
+
+- name: Проверка Присоединения к домену
+  shell: net ads testjoin
+  register: join_status_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Присоединение к домену через system-auth с паролем администратора
+  shell: |
+      /bin/bash -lc \
+      '/usr/sbin/system-auth write ad \
+      {{ ad_workgroup }} \
+      {{ inventory_hostname }} \
+      {{ ad_domain | lower }} \
+      {{ ad_admin_user }} \
+      {{ ad_admin_password }}'
+  environment:
+    PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+  no_log: true
+  when: >
+    join_status_result.rc != 0
+    or ('Join is OK' not in join_status_result.stdout)
+    or join_status_result.stderr != ""
+
+- name: Получение Принципала для службы http
+  shell: |
+    printf '%s\n' '{{ ad_admin_password }}' \
+    | /usr/bin/net ads keytab add HTTP -U{{ ad_admin_user }}
+  no_log: true
+
+- name: Добавление пользователя squid в группу _keytab
+  user:
+    name: squid
+    groups: "_keytab"
+    append: yes
+  no_log: true
+
+- name: Настройка конфигурации proxy squid
+  template:
+    src: squid.conf.j2
+    dest: "/etc/squid/squid.conf"
+    backup: true
+    mode: '0644'
+  notify: Перезапуск squid
+
+- name: Построение кеша согласно конфигурации
+  command: /usr/sbin/squid -z
+  ignore_errors: true
+  changed_when: false
+
+- name: Запуск squid 
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    masked: false
+    daemon_reload: true
+  async: 10
+  poll: 0
+  loop:
+    - squid
+
+- name: Перепрочтение конфигурации
+  command: /usr/sbin/squid -k reconfigure
+...

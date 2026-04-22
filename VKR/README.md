@@ -3181,7 +3181,6 @@ EOF
 
 </details>
 
-
 ### Роль `nfs_server` - nfs файловый сервер
 #### Playbook роли nfs сервер
 
@@ -3411,6 +3410,357 @@ EOF
 
 <details>
 
+### Роль `squid_proxy` - прокси сервер
+#### Playbook роли прокси сервера
+
+<details>
+<summary>./squid_proxy.yaml</summary>
+
+```bash
+cat > ./squid_proxy.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: SQUID с Kerberos-аутентификацией
+  hosts: [proxy_servers, domain_controllers]
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - squid_proxy
+...
+EOF
+```
+
+</details>
+
+#### Главный файл задач роли прокси сервера
+
+<details>
+<summary>./roles/squid_proxy/tasks/main.yml</summary>
+
+```bash
+cat > roles/squid_proxy/tasks/main.yml <<'EOF'
+
+- name: Создание групп для Прокси
+  include_tasks: groups_proxy_add.yml
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Установка proxy squid
+  include_tasks: install_squid.yml
+  when:
+    - inventory_hostname in groups['proxy_servers']
+EOF
+```
+
+</details>
+
+#### Создание группы и пользователей для выхода в интернет сеть
+
+<details>
+<summary>./roles/squid_proxy/tasks/groups_proxy_add.yml</summary>
+
+```bash
+cat > roles/squid_proxy/tasks/groups_proxy_add.yml <<'EOF'
+---
+- name: Создание группы {{ proxy_group }}
+  command: >
+    samba-tool group add
+    {{ proxy_group }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ samba_users.user1.given_name }}
+  command: >
+    samba-tool user add
+    {{ samba_users.user1.name }}
+    '{{ samba_users.user1.password }}'
+    --given-name="{{ samba_users.user1.given_name }}"
+    --mail-address="{{ samba_users.user1.mail }}"
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ samba_users.user1.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ samba_users.user1.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ samba_users.user2.given_name }}
+  command: >
+    samba-tool user add
+    {{ samba_users.user2.name }}
+    {{ samba_users.user2.password }}
+    --given-name='{{ samba_users.user2.given_name }}'
+    --mail-address='{{ samba_users.user2.mail }}'
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ samba_users.user2.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ samba_users.user2.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление группы для доступа в интернет 
+  command: >
+    samba-tool group addmembers
+    {{ proxy_group }}
+    'Domain Admins'
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление пользователя для доступа в интернет
+  command: >
+    samba-tool group addmembers
+    {{ proxy_group }}
+    {{ samba_users.user1.name }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+...
+EOF
+```
+</details>
+
+#### Установка службы squid в режиме прямого прокси 
+
+<details>
+<summary>./roles/squid_proxy/tasks/install_squid.yml</summary>
+
+```bash
+cat > roles/squid_proxy/tasks/install_squid.yml <<'EOF'
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов squid
+  apt_rpm:
+    name: "{{ proxy_pkg }}"
+    state: installed
+
+- name: Проверка Присоединения к домену
+  shell: net ads testjoin
+  register: join_status_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Присоединение к домену через system-auth с паролем администратора
+  shell: |
+      /bin/bash -lc \
+      '/usr/sbin/system-auth write ad \
+      {{ ad_workgroup }} \
+      {{ inventory_hostname }} \
+      {{ ad_domain | lower }} \
+      {{ ad_admin_user }} \
+      {{ ad_admin_password }}'
+  environment:
+    PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+  no_log: true
+  when: >
+    join_status_result.rc != 0
+    or ('Join is OK' not in join_status_result.stdout)
+    or join_status_result.stderr != ""
+
+- name: Получение Принципала для службы http
+  shell: |
+    printf '%s\n' '{{ ad_admin_password }}' \
+    | /usr/bin/net ads keytab add HTTP -U{{ ad_admin_user }}
+  no_log: true
+
+- name: Добавление пользователя squid в группу _keytab
+  user:
+    name: squid
+    groups: "_keytab"
+    append: yes
+  no_log: true
+
+- name: Настройка конфигурации proxy squid
+  template:
+    src: squid.conf.j2
+    dest: "/etc/squid/squid.conf"
+    backup: true
+    mode: '0644'
+  notify: Перезапуск squid
+
+- name: Построение кеша согласно конфигурации
+  command: /usr/sbin/squid -z
+  ignore_errors: true
+  changed_when: false
+
+- name: Запуск squid 
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    masked: false
+    daemon_reload: true
+  async: 10
+  poll: 0
+  loop:
+    - squid
+
+- name: Перепрочтение конфигурации
+  command: /usr/sbin/squid -k reconfigure
+...
+EOF
+```
+
+</details>
+
+#### Переменные по умолчанию роли прокси сервера
+
+<details>
+<summary>./roles/squid_proxy/defaults/main.yml</summary>
+
+```bash
+cat > roles/squid_proxy/defaults/main.yml<<'EOF'
+---
+squid_proxy: true
+proxy_group: proxy_acc
+
+samba_users:
+  user1:
+    name: "samba_u1"
+    password: "1qaz@WSX"
+    given_name: 'Василий Иванович Чапаев'
+    mail: 'chapay_vi@den.skv'
+  user2:
+    name: "samba_u2"
+    password: "1qaz@WSX"
+    given_name: 'Моледцев Владимир Александрович'
+    mail: 'syn_polka@den.skv'
+
+negotiate_param: "children 20 startup=0 idle=1"
+cache_mem: "1024 MB"
+cache_dir: "ufs /var/spool/squid 2048 16 256"
+max_obj_size: "100 MB"
+max_obj_size_mem: "1 MB"
+...
+EOF
+```
+
+</details>
+
+#### Постоянные Переменные роли прокси сервера
+
+<details>
+<summary>./roles/squid_proxy/vars/main.yml</summary>
+
+```bash
+cat > roles/squid_proxy/vars/main.yml<<'EOF'
+---
+proxy_pkg:
+  - squid
+  - squid-helpers
+...
+EOF
+```
+
+</details>
+
+#### Шаблон конфигурации прокси сервера 
+
+<details>
+<summary>./roles/squid_proxy/templates/squid.conf.j2</summary>
+
+```bash
+cat > roles/squid_proxy/templates/squid.conf.j2<<'EOF'
+auth_param negotiate program /usr/lib/squid/negotiate_kerberos_auth -d -s HTTP/{{ ansible_nodename }}@{{ ad_realm }}
+auth_param negotiate {{ negotiate_param }}
+auth_param negotiate keep_alive on
+external_acl_type kerberos_access ttl=900 negative_ttl=900 %LOGIN /usr/lib/squid/ext_kerberos_ldap_group_acl -d -a -g {{ proxy_group }} -D {{ ad_realm }}
+acl localnet src 0.0.0.1-0.255.255.255  # RFC 1122 "this" network (LAN)
+acl localnet src 10.0.0.0/8             # RFC 1918 local private network (LAN)
+acl localnet src 100.64.0.0/10          # RFC 6598 shared address space (CGN)
+acl localnet src 169.254.0.0/16         # RFC 3927 link-local (directly plugged) machines
+acl localnet src 172.16.0.0/12          # RFC 1918 local private network (LAN)
+acl localnet src 192.168.0.0/16         # RFC 1918 local private network (LAN)
+acl localnet src fc00::/7               # RFC 4193 local private network range
+acl localnet src fe80::/10              # RFC 4291 link-local (directly plugged) machines
+acl SSL_ports port 443
+acl Safe_ports port 80          # http
+acl Safe_ports port 21          # ftp
+acl Safe_ports port 443         # https
+acl Safe_ports port 70          # gopher
+acl Safe_ports port 210         # wais
+acl Safe_ports port 1025-65535  # unregistered ports
+acl Safe_ports port 280         # http-mgmt
+acl Safe_ports port 488         # gss-http
+acl Safe_ports port 591         # filemaker
+acl Safe_ports port 777         # multiling http
+acl kerberos_access external kerberos_access
+acl auth proxy_auth REQUIRED
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost manager
+http_access deny manager
+http_access allow localhost
+http_access deny to_localhost
+http_access deny to_linklocal
+http_access allow kerberos_access auth
+http_access deny all
+http_port 3128
+coredump_dir /var/spool/squid
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern .               0       20%     4320
+cache_mem {{ cache_mem }}
+cache_dir {{ cache_dir }}
+maximum_object_size {{ max_obj_size }}
+maximum_object_size_in_memory {{ max_obj_size_mem }}
+EOF
+```
+
+</details>
+
+#### Обработчики роли прокси сервера
+
+<details>
+<summary>./roles/squid_proxy/handlers/main.yml</summary>
+
+```bash
+cat > roles/squid_proxy/handlers/main.yml <<'EOF'
+---
+- name: Перезапуск squid 
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    masked: false
+    daemon_reload: true
+  listen: "Перезапуск squid"
+  async: 10
+  poll: 0
+  loop:
+    - squid
+  ignore_unreachable: true
+...
+EOF
+```
+
+</details>
+
 # gitflic_github репозиторий
 ```bash
 # Добавляем ключи агенту ssh от репозитория gitflic и github
@@ -3437,7 +3787,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd14]ansible" \
+git commit -am "[upd15]ansible" \
 && git push \
 --set-upstream \
 altlinux \

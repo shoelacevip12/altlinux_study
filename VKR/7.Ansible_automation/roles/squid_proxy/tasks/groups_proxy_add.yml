@@ -1,0 +1,76 @@
+---
+- name: Создание группы {{ proxy_group }}
+  command: >
+    samba-tool group add
+    {{ proxy_group }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ samba_users.user1.given_name }}
+  command: >
+    samba-tool user add
+    {{ samba_users.user1.name }}
+    '{{ samba_users.user1.password }}'
+    --given-name="{{ samba_users.user1.given_name }}"
+    --mail-address="{{ samba_users.user1.mail }}"
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ samba_users.user1.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ samba_users.user1.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ samba_users.user2.given_name }}
+  command: >
+    samba-tool user add
+    {{ samba_users.user2.name }}
+    {{ samba_users.user2.password }}
+    --given-name='{{ samba_users.user2.given_name }}'
+    --mail-address='{{ samba_users.user2.mail }}'
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ samba_users.user2.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ samba_users.user2.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление группы для доступа в интернет 
+  command: >
+    samba-tool group addmembers
+    {{ proxy_group }}
+    'Domain Admins'
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление пользователя для доступа в интернет
+  command: >
+    samba-tool group addmembers
+    {{ proxy_group }}
+    {{ samba_users.user1.name }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+...
