@@ -46,12 +46,12 @@
    sysadmin@172.16.100.2 "su -"
    ```
 
-2. **# генерация пары ssh ключей для подключения**
-  ```bash
-  ssh-keygen -f \
-  /home/sysadmin/.ssh/id_skv_VKR_vpn \
-  -t ed25519 -C "VKR_vpn"
-  ```
+2. **генерация пары ssh ключей для подключения**
+   ```bash
+   ssh-keygen -f \
+     /home/sysadmin/.ssh/id_skv_VKR_vpn \
+     -t ed25519 -C "VKR_vpn"
+   ```
 
 3. **Коррекция прав на SSH-ключи**
    ```bash
