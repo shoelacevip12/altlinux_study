@@ -4232,7 +4232,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd18]ansible" \
+git commit -am "[upd19]ansible" \
 && git push \
 --set-upstream \
 altlinux \
