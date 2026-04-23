@@ -616,7 +616,7 @@ mv ans_vkr_skv \
 ```
 ```bash
 # Создание ролей ansible
-for r in {base_setup,chrony_sync,samba_ad_dc,dhcp_server,smb_shares,nfs_server,squid_proxy,sysvol_replication,monitoring_scripts}; do \
+for r in {base_setup,chrony_sync,samba_ad_dc,dhcp_server,smb_shares,nfs_server,squid_proxy,sysvol_replication}; do \
 ansible-galaxy role \
 init \
 roles/$r \
@@ -635,7 +635,6 @@ roles/$r \
 - Role roles/nfs_server was created successfully
 - Role roles/squid_proxy was created successfully
 - Role roles/sysvol_replication was created successfully
-- Role roles/monitoring_scripts was created successfully
 ```
 
 </details>
