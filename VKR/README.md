@@ -750,7 +750,7 @@ base_setup: true
 
 chrony_sync: true
 
-sysvol_replication: true # на эту переменную завязаны репликации служб AD и DHCP
+sysvol_replication: true  # на эту переменную завязаны репликации служб AD и DHCP
 samba_ad_dc: true
 dhcp_server: true
 
@@ -779,7 +779,6 @@ ptr_ip_second_dc: 13
 ldap_search: "dc=den,dc=skv"
 
 # ==| Для роли DHCP |== #
-sysvol_replication: true
 network_subnet: "192.168.100.0"
 network_netmask: "255.255.255.0"
 network_gateway: "192.168.100.1"
@@ -794,6 +793,16 @@ synchron_path: "/var/lib/samba/sysvol"
 spec_smb_gr1: "Специальная_группа"
 
 samba_users:
+  user1:
+    name: "samba_u1"
+    password: "1qaz@WSX"
+    given_name: 'Василий Иванович Чапаев'
+    mail: 'chapay_vi@den.skv'
+  user2:
+    name: "samba_u2"
+    password: "1qaz@WSX"
+    given_name: 'Моледцев Владимир Александрович'
+    mail: 'syn_polka@den.skv'
   user3:
     name: "samba_u3"
     password: "1qaz@WSX"
@@ -881,18 +890,6 @@ secure_nfs_options: ",sec=krb5:krb5i:krb5p"
 
 # ==| Для роли SQUID прокси |== #
 proxy_group: proxy_acc
-
-samba_users:
-  user1:
-    name: "samba_u1"
-    password: "1qaz@WSX"
-    given_name: 'Василий Иванович Чапаев'
-    mail: 'chapay_vi@den.skv'
-  user2:
-    name: "samba_u2"
-    password: "1qaz@WSX"
-    given_name: 'Моледцев Владимир Александрович'
-    mail: 'syn_polka@den.skv'
 
 negotiate_param: "children 20 startup=0 idle=1"
 cache_mem: "1024 MB"
