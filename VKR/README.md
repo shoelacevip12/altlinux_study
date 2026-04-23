@@ -1237,6 +1237,7 @@ cat > roles/chrony_sync/tasks/main.yml <<'EOF'
   notify: Restart chronyd
   when:
   - inventory_hostname == (groups['domain_controllers'] | list)[1]
+  - sysvol_replication | bool
 
 - name: Настройка chrony.conf для пользователей домена
   template:
@@ -1365,6 +1366,7 @@ EOF
 ```bash
 cat > roles/chrony_sync/defaults/main.yml<<'EOF'
 ---
+sysvol_replication: false
 chrony_sync: true
 exter_ntp: ntp3.vniiftri.ru
 allow_clients: "192.168.100.0/24"

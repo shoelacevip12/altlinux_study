@@ -26,6 +26,7 @@
   notify: Restart chronyd
   when:
   - inventory_hostname == (groups['domain_controllers'] | list)[1]
+  - sysvol_replication | bool
 
 - name: Настройка chrony.conf для пользователей домена
   template:
