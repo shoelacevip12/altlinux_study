@@ -128,7 +128,7 @@ become_method = su
 - **`inventory/group_vars/all/all.yml`** содержит глобальные параметры:
   - Имя домена: `ad_workgroup: "den.skv"`
   - Динамическое определение IP контроллеров домена через `hostvars`
-  - Тогглы включения ролей (например, `base_setup: true`)
+  - Триггеры включения ролей (например, `base_setup: true`)
 
 ### Ansible Vault
 Секреты хранятся в зашифрованном файле `inventory/group_vars/all/vault`. Пароль для доступа генерируется автоматически и сохраняется в `./va_pa`.
