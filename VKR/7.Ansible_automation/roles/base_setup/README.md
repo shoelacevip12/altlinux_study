@@ -1,6 +1,6 @@
 # Развертывание гибридной инфраструктуры с помощью Ansible
 
-Данный репозиторий содержит Ознакомительную автоматизированную конфигурацию для развертывания и управления гибридной инфраструктурой на базе **ALT Linux** (семейство `apt-rpm`). Проект использует Ansible для настройки контроллеров домена, файловых и прокси-серверов, синхронизации времени, настройки DNS/IPv6, а также подготовки базовой среды для дальнейших сервисов.
+Данный репозиторий содержит Для Демонстрации автоматизированную конфигурацию для развертывания и управления гибридной инфраструктурой на базе **ALT Linux** (семейство `apt-rpm`). Проект использует Ansible для настройки контроллеров домена, файловых и прокси-серверов, синхронизации времени, настройки DNS/IPv6, а также подготовки базовой среды для дальнейших сервисов.
 
 ---
 
@@ -112,15 +112,28 @@
 Локальная конфигурация отключает проверку хост-ключей (для удобства в тестовой среде), задает путь к инвентарю и ролям, а также переключает механизм повышения привилегий на `su`:
 ```ini
 [defaults]
-inventory = ./inventory
-roles_path = ./roles
-host_key_checking = False
-interpreter_python = auto_silent
-callback_enabled = profile_tasks
+home=./
+inventory=./inventory
+roles_path=./roles
+vault_password_file=./va_pa
+host_key_checking=False
+interpreter_python=auto_silent
+deprecation_warnings=False
+retry_files_enabled=False
+callback_enabled=profile_tasks
 
 [privilege_escalation]
-become = true
-become_method = su
+become=true
+become_method=su
+
+[connection]
+ssh_agent=auto
+
+[paramiko_connection]
+host_key_checking=False
+
+[ssh_connection]
+host_key_checking=False
 ```
 
 ### Инвентаризация и переменные
