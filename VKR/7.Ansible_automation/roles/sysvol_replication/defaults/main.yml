@@ -1,4 +1,5 @@
 ---
+sysvol_replication: false
 ssh_sysvol_path: "/root/.ssh/id_sysvol_ed25519"
 synchron_path: "/var/lib/samba/sysvol"
 ...

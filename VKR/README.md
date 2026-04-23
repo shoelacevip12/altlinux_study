@@ -730,6 +730,7 @@ cat > inventory/group_vars/all/all.yml <<'EOF'
 #====| Общие параметры |===#
 # параметры суперпользователя
 ansible_ssh_private_key_file: "~/.ssh/id_skv_VKR_vpn"
+
 # параметры домена
 ad_workgroup: "den.skv"
 ad_realm: "DEN.SKV"
@@ -741,36 +742,163 @@ primary_dc: "{{ groups['domain_controllers'][0] }}"
 primary_dc_ip: "{{ hostvars[primary_dc]['ansible_host'] }}"
 secondary_dc: "{{ groups['domain_controllers'][1] }}"
 secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
-# Сеть
-network_subnet: "192.168.89.0"
-network_netmask: "255.255.255.0"
-network_gateway: "192.168.89.1"
 
-#====| Переназначенные параметры ролей |===#
-# роль chrony
-allow_clients: "192.168.89.0/24"
-#AD роль
-ptr_zone: "89.168.192.in-addr.arpa"
+#====| ВКЛ\ВЫКЛ ролей |===#
 
-# включаем(true)\выключаем(false) роли
+# включаем(true)\выключаем(false) РОЛИ
 base_setup: true
 
-# Отдельные задачи включения пакетов
-dist_upd: true # Обновление кеша пакетов
-dist_upgrd: false # обновление установленных приложений
-kernel_upd: false # обновление ядра
+chrony_sync: true
 
-chrony_sync: false
-
-sysvol_replication: false # на эту переменную завязаны репликации служб AD и DHCP
-monitoring_scripts: false
-samba_ad_dc: false
-dhcp_server: false
+sysvol_replication: true # на эту переменную завязаны репликации служб AD и DHCP
+samba_ad_dc: true
+dhcp_server: true
 
 smb_shares: true
-nfs_server: false
+nfs_server: true
 
-squid_proxy: false
+squid_proxy: true
+
+#====| Переназначенные параметры ролей |===#
+
+# ==| Для роли Базовой настройки |== #
+dist_upd: true # Обновление кеша пакетов
+dist_upgrd: true # обновление установленных приложений
+kernel_upd: true # обновление ядра
+
+# ==| Для роли chrony |== #
+exter_ntp: ntp3.vniiftri.ru
+allow_clients: "192.168.100.0/24"
+
+# ==| Для роли AD |== #
+ad_backend: 'SAMBA_INTERNAL'
+dns_refresh: 720
+ptr_zone: "100.168.192.in-addr.arpa"
+ptr_ip_main_dc: 12
+ptr_ip_second_dc: 13
+ldap_search: "dc=den,dc=skv"
+
+# ==| Для роли DHCP |== #
+sysvol_replication: true
+network_subnet: "192.168.100.0"
+network_netmask: "255.255.255.0"
+network_gateway: "192.168.100.1"
+broadcast: "192.168.100.255"
+dhcp_range: "192.168.100.50 192.168.100.254"
+
+# ==| Для sysvol репликации |== #
+ssh_sysvol_path: "/root/.ssh/id_sysvol_ed25519"
+synchron_path: "/var/lib/samba/sysvol"
+
+# ==| Для роли SMB сервера |== #
+spec_smb_gr1: "Специальная_группа"
+
+samba_users:
+  user3:
+    name: "samba_u3"
+    password: "1qaz@WSX"
+    given_name: 'Колкин Павел Сергеевич'
+    mail: 'garaj@den.skv'
+  user4:
+    name: "samba_u4"
+    password: "1qaz@WSX"
+    given_name: 'Николай Сергеевич Мячиков'
+    mail: 'djin_udachi@den.skv'
+
+smb_shares_config:
+  VG:
+    comment: "Для работы специальной группе"
+    path: "/srv/smb/spec_GR1"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Специальная_группа' '+Domain Admins'"
+    write_list: "'+Специальная_группа' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "0770"
+    directory_mask: "0770"
+
+  trash:
+    comment: "TyT /7OJLHbIU TRASH"
+    path: "/srv/smb/trash"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Users' '+Domain Admins'"
+    write_list: "'+Domain Users' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "2775"
+    directory_mask: "1775"
+
+  IT:
+    comment: "Для администраторов"
+    path: "/srv/smb/NOTadmins"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Admins'"
+    write_list: "'+Domain Admins'"
+    browseable: "no"
+    create_mask: "0770"
+    directory_mask: "0770"
+
+  Work:
+    comment: "Для работы пользователям домена"
+    path: "/srv/smb/work"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Domain Users' '+Domain Admins'"
+    write_list: "'+Domain Users' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "0770"
+    directory_mask: "0770"
+
+# ==| Для роли NFS сервера |== #
+spec_nfs_gr1: "Специальная_группа"
+
+nfs_users:
+  user3:
+    name: "samba_u3"
+    password: "1qaz@WSX"
+    given_name: 'Колкин Павел Сергеевич'
+    mail: 'garaj@den.skv'
+  user4:
+    name: "samba_u4"
+    password: "1qaz@WSX"
+    given_name: 'Николай Сергеевич Мячиков'
+    mail: 'djin_udachi@den.skv'
+
+nfs_shares:
+  root:
+    path: "/srv/smb"
+  trash:
+    path: "/srv/smb/trash"
+  NOTadmins:
+    path: "/srv/smb/NOTadmins"
+  work:
+    path: "/srv/smb/work"
+  spec_GR1:
+    path: "/srv/smb/spec_GR1"
+main_nfs_options: "rw,no_subtree_check"
+secure_nfs_options: ",sec=krb5:krb5i:krb5p"
+
+# ==| Для роли SQUID прокси |== #
+proxy_group: proxy_acc
+
+samba_users:
+  user1:
+    name: "samba_u1"
+    password: "1qaz@WSX"
+    given_name: 'Василий Иванович Чапаев'
+    mail: 'chapay_vi@den.skv'
+  user2:
+    name: "samba_u2"
+    password: "1qaz@WSX"
+    given_name: 'Моледцев Владимир Александрович'
+    mail: 'syn_polka@den.skv'
+
+negotiate_param: "children 20 startup=0 idle=1"
+cache_mem: "1024 MB"
+cache_dir: "ufs /var/spool/squid 2048 16 256"
+max_obj_size: "100 MB"
+max_obj_size_mem: "1 MB"
 ...
 EOF
 ```
@@ -860,10 +988,6 @@ cat > ./main.yaml<< 'EOF'
 - name: SQUID с Kerberos-аутентификацией
   import_playbook: squid_proxy.yaml
   when: squid_proxy | bool
-
-- name: Скрипты мониторинга и failover
-  import_playbook: monitoring_scripts.yaml
-  when: monitoring_scripts | bool
 ...
 EOF
 ```
@@ -2862,6 +2986,7 @@ EOF
 ```bash
 cat >roles/sysvol_replication/defaults/main.yml<<'EOF'
 ---
+sysvol_replication: false
 ssh_sysvol_path: "/root/.ssh/id_sysvol_ed25519"
 synchron_path: "/var/lib/samba/sysvol"
 ...
@@ -3248,6 +3373,7 @@ EOF
 ```bash
 cat > roles/smb_shares/defaults/main.yml<<'EOF'
 ---
+smb_shares: true
 spec_smb_gr1: "Специальная_группа"
 
 samba_users:
@@ -3676,6 +3802,7 @@ EOF
 ```bash
 cat > roles/nfs_server/defaults/main.yml<<'EOF'
 ---
+nfs_server: true
 spec_nfs_gr1: "Специальная_группа"
 
 nfs_users:

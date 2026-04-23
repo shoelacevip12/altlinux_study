@@ -1,4 +1,5 @@
 ---
+nfs_server: true
 spec_nfs_gr1: "Специальная_группа"
 
 nfs_users:

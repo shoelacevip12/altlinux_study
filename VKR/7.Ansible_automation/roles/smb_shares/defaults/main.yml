@@ -1,4 +1,5 @@
 ---
+smb_shares: true
 spec_smb_gr1: "Специальная_группа"
 
 samba_users:
