@@ -39,10 +39,10 @@
 
 ## Установка
 
-Установка коллекции из локальной директории:
+Установка коллекции Из репозитория GitHub:
 
 ```bash
-ansible-galaxy collection install /path/to/VKR-ans_vkr_skv-*.tar.gz
+ansible-galaxy collection install git+https://github.com/shoelacevip12/Altlinux_VKR_2026.git
 ```
 
 Установка зависимости community.general:

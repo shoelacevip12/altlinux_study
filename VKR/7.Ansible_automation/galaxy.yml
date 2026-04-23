@@ -1,5 +1,5 @@
 ---
-namespace: VKR
+namespace: shoelacevip12
 name: ans_vkr_skv
 version: 1.0.0
 readme: README.md
@@ -22,7 +22,7 @@ tags:
   - altlinux
 dependencies:
   community.general: '>=12.0.0'
-repository: https://github.com/shoelacevip12/altlinux_study/tree/main/VKR/7.Ansible_automation
+repository: https://github.com/shoelacevip12/Altlinux_VKR_2026.git
 build_ignore:
   - '*.log'
   - '*.retry'
