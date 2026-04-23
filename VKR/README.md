@@ -676,9 +676,7 @@ EOF
 </details>
 
 ```bash
-# создание каталога inventory и глобальных переменных для хостов
-mkdir -vp inventory/{group_vars,host_vars}
-
+# создание каталога inventory и глобальных переменных для всех групп хостов
 mkdir -vp inventory/group_vars/all
 ```
 ```bash
@@ -1012,7 +1010,6 @@ EOF
 ```
 
 </details>
-
 
 #### Главный файл задач Роли базовых настроек
 
@@ -4234,7 +4231,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd16]ansible" \
+git commit -am "[upd17]ansible" \
 && git push \
 --set-upstream \
 altlinux \
