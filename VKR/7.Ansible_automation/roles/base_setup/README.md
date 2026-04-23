@@ -24,7 +24,7 @@
 | **ОС** | ALT Linux (совместимость с `apt-rpm`, `update-kernel`) |
 | **Ansible** | `>= 2.14` |
 | **Python** | `3.x` на управляемых узлах |
-| **Доступ** | SSH-ключ, Yandex Cloud Bastion-хост, пользователь `sysadmin` |
+| **Доступ** | SSH-ключ, пользователь `sysadmin` как `ansible_user` |
 | **Утилиты** | `sshpass`, `pwgen`, `nano`, `pwqgen` |
 
 ---
