@@ -3851,7 +3851,7 @@ nfs_services:
 EOF
 ```
 
-<details>
+</details>
 
 ### Роль `squid_proxy` - прокси сервер
 #### Playbook роли прокси сервера
