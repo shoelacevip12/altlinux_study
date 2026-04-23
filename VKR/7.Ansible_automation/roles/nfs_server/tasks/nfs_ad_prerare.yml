@@ -1,0 +1,94 @@
+---
+- name: Добавление А записи для smb сервера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ad_workgroup }}
+    {{ hostvars[item]['ansible_hostname'] | upper }}
+    A
+    {{ hostvars[item]['ansible_default_ipv4']['address'] }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  loop: "{{ groups['file_servers'] }}"
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление записи типа PTR для обратной зоны smb сервера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    {{ hostvars[item]['ansible_default_ipv4']['address'].split('.') | last }}
+    PTR
+    {{ hostvars[item]['ansible_nodename'] }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  loop: "{{ groups['file_servers'] }}"
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание группы {{ spec_nfs_gr1 }}
+  command: >
+    samba-tool group add
+    {{ spec_nfs_gr1 }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ nfs_users.user3.given_name }}
+  command: >
+    samba-tool user add
+    {{ nfs_users.user3.name }}
+    '{{ nfs_users.user3.password }}'
+    --given-name="{{ nfs_users.user3.given_name }}"
+    --mail-address="{{ nfs_users.user3.mail }}"
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ nfs_users.user3.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ nfs_users.user3.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ nfs_users.user4.given_name }}
+  command: >
+    samba-tool user add
+    {{ nfs_users.user4.name }}
+    {{ nfs_users.user4.password }}
+    --given-name='{{ nfs_users.user4.given_name }}'
+    --mail-address='{{ nfs_users.user4.mail }}'
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ nfs_users.user4.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ nfs_users.user4.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление пользователей в {{ spec_smb_gr1 }}
+  command: >
+    samba-tool group addmembers
+    {{ spec_nfs_gr1 }}
+    {{ nfs_users.user3.name }},{{ nfs_users.user4.name }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+...

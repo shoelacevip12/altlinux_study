@@ -1,5 +1,30 @@
 ---
+spec_smb_gr1: "Специальная_группа"
+
+samba_users:
+  user3:
+    name: "samba_u3"
+    password: "1qaz@WSX"
+    given_name: 'Колкин Павел Сергеевич'
+    mail: 'garaj@den.skv'
+  user4:
+    name: "samba_u4"
+    password: "1qaz@WSX"
+    given_name: 'Николай Сергеевич Мячиков'
+    mail: 'djin_udachi@den.skv'
+
 smb_shares_config:
+  VG:
+    comment: "Для работы специальной группе"
+    path: "/srv/smb/spec_GR1"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Специальная_группа' '+Domain Admins'"
+    write_list: "'+Специальная_группа' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "0770"
+    directory_mask: "0770"
+
   trash:
     comment: "TyT /7OJLHbIU TRASH"
     path: "/srv/smb/trash"
@@ -25,17 +50,6 @@ smb_shares_config:
   Work:
     comment: "Для работы пользователям домена"
     path: "/srv/smb/work"
-    writable: "yes"
-    guest_ok: "no"
-    read_list: "'+Domain Users' '+Domain Admins'"
-    write_list: "'+Domain Users' '+Domain Admins'"
-    browseable: "yes"
-    create_mask: "0770"
-    directory_mask: "0770"
-
-  VG:
-    comment: "Для работы специальной группе"
-    path: "/srv/smb/spec_GR1"
     writable: "yes"
     guest_ok: "no"
     read_list: "'+Domain Users' '+Domain Admins'"

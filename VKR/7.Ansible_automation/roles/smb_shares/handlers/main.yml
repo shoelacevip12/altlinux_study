@@ -7,7 +7,7 @@
     masked: false
     daemon_reload: true
   listen: "перезапуск smb"
-  async: 10
-  poll: 0
+  async: 12
+  poll: 3
   loop: "{{ smb_services }}"
 ...

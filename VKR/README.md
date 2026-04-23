@@ -455,19 +455,53 @@ apt-get update \
 && update-kernel -y \
 && apt-get dist-upgrade -y \
 && apt-get install ansible sshpass -y \
-&& apt-get autoremove -y \
-&& systemctl reboot
+&& apt-get autoremove -y
+```
+```bash
+# Вход под пользователем что будет выполнять роль ansible_user
+su - sysadmin
+```
+```bash
+# Установка плагинов общей коллекции Ansible
+ansible-galaxy collection \
+install \
+community.general \
+```
+
+<details>
+<summary>Лог установки коллекции community.general Ansible</summary>
+
+```log
+Process install dependency map
+Starting collection install process
+Installing 'community.general:12.6.0' to '/home/sysadmin/.ansible/collections/ansible_collections/community/general'
+```
+
+</details>
+
+```bash
+# Добавление переменной в среду пользователя
+# Для вывода результата работы ansible json->yaml формате
+echo -e "\nexport ANSIBLE_CALLBACK_RESULT_FORMAT=yaml" \
+| tee -a ~/.bashrc \
+&& . ~/.bashrc
+```
+
+```bash
+# Перезагрузка системы после всех обновлений и установок
+su -
+
+systemctl reboot
 ```
 ### Подготовка Управляемых узлов
 #### Проброс ключей для работы ansible
 ```bash
 # вход на bastion хост по ключу по ssh через yandex cloud
-ssh -t \
+ssh \
 -i ~/.ssh/id_skv_VKR_vpn \
 -J skv@158.160.201.144 \
 -o StrictHostKeyChecking=accept-new \
-sysadmin@172.16.100.2 \
-"su -"
+sysadmin@172.16.100.2
 ```
 ```bash
 # проброс ключа до Управляемых хостов
@@ -1320,6 +1354,7 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[1]
     - sysvol_replication | bool
+    - not "/var/lib/samba/private/sam.ldb" is exists
 
 - meta: flush_handlers
 
@@ -1335,11 +1370,15 @@ cat > roles/samba_ad_dc/tasks/base.yml <<'EOF'
     path: "{{ item }}"
     state: absent
   loop: "{{ smaba_conflicts_files }}"
+  when: 
+    - not "/var/lib/samba/private/sam.ldb" is exists
 
 - name: создание каталога для работы Домена
   file:
     path: /var/lib/samba/sysvol
     state: directory
+  when: 
+    - not "/var/lib/samba/private/sam.ldb" is exists
 ...
 EOF
 ```
@@ -2895,7 +2934,7 @@ cat > ./smb_shares.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
 ---
 - name: Smb файловый сервер
-  hosts: file_servers
+  hosts: [file_servers, domain_controllers]
   become: true
   become_method: su
   become_user: root
@@ -2914,6 +2953,131 @@ EOF
 
 ```bash
 cat > roles/smb_shares/tasks/main.yml <<'EOF'
+---
+- name: Регистрация DNS и создание пользователей и групп
+  include_tasks: ad_prerare.yml
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Установка smb файл-сервера
+  include_tasks: smb_install.yml
+  when:
+    - inventory_hostname in groups['file_servers']
+...
+EOF
+```
+
+</details>
+
+#### Файл задач подготовки AD для работы с ролью Smb сервер
+
+<details>
+<summary>./roles/smb_shares/tasks/ad_prerare.yml</summary>
+
+```bash
+cat > roles/smb_shares/tasks/ad_prerare.yml <<'EOF'
+---
+- name: Добавление А записи для smb сервера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ad_workgroup }}
+    {{ hostvars[item]['ansible_hostname'] | upper }}
+    A
+    {{ hostvars[item]['ansible_default_ipv4']['address'] }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  loop: "{{ groups['file_servers'] }}"
+  no_log: true
+
+- name: Добавление записи типа PTR для обратной зоны smb сервера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    {{ hostvars[item]['ansible_default_ipv4']['address'].split('.') | last }}
+    PTR
+    {{ hostvars[item]['ansible_nodename'] }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  loop: "{{ groups['file_servers'] }}"
+  no_log: true
+
+- name: Создание группы {{ spec_smb_gr1 }}
+  command: >
+    samba-tool group add
+    {{ spec_smb_gr1 }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ samba_users.user3.given_name }}
+  command: >
+    samba-tool user add
+    {{ samba_users.user3.name }}
+    '{{ samba_users.user3.password }}'
+    --given-name="{{ samba_users.user3.given_name }}"
+    --mail-address="{{ samba_users.user3.mail }}"
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ samba_users.user3.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ samba_users.user3.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ samba_users.user4.given_name }}
+  command: >
+    samba-tool user add
+    {{ samba_users.user4.name }}
+    {{ samba_users.user4.password }}
+    --given-name='{{ samba_users.user4.given_name }}'
+    --mail-address='{{ samba_users.user4.mail }}'
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ samba_users.user4.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ samba_users.user4.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление пользователей в {{ spec_smb_gr1 }}
+  command: >
+    samba-tool group addmembers
+    {{ spec_smb_gr1 }}
+    {{ samba_users.user3.name }},{{ samba_users.user4.name }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+...
+EOF
+```
+
+</details>
+
+#### Файл задач установки и настройка серверов для роли Smb сервер
+
+<details>
+<summary>./roles/smb_shares/tasks/smb_install.yml</summary>
+
+```bash
+cat > roles/smb_shares/tasks/smb_install.yml <<'EOF'
 ---
 - name: Обновление кеша пакетов
   apt_rpm:
@@ -2980,6 +3144,14 @@ cat > roles/smb_shares/tasks/main.yml <<'EOF'
     mode: '0755'
   loop: "{{ smb_shares_config | dict2items }}"
 
+- name: Распределение ресурсов для специальной группы
+  file:
+    path: '{{ smb_shares_config.VG.path }}'
+    state: directory
+    owner: Administrator
+    group: "{{ spec_smb_gr1 }}"
+    mode: '0770'
+
 - name: Распределение ресурсов для папок общего обмена
   file:
     path: '{{ smb_shares_config.trash.path }}'
@@ -2999,14 +3171,6 @@ cat > roles/smb_shares/tasks/main.yml <<'EOF'
 - name: Распределение ресурсов для рабочих папок
   file:
     path: '{{ smb_shares_config.Work.path }}'
-    state: directory
-    owner: Administrator
-    group: Domain Users
-    mode: '0770'
-
-- name: Распределение ресурсов для специальной группы
-  file:
-    path: '{{ smb_shares_config.VG.path }}'
     state: directory
     owner: Administrator
     group: Domain Users
@@ -3084,7 +3248,32 @@ EOF
 ```bash
 cat > roles/smb_shares/defaults/main.yml<<'EOF'
 ---
+spec_smb_gr1: "Специальная_группа"
+
+samba_users:
+  user3:
+    name: "samba_u3"
+    password: "1qaz@WSX"
+    given_name: 'Колкин Павел Сергеевич'
+    mail: 'garaj@den.skv'
+  user4:
+    name: "samba_u4"
+    password: "1qaz@WSX"
+    given_name: 'Николай Сергеевич Мячиков'
+    mail: 'djin_udachi@den.skv'
+
 smb_shares_config:
+  VG:
+    comment: "Для работы специальной группе"
+    path: "/srv/smb/spec_GR1"
+    writable: "yes"
+    guest_ok: "no"
+    read_list: "'+Специальная_группа' '+Domain Admins'"
+    write_list: "'+Специальная_группа' '+Domain Admins'"
+    browseable: "yes"
+    create_mask: "0770"
+    directory_mask: "0770"
+
   trash:
     comment: "TyT /7OJLHbIU TRASH"
     path: "/srv/smb/trash"
@@ -3110,17 +3299,6 @@ smb_shares_config:
   Work:
     comment: "Для работы пользователям домена"
     path: "/srv/smb/work"
-    writable: "yes"
-    guest_ok: "no"
-    read_list: "'+Domain Users' '+Domain Admins'"
-    write_list: "'+Domain Users' '+Domain Admins'"
-    browseable: "yes"
-    create_mask: "0770"
-    directory_mask: "0770"
-
-  VG:
-    comment: "Для работы специальной группе"
-    path: "/srv/smb/spec_GR1"
     writable: "yes"
     guest_ok: "no"
     read_list: "'+Domain Users' '+Domain Admins'"
@@ -3172,8 +3350,8 @@ cat > roles/smb_shares/handlers/main.yml <<'EOF'
     masked: false
     daemon_reload: true
   listen: "перезапуск smb"
-  async: 10
-  poll: 0
+  async: 12
+  poll: 3
   loop: "{{ smb_services }}"
 ...
 EOF
@@ -3192,7 +3370,7 @@ cat > ./nfs_server.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
 ---
 - name: NFS файловый сервер
-  hosts: file_servers
+  hosts: [file_servers, domain_controllers]
   become: true
   become_method: su
   become_user: root
@@ -3211,6 +3389,135 @@ EOF
 
 ```bash
 cat > roles/nfs_server/tasks/main.yml <<'EOF'
+---
+- name: Регистрация DNS и создание пользователей и групп
+  include_tasks: nfs_ad_prerare.yml
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
+
+- name: Установка nfs файл-сервера
+  include_tasks: nfs_install.yml
+  when:
+    - inventory_hostname in groups['file_servers']
+...
+EOF
+```
+
+</details>
+
+#### Файл задач подготовки AD для работы с ролью Smb сервер
+
+<details>
+<summary>./roles/nfs_server/tasks/nfs_ad_prerare.yml</summary>
+
+```bash
+cat > roles/nfs_server/tasks/nfs_ad_prerare.yml <<'EOF'
+---
+- name: Добавление А записи для smb сервера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ad_workgroup }}
+    {{ hostvars[item]['ansible_hostname'] | upper }}
+    A
+    {{ hostvars[item]['ansible_default_ipv4']['address'] }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  loop: "{{ groups['file_servers'] }}"
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление записи типа PTR для обратной зоны smb сервера
+  command: >
+    samba-tool dns add
+    {{ inventory_hostname }}
+    {{ ptr_zone }}
+    {{ hostvars[item]['ansible_default_ipv4']['address'].split('.') | last }}
+    PTR
+    {{ hostvars[item]['ansible_nodename'] }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  loop: "{{ groups['file_servers'] }}"
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание группы {{ spec_nfs_gr1 }}
+  command: >
+    samba-tool group add
+    {{ spec_nfs_gr1 }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ nfs_users.user3.given_name }}
+  command: >
+    samba-tool user add
+    {{ nfs_users.user3.name }}
+    '{{ nfs_users.user3.password }}'
+    --given-name="{{ nfs_users.user3.given_name }}"
+    --mail-address="{{ nfs_users.user3.mail }}"
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ nfs_users.user3.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ nfs_users.user3.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Создание доменного пользователя {{ nfs_users.user4.given_name }}
+  command: >
+    samba-tool user add
+    {{ nfs_users.user4.name }}
+    {{ nfs_users.user4.password }}
+    --given-name='{{ nfs_users.user4.given_name }}'
+    --mail-address='{{ nfs_users.user4.mail }}'
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Разблокировка доменного пользователя {{ nfs_users.user4.given_name }}
+  command: >
+    samba-tool user
+    setexpiry
+    {{ nfs_users.user4.name }}
+    --noexpiry
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+
+- name: Добавление пользователей в {{ spec_smb_gr1 }}
+  command: >
+    samba-tool group addmembers
+    {{ spec_nfs_gr1 }}
+    {{ nfs_users.user3.name }},{{ nfs_users.user4.name }}
+    -U'{{ ad_admin_user }}%{{ ad_admin_password }}'
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+...
+EOF
+```
+
+</details>
+
+#### Файл задач установки и настройка серверов для роли NFS сервер
+
+<details>
+<summary>./roles/nfs_server/tasks/nfs_install.yml</summary>
+
+```bash
+cat > roles/nfs_server/tasks/nfs_install.yml <<'EOF'
 ---
 - name: Обновление кеша пакетов
   apt_rpm:
@@ -3298,7 +3605,7 @@ cat > roles/nfs_server/tasks/main.yml <<'EOF'
     path: '{{ nfs_shares.spec_GR1.path }}'
     state: directory
     owner: Administrator
-    group: Domain Users
+    group: "{{ spec_nfs_gr1 }}"
     mode: '0770'
   when: dir_check_result.changed
 
@@ -3369,6 +3676,20 @@ EOF
 ```bash
 cat > roles/nfs_server/defaults/main.yml<<'EOF'
 ---
+spec_nfs_gr1: "Специальная_группа"
+
+nfs_users:
+  user3:
+    name: "samba_u3"
+    password: "1qaz@WSX"
+    given_name: 'Колкин Павел Сергеевич'
+    mail: 'garaj@den.skv'
+  user4:
+    name: "samba_u4"
+    password: "1qaz@WSX"
+    given_name: 'Николай Сергеевич Мячиков'
+    mail: 'djin_udachi@den.skv'
+
 nfs_shares:
   root:
     path: "/srv/smb"
@@ -3789,7 +4110,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd15]ansible" \
+git commit -am "[upd16]ansible" \
 && git push \
 --set-upstream \
 altlinux \

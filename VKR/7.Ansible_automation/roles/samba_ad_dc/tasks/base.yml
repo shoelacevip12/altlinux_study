@@ -7,7 +7,6 @@
     enabled: false
   loop: "{{ smaba_conflicts }}"
   ignore_errors: true
-  failed_when: true
 
 - name: Обновление кеша пакетов
   apt_rpm:
@@ -38,6 +37,7 @@
   when:
     - inventory_hostname == (groups['domain_controllers'] | list)[1]
     - sysvol_replication | bool
+    - not "/var/lib/samba/private/sam.ldb" is exists
 
 - meta: flush_handlers
 
@@ -53,9 +53,13 @@
     path: "{{ item }}"
     state: absent
   loop: "{{ smaba_conflicts_files }}"
+  when: 
+    - not "/var/lib/samba/private/sam.ldb" is exists
 
 - name: создание каталога для работы Домена
   file:
     path: /var/lib/samba/sysvol
     state: directory
+  when: 
+    - not "/var/lib/samba/private/sam.ldb" is exists
 ...

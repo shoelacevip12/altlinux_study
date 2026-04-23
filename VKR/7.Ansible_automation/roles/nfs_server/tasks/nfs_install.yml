@@ -1,0 +1,117 @@
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+
+- name: Установка пакетов для NFS
+  apt_rpm:
+    name: "{{ nfs_pkg }}"
+    state: installed
+
+- name: Включение SECURE_NFS
+  copy:
+    src: nfs
+    dest: /etc/sysconfig/nfs
+
+- name: Проверка Присоединения к домену
+  shell: net ads testjoin
+  register: join_status_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Присоединение к домену через system-auth с паролем администратора
+  shell: |
+      /bin/bash -lc \
+      '/usr/sbin/system-auth write ad \
+      {{ ad_workgroup }} \
+      {{ inventory_hostname }} \
+      {{ ad_domain | lower }} \
+      {{ ad_admin_user }} \
+      {{ ad_admin_password }}'
+  environment:
+    PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+  no_log: true
+  when: >
+    join_status_result.rc != 0
+    or ('Join is OK' not in join_status_result.stdout)
+    or join_status_result.stderr != ""
+
+- name: Проверка существования каталогов
+  file:
+    path: "{{ item.value.path }}"
+    state: directory
+  loop: "{{ nfs_shares | dict2items }}"
+  register: dir_check_result
+
+- name: Предварительное создание ресурсов nfs ресурсов
+  file:
+    path: "{{ item.value.path }}"
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '0755'
+  loop: "{{ nfs_shares | dict2items }}"
+  when: dir_check_result.changed
+
+- name: Распределение ресурсов для папок общего обмена
+  file:
+    path: '{{ nfs_shares.root.path }}'
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '2775'
+  when: dir_check_result.changed
+
+- name: Распределение ресурсов для папок административного доступа
+  file:
+    path: '{{ nfs_shares.NOTadmins.path }}'
+    state: directory
+    owner: Administrator
+    group: Domain Admins
+    mode: '0770'
+  when: dir_check_result.changed
+
+- name: Распределение ресурсов для рабочих папок
+  file:
+    path: '{{ nfs_shares.work.path }}'
+    state: directory
+    owner: Administrator
+    group: Domain Users
+    mode: '0770'
+  when: dir_check_result.changed
+
+- name: Распределение ресурсов для специальной группы
+  file:
+    path: '{{ nfs_shares.spec_GR1.path }}'
+    state: directory
+    owner: Administrator
+    group: "{{ spec_nfs_gr1 }}"
+    mode: '0770'
+  when: dir_check_result.changed
+
+- name: Развертывание конфига экспорта NFS
+  template:
+    src: exports.j2
+    dest: /etc/exports
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Получение Принципала для службы nfs
+  shell: |
+    printf '%s\n' '{{ ad_admin_password }}' \
+    | /usr/bin/net ads keytab add nfs -U{{ ad_admin_user }}
+  no_log: true
+
+- name: Запуск и включение служб связности до kdc и nfs сервера
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    masked: false
+    daemon_reload: true
+  loop: "{{ nfs_services }}"
+
+- name: Экспорт NFS ресурсов
+  command: /usr/sbin/exportfs -vra
+...
