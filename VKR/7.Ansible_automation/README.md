@@ -37,6 +37,77 @@
 - Учетная запись с правами sudo или su для выполнения задач с повышенными привилегиями
 - Для работы с доменом: сетевая связность между узлами, настроенные обратные зоны DNS, внешний NTP-сервер
 
+## Пример Подготовки управляющего узла (Control Node)
+
+1. **Подключение К управляющему хосту**
+   ```bash
+   ssh -t \
+   -o StrictHostKeyChecking=accept-new \
+   sysadmin@172.16.100.2 "su -"
+   ```
+
+2. **# генерация пары ssh ключей для подключения**
+  ```bash
+  ssh-keygen -f \
+  /home/sysadmin/.ssh/id_skv_VKR_vpn \
+  -t ed25519 -C "VKR_vpn"
+  ```
+
+3. **Коррекция прав на SSH-ключи**
+   ```bash
+   chown -v sysadmin:sysadmin /home/sysadmin/.ssh/id_skv_VKR_vp*
+   chmod -v 600 /home/sysadmin/.ssh/id_skv_VKR_vpn
+   chmod -v 640 /home/sysadmin/.ssh/id_skv_VKR_vpn.pub
+   ```
+
+4. **Обновление системы и установка зависимостей**
+   ```bash
+   apt-get update && update-kernel -y && apt-get dist-upgrade -y
+   apt-get install ansible sshpass -y && apt-get autoremove -y
+   ```
+
+5. **Установка коллекции и настройка среды**
+   ```bash
+   su - sysadmin
+   ansible-galaxy collection install community.general
+   echo -e "\nexport ANSIBLE_CALLBACK_RESULT_FORMAT=yaml" | tee -a ~/.bashrc && . ~/.bashrc
+   ```
+
+5. **Перезагрузка узла**
+   ```bash
+   su - && systemctl reboot
+   ```
+
+---
+
+## Подготовка управляемых узлов (Managed Nodes)
+
+1. **Проброс SSH-ключей** (выполняется с управляющего узла)
+   ```bash
+   # Включаем агента в текущей оснастке
+   eval $(ssh-agent) \
+    && ssh-add  \
+    /home/sysadmin/.ssh/id_skv_VKR_vpn
+
+   > ~/.ssh/known_hosts
+   for ip in {2,11,12,13,14}; do \
+     ssh-copy-id -o StrictHostKeyChecking=accept-new \
+     -i /home/sysadmin/.ssh/id_skv_VKR_vpn.pub \
+     sysadmin@192.168.100.$ip; done
+   ```
+
+2. **Установка Python-зависимостей для Ansible**
+   ```bash
+   for ip in {2,11,12,13,14}; do \
+   ssh -t -i /home/sysadmin/.ssh/id_skv_VKR_vpn \
+   -o StrictHostKeyChecking=accept-new \
+   sysadmin@192.168.100."$ip" \
+   "su -c 'apt-get update && apt-get install -y python3 python3-module-yaml python3-module-jinja2 python3-module-jsonobject && systemctl reboot'" ; done
+   ```
+
+---
+
+
 ## Установка
 
 Установка коллекции Из репозитория GitHub:
@@ -95,12 +166,22 @@ dns_forwarder: "77.88.8.8"
 Основной плейбук main.yaml импортирует отдельные плейбуки для каждой роли с возможностью выборочного включения через переменные:
 
 ```bash
+# Включаем агента в текущей оснастке
+eval $(ssh-agent) \
+&& ssh-add  \
+/home/sysadmin/.ssh/id_skv_VKR_vpn
+
 ansible-playbook -i inventory/inventory.yaml main.yaml --vault-password-file ./va_pa
 ```
 
 Для запуска конкретной роли:
 
 ```bash
+# Включаем агента в текущей оснастке
+eval $(ssh-agent) \
+&& ssh-add  \
+/home/sysadmin/.ssh/id_skv_VKR_vpn
+
 ansible-playbook -i inventory/inventory.yaml samba_ad_dc.yaml --vault-password-file ./va_pa
 ```
 
