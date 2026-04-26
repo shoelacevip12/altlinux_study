@@ -689,10 +689,10 @@ export ANSIBLE_CONFIG=./ansible.cfg
 #### Создаем файл Управляемых хостов
 
 <details>
-<summary>./inventory/inventory.ini</summary>
+<summary>./inventory/inventory</summary>
 
 ```bash
-cat > ./inventory/inventory.ini << 'EOF'
+cat > ./inventory/inventory << 'EOF'
 [domain_controllers]
 altsrv2 ansible_host=192.168.100.12
 altsrv3 ansible_host=192.168.100.13
