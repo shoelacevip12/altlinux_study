@@ -1,7 +1,7 @@
 #!/usr/bin/env ansible-playbook
 ---
 - name: Базовая настройка хостов
-  hosts: all
+  hosts: "!clients:&all"
   become: true
   become_method: su
   become_user: root

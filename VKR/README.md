@@ -616,7 +616,7 @@ mv ans_vkr_skv \
 ```
 ```bash
 # Создание ролей ansible
-for r in {base_setup,chrony_sync,samba_ad_dc,dhcp_server,smb_shares,nfs_server,squid_proxy,sysvol_replication}; do \
+for r in {base_setup,chrony_sync,samba_ad_dc,dhcp_server,smb_shares,nfs_server,squid_proxy,sysvol_replication,tests_vkr}; do \
 ansible-galaxy role \
 init \
 roles/$r \
@@ -635,6 +635,7 @@ roles/$r \
 - Role roles/nfs_server was created successfully
 - Role roles/squid_proxy was created successfully
 - Role roles/sysvol_replication was created successfully
+- Role roles/tests_vkr was created successfully
 ```
 
 </details>
@@ -710,6 +711,15 @@ all:
       hosts:
         altsrv1:
           ansible_host: 192.168.100.11
+    clients:
+      hosts:
+        client_192_168_100_2:
+          ansible_host: 192.168.100.2
+        # Генерация хостов для диапазона 192.168.100.50 - 192.168.100.254
+        {% for ip in range(50, 255) %}
+        client_192_168_100_{{ "%03d"|format(ip) }}:
+          ansible_host: 192.168.100.{{ ip }}
+        {% endfor %}
 ...
 EOF
 ```
@@ -755,6 +765,8 @@ smb_shares: true
 nfs_server: true
 
 squid_proxy: true
+
+tests_vkr: true
 
 #====| Переназначенные параметры ролей |===#
 
@@ -982,6 +994,10 @@ cat > ./main.yaml<< 'EOF'
 - name: SQUID с Kerberos-аутентификацией
   import_playbook: squid_proxy.yaml
   when: squid_proxy | bool
+
+- name: Тестирование созданной инфраструктуры
+  import_playbook: tests_vkr.yaml
+  when: tests_vkr | bool
 ...
 EOF
 ```
@@ -998,7 +1014,7 @@ cat > ./base_setup.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
 ---
 - name: Базовая настройка хостов
-  hosts: all
+  hosts: "!clients:&all"
   become: true
   become_method: su
   become_user: root
@@ -1189,7 +1205,7 @@ cat > ./chrony_sync.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
 ---
 - name: Настройка синхронизации времени
-  hosts: all
+  hosts: "!clients:&all"
   become: true
   become_method: su
   become_user: root
@@ -4206,6 +4222,330 @@ EOF
 
 </details>
 
+### Роль `tests_vkr` - для тестирования развернутой инфраструктуры
+#### Playbook роли тестирования
+
+<details>
+<summary>./tests_vkr.yaml</summary>
+
+```bash
+cat > ./tests_vkr.yaml << 'EOF'
+#!/usr/bin/env ansible-playbook
+---
+- name: Фильтрация доступных clients
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Пинг всех хостов из группы clients
+      ping:
+      delegate_to: "{{ item }}"
+      delegate_facts: false
+      register: ping_results
+      with_inventory_hostnames:
+        - clients
+
+    - name: Добавление в динамическую группу согласно регистру ping_results
+      add_host:
+        name: "{{ item.item }}"
+        groups: reachable_clients
+      loop: "{{ ping_results.results }}"
+      when: item.ping is defined
+
+- name: Тестирование инфраструктуры (все, кроме unreachable clients)
+  hosts: "!clients:&all"
+  dynamic:
+    - group_names:
+        - reachable_clients
+  gather_facts: true
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - tests_vkr
+...
+EOF
+```
+
+</details>
+
+#### Главный файл задач роли тестирования
+
+<details>
+<summary>./roles/tests_vkr/tasks/main.yml</summary>
+
+```bash
+cat > roles/tests_vkr/tasks/main.yml <<'EOF'
+---
+- name: Подготовка и обновление пакетов
+  include_tasks: prepare.yml
+  when:
+    - inventory_hostname not in groups['domain_controllers', 'file_servers', 'proxy_servers']
+
+- name: Ввод в домен
+  include_tasks: ad_prerare.yml
+  when:
+    - inventory_hostname not in groups['domain_controllers', 'file_servers', 'proxy_servers']
+...
+EOF
+```
+
+</details>
+
+#### Файл задач подготовки хостов для работы с ролью тестирования
+
+<details>
+<summary>./roles/tests_vkr/tasks/prepare.yml</summary>
+
+```bash
+cat > roles/tests_vkr/tasks/prepare.yml <<'EOF'
+---
+- name: Обновление кеша пакетов
+  apt_rpm:
+    update_cache: true
+  when: dist_upd | bool
+
+- name: Установка базовых пакетов при вводе в домен
+  apt_rpm:
+    name: "{{ base_pkg }}"
+    state: installed
+  when:
+    - dist_upd | bool
+
+- name: Обновление пакетов
+  apt_rpm:
+    dist_upgrade: true
+  when: dist_upgrd | bool
+
+- name: Обновление ядра
+  apt_rpm:
+    update_kernel: true
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/usr/sbin"
+  ignore_errors: true
+  when: kernel_upd | bool
+
+- name: Установка имени хоста
+  hostname:
+    name: "{{ ansible_hostname ~'.'~ ad_workgroup }}"
+
+- name: Определить основной интерфейс
+  set_fact:
+    primary_iface_name: >-
+      {{
+          ansible_interfaces
+          | difference(['lo'])
+          | select('match', '^(eth|en)[a-z0-9]*')
+          | first
+      }}
+  when:
+    - ( ansible_default_ipv4.address.split('.')[3] | int ) < 50
+
+- name: Настройка DNS резолвера
+  template:
+    src: resolv.conf.j2
+    dest: "/etc/net/ifaces/{{ primary_iface_name }}/resolv.conf"
+  when:
+    - ( ansible_default_ipv4.address.split('.')[3] | int ) < 50
+
+- name: Отключение IPv6 прописываем конфиг
+  sysctl:
+    name: net.ipv6.conf.all.disable_ipv6
+    value: "1"
+    state: present
+    sysctl_file: /etc/sysctl.conf
+    reload: true
+  
+- name: Отключение IPv6 применение конфига
+  command: /sbin/sysctl -p
+
+- name: Создание службы применения sysctl после загрузки
+  copy:
+    src: apply-sysctl.service
+    dest: /etc/systemd/system/apply-sysctl.service
+    mode: '0755'
+
+- name: Включить сервис apply-sysctl
+  systemd:
+    name: apply-sysctl
+    enabled: true
+    masked: false
+    daemon_reload: true
+
+- name: Настройка chrony.conf для пользователей домена
+  template:
+    src: chrony.conf.members.j2
+    dest: /etc/chrony.conf
+    backup: true
+  when:
+    - ( ansible_default_ipv4.address.split('.')[3] | int ) < 50
+
+- name: Запуск и включение службы chronyd
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    masked: false
+    daemon_reload: true
+  loop:
+    - chronyd
+
+- name: Перезагрузка после обновлений
+  reboot:
+    reboot_timeout: 240
+...
+EOF
+```
+
+</details>
+
+#### Файл задач Ввода в домен хостов для работы с ролью тестирования
+
+<details>
+<summary>./roles/tests_vkr/tasks/ad_prerare.yml</summary>
+
+```bash
+cat > roles/tests_vkr/tasks/ad_prerare.yml <<'EOF'
+---
+- name: Включение работы с ролями
+  command: >
+      /usr/sbin/control
+      libnss-role
+      enabled
+  changed_when: false
+
+- name: Проверка Присоединения к домену
+  shell: net ads testjoin
+  register: join_status_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Присоединение к домену через system-auth с паролем администратора
+  shell: |
+      /bin/bash -lc \
+      '/usr/sbin/system-auth write ad \
+      {{ ad_workgroup }} \
+      {{ ansible_hostname }} \
+      {{ ad_domain | lower }} \
+      {{ ad_admin_user }} \
+      {{ ad_admin_password }}'
+  environment:
+    PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+  no_log: true
+  when: >
+    join_status_result.rc != 0
+    or ('Join is OK' not in join_status_result.stdout)
+    or join_status_result.stderr != ""
+
+- name: Перезагрузка после ввода в домен
+  reboot:
+    reboot_timeout: 240
+...
+EOF
+```
+
+</details>
+
+#### Переменные по умолчанию роли базовых настроек
+
+<details>
+<summary>./roles/tests_vkr/defaults/main.yml</summary>
+
+```bash
+cat > roles/tests_vkr/defaults/main.yml <<'EOF'
+---
+dist_upd: true # Обновление кеша пакетов
+dist_upgrd: true # обновление установленных приложений
+kernel_upd: true # обновление ядра
+tests_vkr: false
+...
+EOF
+```
+
+</details>
+
+##### Шаблон Для пользователей домена Роли тестирования
+
+<details>
+<summary>./roles/tests_vkr/templates/chrony.conf.members.j2</summary>
+
+```bash
+cat > roles/tests_vkr/templates/chrony.conf.members.j2 <<'EOF'
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+{% for host in groups['domain_controllers'] %}
+server {{ host }}.{{ ad_workgroup }} iburst
+{% endfor %}
+EOF
+```
+
+</details>
+
+##### Шаблон resolver Роли тестирования
+
+<details>
+<summary>./roles/tests_vkr/templates/resolv.conf.j2</summary>
+
+```bash
+cat > roles/tests_vkr/templates/resolv.conf.j2 <<'EOF'
+{% for server in groups.domain_controllers %}
+nameserver {{ hostvars[server].ansible_host }}
+{% endfor %}
+search {{ ad_workgroup }}
+options rotate
+EOF
+```
+
+</details>
+
+##### Шаблон службы применения настроек sysctl Роли тестирования
+
+<details>
+<summary>./roles/tests_vkr/files/apply-sysctl.service</summary>
+
+```bash
+cat > roles/tests_vkr/files/apply-sysctl.service <<'EOF'
+[Unit]
+Description=Apply sysctl settings after boot
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/sysctl -p
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+</details>
+
+#### Постоянные переменные роли тестирования
+
+<details>
+<summary>./roles/tests_vkr/vars/main.yml</summary>
+
+```bash
+cat > roles/tests_vkr/vars/main.yml <<'EOF'
+---
+base_pkg:
+  - task-auth-ad-sssd
+  - chrony
+  - samba-common-tools
+  - samba-client
+  - avahi-daemon
+  - libnss-role
+  - gpupdate
+  - samba-gpupdate
+...
+EOF
+```
+
+</details>
+
 # gitflic_github репозиторий
 ```bash
 # Добавляем ключи агенту ssh от репозитория gitflic и github
@@ -4232,7 +4572,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd19]ansible" \
+git commit -am "[upd20]ansible" \
 && git push \
 --set-upstream \
 altlinux \

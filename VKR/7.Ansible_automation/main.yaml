@@ -38,4 +38,8 @@
 - name: SQUID с Kerberos-аутентификацией
   import_playbook: squid_proxy.yaml
   when: squid_proxy | bool
+
+- name: Тестирование созданной инфраструктуры
+  import_playbook: tests_vkr.yaml
+  when: tests_vkr | bool
 ...

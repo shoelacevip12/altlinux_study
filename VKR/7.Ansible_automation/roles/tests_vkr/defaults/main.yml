@@ -1,0 +1,6 @@
+---
+dist_upd: true # Обновление кеша пакетов
+dist_upgrd: true # обновление установленных приложений
+kernel_upd: true # обновление ядра
+tests_vkr: false
+...

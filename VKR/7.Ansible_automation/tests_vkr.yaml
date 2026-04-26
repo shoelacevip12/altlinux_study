@@ -1,0 +1,33 @@
+#!/usr/bin/env ansible-playbook
+---
+- name: Фильтрация доступных clients
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Пинг всех хостов из группы clients
+      ping:
+      delegate_to: "{{ item }}"
+      delegate_facts: false
+      register: ping_results
+      with_inventory_hostnames:
+        - clients
+
+    - name: Добавление в динамическую группу согласно регистру ping_results
+      add_host:
+        name: "{{ item.item }}"
+        groups: reachable_clients
+      loop: "{{ ping_results.results }}"
+      when: item.ping is defined
+
+- name: Тестирование инфраструктуры (все, кроме unreachable clients)
+  hosts: "!clients:&all"
+  dynamic:
+    - group_names:
+        - reachable_clients
+  gather_facts: true
+  become: true
+  become_method: su
+  become_user: root
+  roles:
+    - tests_vkr
+...

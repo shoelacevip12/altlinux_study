@@ -1,0 +1,35 @@
+---
+- name: Включение работы с ролями
+  command: >
+      /usr/sbin/control
+      libnss-role
+      enabled
+  changed_when: false
+
+- name: Проверка Присоединения к домену
+  shell: net ads testjoin
+  register: join_status_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Присоединение к домену через system-auth с паролем администратора
+  shell: |
+      /bin/bash -lc \
+      '/usr/sbin/system-auth write ad \
+      {{ ad_workgroup }} \
+      {{ ansible_hostname }} \
+      {{ ad_domain | lower }} \
+      {{ ad_admin_user }} \
+      {{ ad_admin_password }}'
+  environment:
+    PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
+  no_log: true
+  when: >
+    join_status_result.rc != 0
+    or ('Join is OK' not in join_status_result.stdout)
+    or join_status_result.stderr != ""
+
+- name: Перезагрузка после ввода в домен
+  reboot:
+    reboot_timeout: 240
+...
