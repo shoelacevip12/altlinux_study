@@ -69,6 +69,7 @@
 5. **Установка коллекции и настройка среды**
    ```bash
    su - sysadmin
+   
    ansible-galaxy collection install community.general
    echo -e "\nexport ANSIBLE_CALLBACK_RESULT_FORMAT=yaml" | tee -a ~/.bashrc && . ~/.bashrc
    ```
@@ -113,7 +114,11 @@
 Установка коллекции Из репозитория GitHub:
 
 ```bash
-ansible-galaxy collection install git+https://github.com/shoelacevip12/Altlinux_VKR_2026.git
+git clone https://github.com/shoelacevip12/Altlinux_VKR_2026.git
+```
+
+```bash
+cd Altlinux_VKR_2026
 ```
 
 Установка зависимости community.general:
