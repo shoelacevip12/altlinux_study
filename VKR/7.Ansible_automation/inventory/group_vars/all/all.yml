@@ -2,6 +2,7 @@
 #====| Общие параметры |===#
 # параметры суперпользователя
 ansible_ssh_private_key_file: "~/.ssh/id_skv_VKR_vpn"
+ansible_python_interpreter: "/usr/bin/python3"
 
 # параметры домена
 ad_workgroup: "den.skv"

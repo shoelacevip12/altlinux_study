@@ -1,10 +1,11 @@
 #!/usr/bin/env ansible-playbook
 ---
 - name: Настройка синхронизации времени
-  hosts: "!clients:&all"
+  hosts: [file_servers, domain_controllers, proxy_servers]
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - chrony_sync
 ...

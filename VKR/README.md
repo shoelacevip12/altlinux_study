@@ -466,6 +466,7 @@ su - sysadmin
 ansible-galaxy collection \
 install \
 community.general \
+ansible.posix
 ```
 
 <details>
@@ -579,7 +580,9 @@ ssh -t \
 sysadmin@192.168.100."$ip" \
 "su -c 'apt-get update \
 && apt-get install -y \
-python3 \
+ansible \
+python3-module-importlib-resources \
+python3-module-zip \
 python3-module-yaml \
 python3-module-jinja2 \
 python3-module-jsonobject \
@@ -657,6 +660,7 @@ interpreter_python=auto_silent
 deprecation_warnings=False
 retry_files_enabled=False
 callback_enabled=profile_tasks
+collections_paths = ~/.ansible/collections:/usr/share/ansible/collections
 
 [privilege_escalation]
 become=true
@@ -693,6 +697,8 @@ export ANSIBLE_CONFIG=./ansible.cfg
 
 ```bash
 cat > ./inventory/inventory << 'EOF'
+altwks1 ansible_host=192.168.100.1
+
 [domain_controllers]
 altsrv2 ansible_host=192.168.100.12
 altsrv3 ansible_host=192.168.100.13
@@ -704,8 +710,8 @@ altsrv4 ansible_host=192.168.100.14
 altsrv1 ansible_host=192.168.100.11
 
 [clients]
-client_192_168_100_2 ansible_host=192.168.100.2
-client_192_168_100_[50:254] ansible_host=192.168.100.[50:254]
+192.168.100.2
+# 192.168.100.[50:254]
 
 [all:children]
 domain_controllers
@@ -728,6 +734,7 @@ cat > inventory/group_vars/all/all.yml <<'EOF'
 #====| Общие параметры |===#
 # параметры суперпользователя
 ansible_ssh_private_key_file: "~/.ssh/id_skv_VKR_vpn"
+ansible_python_interpreter: "/usr/bin/python3"
 
 # параметры домена
 ad_workgroup: "den.skv"
@@ -744,18 +751,18 @@ secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
 #====| ВКЛ\ВЫКЛ ролей |===#
 
 # включаем(true)\выключаем(false) РОЛИ
-base_setup: false
+base_setup: true
 
-chrony_sync: false
+chrony_sync: true
 
-sysvol_replication: false  # на эту переменную завязаны репликации служб AD и DHCP
-samba_ad_dc: false
-dhcp_server: false
+sysvol_replication: true  # на эту переменную завязаны репликации служб AD и DHCP
+samba_ad_dc: true
+dhcp_server: true
 
-smb_shares: false
-nfs_server: false
+smb_shares: true
+nfs_server: true
 
-squid_proxy: false
+squid_proxy: true
 
 tests_vkr: true
 
@@ -952,7 +959,7 @@ cat > ./main.yaml<< 'EOF'
   become: true
   become_method: su
   become_user: root
-  gather_facts: true
+  gather_facts: false
 
 - name: Базовая настройка хостов
   import_playbook: base_setup.yaml
@@ -1005,10 +1012,11 @@ cat > ./base_setup.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
 ---
 - name: Базовая настройка хостов
-  hosts: "!clients:&all"
+  hosts: [file_servers, domain_controllers, proxy_servers]
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - base_setup
 ...
@@ -1196,10 +1204,11 @@ cat > ./chrony_sync.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
 ---
 - name: Настройка синхронизации времени
-  hosts: "!clients:&all"
+  hosts: [file_servers, domain_controllers, proxy_servers]
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - chrony_sync
 ...
@@ -1397,6 +1406,7 @@ cat > ./samba_ad_dc.yaml << 'EOF'
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - samba_ad_dc
 ...
@@ -1911,6 +1921,7 @@ cat > ./dhcp_server.yaml << 'EOF'
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - dhcp_server
 ...
@@ -2771,6 +2782,7 @@ cat > ./sysvol_replication.yaml << 'EOF'
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - sysvol_replication
 ...
@@ -3065,6 +3077,7 @@ cat > ./smb_shares.yaml << 'EOF'
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - smb_shares
 ...
@@ -3502,6 +3515,7 @@ cat > ./nfs_server.yaml << 'EOF'
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - nfs_server
 ...
@@ -3875,6 +3889,7 @@ cat > ./squid_proxy.yaml << 'EOF'
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - squid_proxy
 ...
@@ -4172,7 +4187,7 @@ http_access deny to_localhost
 http_access deny to_linklocal
 http_access allow kerberos_access auth
 http_access deny all
-http_port 3128
+http_port {{ ansible_default_ipv4.address }}:3128
 coredump_dir /var/spool/squid
 refresh_pattern ^ftp:           1440    20%     10080
 refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
@@ -4224,29 +4239,30 @@ cat > ./tests_vkr.yaml << 'EOF'
 #!/usr/bin/env ansible-playbook
 ---
 - name: Фильтрация доступных clients
-  hosts: localhost
-  gather_facts: false
+  hosts: altwks1
+  become: false
+  gather_facts: true
   tasks:
-    - name: Пинг всех хостов из группы clients
-      ping:
-      delegate_to: "{{ item }}"
-      delegate_facts: false
+    - name: Доступность хостов из группы clients
+      shell: |
+        nmap -sn "{{ item }}" | grep 'Nmap scan report for' | awk '{print $5}'
       register: ping_results
       with_inventory_hostnames:
         - clients
+      ignore_errors: true
 
-    - name: Добавление в динамическую группу согласно регистру ping_results
+    - name: Добавление в динамическую группу доступных хостов
       add_host:
         name: "{{ item.item }}"
         groups: reachable_clients
       loop: "{{ ping_results.results }}"
-      when: item.ping is defined
+      when: >
+        item.rc == 0
+        and item.stdout.strip() != ""
+        and "Failed to resolve" not in item.stderr
 
-- name: Тестирование инфраструктуры (все, кроме unreachable clients)
-  hosts: "!clients:&all"
-  dynamic:
-    - group_names:
-        - reachable_clients
+- name: Тестирование инфраструктуры
+  hosts: all:!clients,reachable_clients
   gather_facts: true
   become: true
   become_method: su
@@ -4270,12 +4286,20 @@ cat > roles/tests_vkr/tasks/main.yml <<'EOF'
 - name: Подготовка и обновление пакетов
   include_tasks: prepare.yml
   when:
-    - inventory_hostname not in groups['domain_controllers', 'file_servers', 'proxy_servers']
+    - inventory_hostname not in (
+        groups.get('domain_controllers', []) +
+        groups.get('file_servers', []) +
+        groups.get('proxy_servers', [])
+      )
 
 - name: Ввод в домен
   include_tasks: ad_prerare.yml
   when:
-    - inventory_hostname not in groups['domain_controllers', 'file_servers', 'proxy_servers']
+    - inventory_hostname not in (
+        groups.get('domain_controllers', []) +
+        groups.get('file_servers', []) +
+        groups.get('proxy_servers', [])
+      )
 ...
 EOF
 ```

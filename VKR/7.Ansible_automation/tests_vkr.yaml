@@ -1,29 +1,30 @@
 #!/usr/bin/env ansible-playbook
 ---
 - name: Фильтрация доступных clients
-  hosts: localhost
-  gather_facts: false
+  hosts: altwks1
+  become: false
+  gather_facts: true
   tasks:
-    - name: Пинг всех хостов из группы clients
-      ping:
-      delegate_to: "{{ item }}"
-      delegate_facts: false
+    - name: Доступность хостов из группы clients
+      shell: |
+        nmap -sn "{{ item }}" | grep 'Nmap scan report for' | awk '{print $5}'
       register: ping_results
       with_inventory_hostnames:
         - clients
+      ignore_errors: true
 
-    - name: Добавление в динамическую группу согласно регистру ping_results
+    - name: Добавление в динамическую группу доступных хостов
       add_host:
         name: "{{ item.item }}"
         groups: reachable_clients
       loop: "{{ ping_results.results }}"
-      when: item.ping is defined
+      when: >
+        item.rc == 0
+        and item.stdout.strip() != ""
+        and "Failed to resolve" not in item.stderr
 
-- name: Тестирование инфраструктуры (все, кроме unreachable clients)
-  hosts: "!clients:&all"
-  dynamic:
-    - group_names:
-        - reachable_clients
+- name: Тестирование инфраструктуры
+  hosts: all:!clients,reachable_clients
   gather_facts: true
   become: true
   become_method: su

@@ -5,6 +5,7 @@
   become: true
   become_method: su
   become_user: root
+  gather_facts: true
   roles:
     - squid_proxy
 ...

@@ -2,10 +2,18 @@
 - name: Подготовка и обновление пакетов
   include_tasks: prepare.yml
   when:
-    - inventory_hostname not in groups['domain_controllers', 'file_servers', 'proxy_servers']
+    - inventory_hostname not in (
+        groups.get('domain_controllers', []) +
+        groups.get('file_servers', []) +
+        groups.get('proxy_servers', [])
+      )
 
 - name: Ввод в домен
   include_tasks: ad_prerare.yml
   when:
-    - inventory_hostname not in groups['domain_controllers', 'file_servers', 'proxy_servers']
+    - inventory_hostname not in (
+        groups.get('domain_controllers', []) +
+        groups.get('file_servers', []) +
+        groups.get('proxy_servers', [])
+      )
 ...

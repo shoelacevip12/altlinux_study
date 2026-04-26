@@ -31,7 +31,7 @@
 
 ## Требования
 
-- Управляющий узел: Linux с установленным Ansible 2.9+ или ansible-core 2.11+
+- Управляющий узел: Linux с установленным Ansible 2.9+
 - Управляемые узлы: совместимые дистрибутивы ALT Linux p10
 - Доступ к управляемым узлам по SSH с использованием ключей
 - Учетная запись с правами sudo или su для выполнения задач с повышенными привилегиями
@@ -70,7 +70,9 @@
    ```bash
    su - sysadmin
    
-   ansible-galaxy collection install community.general
+   ANSIBLE_COLLECTIONS_PATHS=~/.ansible/collections \
+   ansible-galaxy collection install community.general ansible.posix
+
    echo -e "\nexport ANSIBLE_CALLBACK_RESULT_FORMAT=yaml" | tee -a ~/.bashrc && . ~/.bashrc
    ```
 
@@ -103,7 +105,7 @@
    ssh -t -i /home/sysadmin/.ssh/id_skv_VKR_vpn \
    -o StrictHostKeyChecking=accept-new \
    sysadmin@192.168.100."$ip" \
-   "su -c 'apt-get update && apt-get install -y python3 python3-module-yaml python3-module-jinja2 python3-module-jsonobject && systemctl reboot'" ; done
+   "su -c 'apt-get update && apt-get install -y ansible python3-module-importlib-resources python3-module-zip su-yaml python3-module-jinja2 python3-module-jsonobject && systemctl reboot'" ; done
    ```
 
 ---
