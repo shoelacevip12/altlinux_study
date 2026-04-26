@@ -62,8 +62,19 @@
 
 4. **Обновление системы и установка зависимостей**
    ```bash
-   apt-get update && update-kernel -y && apt-get dist-upgrade -y
-   apt-get install ansible sshpass -y && apt-get autoremove -y
+   apt-get update \
+   && update-kernel -y \
+   && apt-get dist-upgrade -y
+   
+   apt-get -y install \
+   ansible \
+   sshpass \
+   nmap \
+   python3-module-importlib-resources \
+   python3-module-zip \
+   su-yaml python3-module-jinja2 \
+   python3-module-jsonobject \
+   && apt-get autoremove -y
    ```
 
 5. **Установка коллекции и настройка среды**
