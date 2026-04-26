@@ -689,38 +689,23 @@ export ANSIBLE_CONFIG=./ansible.cfg
 #### Создаем файл Управляемых хостов
 
 <details>
-<summary>./inventory/inventory.yaml</summary>
+<summary>./inventory/inventory.ini</summary>
 
 ```bash
-cat > ./inventory/inventory.yaml << 'EOF'
----
-all:
-  hosts: {}
-  children:
-    domain_controllers:
-      hosts:
-        altsrv2:
-          ansible_host: 192.168.100.12
-        altsrv3:
-          ansible_host: 192.168.100.13
-    file_servers:
-      hosts:
-        altsrv4:
-          ansible_host: 192.168.100.14
-    proxy_servers:
-      hosts:
-        altsrv1:
-          ansible_host: 192.168.100.11
-    clients:
-      hosts:
-        client_192_168_100_2:
-          ansible_host: 192.168.100.2
-        # Генерация хостов для диапазона 192.168.100.50 - 192.168.100.254
-        {% for ip in range(50, 255) %}
-        client_192_168_100_{{ "%03d"|format(ip) }}:
-          ansible_host: 192.168.100.{{ ip }}
-        {% endfor %}
-...
+cat > ./inventory/inventory.ini << 'EOF'
+[domain_controllers]
+altsrv2 ansible_host=192.168.100.12
+altsrv3 ansible_host=192.168.100.13
+
+[file_servers]
+altsrv4 ansible_host=192.168.100.14
+
+[proxy_servers]
+altsrv1 ansible_host=192.168.100.11
+
+[clients]
+client_192_168_100_2 ansible_host=192.168.100.2
+client_192_168_100_[50:254] ansible_host=192.168.100.[50:254]
 EOF
 ```
 
