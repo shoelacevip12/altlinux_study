@@ -54,6 +54,16 @@ curl --proxy-negotiate --proxy-user : \
 https://2ip.ru
 
 ```yaml
+- name: Deploy and test proxy with Kerberos
+  hosts: clients
+  vars:
+    kerberos_principal: "samba_u1@DEN.SKV"
+    kerberos_keytab: "/etc/krb5/samba_u1.keytab"  # оставить '' для kinit вручную
+    proxy_url: "http://altsrv1.den.skv:3128"
+    test_url: "https://2ip.ru"
+    krb5_ccache: "FILE:/tmp/krb5cc_{{ ansible_user_id }}"
+    script_path: "/usr/local/bin/proxy_test.sh"
+
   tasks:
     - name: Deploy proxy test script
       ansible.builtin.template:
@@ -72,7 +82,7 @@ https://2ip.ru
 
     - name: Show result
       ansible.builtin.debug:
-        msg: " {{ test_url }} → {{ proxy_test.stdout | default('OK') }}"
+        msg: "✅ {{ test_url }} → {{ proxy_test.stdout | default('OK') }}"
 ```
 ```j2
 #!/bin/bash
