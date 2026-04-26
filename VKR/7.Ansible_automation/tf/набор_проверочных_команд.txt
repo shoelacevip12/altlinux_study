@@ -14,7 +14,7 @@ eval $(ssh-agent) \
 
 ssh -t \
 -i ~/.ssh/id_skv_VKR_vpn \
--J skv@81.26.185.60 \
+-J skv@81.26.178.206 \
 -o StrictHostKeyChecking=accept-new \
 sysadmin@172.16.100.2 \
 "su -"
@@ -41,3 +41,66 @@ yc compute ssh \
 --id fv4clqtg1jq6rde85jcc \
 --identity-file ~/.ssh/id_skv_VKR_vpn \
 --login skv
+
+
+- name: Получаем kerberos билет на имя входящего в доменную группу Domain Admins
+  shell: printf '%s\n' '{{ ad_admin_password }}' | kinit Administrator
+  no_log: true
+
+
+
+curl --proxy-negotiate --proxy-user : \
+-x http://altsrv1.den.skv:3128 \
+https://2ip.ru
+
+```yaml
+  tasks:
+    - name: Deploy proxy test script
+      ansible.builtin.template:
+        src: proxy_test.sh.j2
+        dest: "{{ script_path }}"
+        mode: '0750'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
+
+    - name: Run proxy test
+      ansible.builtin.command: "{{ script_path }}"
+      register: proxy_test
+      changed_when: false
+      failed_when: proxy_test.rc not in [0]  # 0 = успех
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: " {{ test_url }} → {{ proxy_test.stdout | default('OK') }}"
+```
+```j2
+#!/bin/bash
+# {{ ansible_managed }}
+set -euo pipefail
+
+# --- Параметры из Ansible ---
+PRINCIPAL="{{ kerberos_principal | default('samba_u1@DEN.SKV') }}"
+KEYTAB="{{ kerberos_keytab | default('') }}"
+PROXY="{{ proxy_url | default('http://altsrv1.den.skv:3128') }}"
+URL="{{ test_url | default('https://2ip.ru') }}"
+KRB5CC="{{ krb5_ccache | default('FILE:/tmp/krb5cc_' ~ ansible_user_id) }}"
+
+# --- Окружение Kerberos ---
+export KRB5CCNAME="{{ krb5_ccache | default('') }}"
+[[ -n "$KEYTAB" ]] && export KRB5_KTNAME="$KEYTAB"
+
+# --- Получение тикета (если указан keytab) ---
+if [[ -n "$KEYTAB" && -f "$KEYTAB" ]]; then
+    kinit -k -t "$KEYTAB" "$PRINCIPAL" >/dev/null 2>&1
+fi
+
+# --- Запрос через прокси ---
+curl -s --proxy-negotiate --proxy-user : -x "$PROXY" "$URL"
+RC=$?
+
+# --- Очистка (опционально) ---
+{{ 'kdestroy 2>/dev/null || true' if kerberos_keytab | default('') else '' }}
+
+exit $RC
+```
