@@ -744,18 +744,18 @@ secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
 #====| ВКЛ\ВЫКЛ ролей |===#
 
 # включаем(true)\выключаем(false) РОЛИ
-base_setup: true
+base_setup: false
 
-chrony_sync: true
+chrony_sync: false
 
-sysvol_replication: true  # на эту переменную завязаны репликации служб AD и DHCP
-samba_ad_dc: true
-dhcp_server: true
+sysvol_replication: false  # на эту переменную завязаны репликации служб AD и DHCP
+samba_ad_dc: false
+dhcp_server: false
 
-smb_shares: true
-nfs_server: true
+smb_shares: false
+nfs_server: false
 
-squid_proxy: true
+squid_proxy: false
 
 tests_vkr: true
 
