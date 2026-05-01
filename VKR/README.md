@@ -747,22 +747,24 @@ primary_dc: "{{ groups['domain_controllers'][0] }}"
 primary_dc_ip: "{{ hostvars[primary_dc]['ansible_host'] }}"
 secondary_dc: "{{ groups['domain_controllers'][1] }}"
 secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
+proxy_server: "{{ hostvars[ groups['proxy_servers'][0] ]['ansible_nodename'] }}:3128"
+file_server: "{{ hostvars[ groups['file_servers'][0] ]['ansible_hostname'] }}"
 
 #====| ВКЛ\ВЫКЛ ролей |===#
 
 # включаем(true)\выключаем(false) РОЛИ
-base_setup: true
+base_setup: false
 
-chrony_sync: true
+chrony_sync: false
 
-sysvol_replication: true  # на эту переменную завязаны репликации служб AD и DHCP
-samba_ad_dc: true
-dhcp_server: true
+sysvol_replication: false  # на эту переменную завязаны репликации служб AD и DHCP
+samba_ad_dc: false
+dhcp_server: false
 
-smb_shares: true
-nfs_server: true
+smb_shares: false
+nfs_server: false
 
-squid_proxy: true
+squid_proxy: false
 
 tests_vkr: true
 
@@ -1164,7 +1166,7 @@ cat > roles/base_setup/templates/resolv.conf.j2 <<'EOF'
 nameserver {{ hostvars[server].ansible_host }}
 {% endfor %}
 search {{ ad_workgroup }}
-options rotate
+options timeout:1 attempts:3
 EOF
 ```
 
@@ -4262,7 +4264,7 @@ cat > ./tests_vkr.yaml << 'EOF'
         and "Failed to resolve" not in item.stderr
 
 - name: Тестирование инфраструктуры
-  hosts: all:!clients,reachable_clients
+  hosts: all, all:!clients, reachable_clients
   gather_facts: true
   become: true
   become_method: su
@@ -4286,20 +4288,40 @@ cat > roles/tests_vkr/tasks/main.yml <<'EOF'
 - name: Подготовка и обновление пакетов
   include_tasks: prepare.yml
   when:
-    - inventory_hostname not in (
-        groups.get('domain_controllers', []) +
-        groups.get('file_servers', []) +
-        groups.get('proxy_servers', [])
-      )
+    - inventory_hostname in groups.get('reachable_clients', [])
+
+- name: Выключение основного домен контроллера на 420 секунд
+  block:
+    - name: Определить основной интерфейс
+      set_fact:
+        primary_iface_name: >-
+          {{
+              ansible_interfaces
+              | difference(['lo'])
+              | select('match', '^(eth|en)[a-z0-9]*')
+              | first
+          }}
+    
+    # - name: Выключение интерфейса
+    #   shell: >
+    #     /sbin/ifdown {{ primary_iface_name }} \
+    #     && /bin/sleep 420 \
+    #     && /sbin/ifup {{ primary_iface_name }} \
+    #     &
+    #   async: 10
+    #   poll: 0
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
 - name: Ввод в домен
   include_tasks: ad_prerare.yml
   when:
-    - inventory_hostname not in (
-        groups.get('domain_controllers', []) +
-        groups.get('file_servers', []) +
-        groups.get('proxy_servers', [])
-      )
+    - inventory_hostname in groups.get('reachable_clients', [])
+
+- name: Проверка сервисов
+  include_tasks: services_check.yml
+  when:
+    - inventory_hostname in groups.get('reachable_clients', [])
 ...
 EOF
 ```
@@ -4442,7 +4464,8 @@ cat > roles/tests_vkr/tasks/ad_prerare.yml <<'EOF'
       {{ ansible_hostname }} \
       {{ ad_domain | lower }} \
       {{ ad_admin_user }} \
-      {{ ad_admin_password }}'
+      {{ ad_admin_password }}' \
+      --gpo
   environment:
     PATH: '/sbin:/bin:/usr/sbin:/usr/bin:$PATH'
   no_log: true
@@ -4460,7 +4483,103 @@ EOF
 
 </details>
 
-#### Переменные по умолчанию роли базовых настроек
+#### Файл задач проверки сервисов с ролью тестирования
+
+<details>
+<summary>./roles/tests_vkr/tasks/services_check.yml</summary>
+
+```bash
+cat > roles/tests_vkr/tasks/services_check.yml <<'EOF'
+---
+- name: Проверка proxy доступа выхода в интернет
+  block:
+    - name: Доступ разрешен под пользователем в группе доступа
+      shell: >
+        printf '%s\n' '{{ samba_users.user1.password }}' \
+        | kinit {{ samba_users.user1.name }} \
+        && curl --proxy-negotiate --proxy-user : \
+        -x http://{{ proxy_server }} \
+        https://2ip.ru
+      no_log: true
+      register: proxy_access_result
+
+    - name: Вывод сайта https://2ip.ru под пользователем {{ samba_users.user1.name }}
+      debug:
+        msg: "{{ proxy_access_result.stdout_lines[-1] }}"
+  
+    - name: Доступ запрещен под пользователем вне группы доступа
+      shell: >
+        printf '%s\n' '{{ samba_users.user2.password }}' \
+        | kinit {{ samba_users.user2.name }} \
+        && curl --proxy-negotiate --proxy-user : \
+        -x http://{{ proxy_server }} \
+        https://2ip.ru
+      no_log: true
+      register: proxy_access_denied_result
+      ignore_errors: true
+      changed_when: false
+
+    - name: Вывод сайта https://2ip.ru под пользователем {{ samba_users.user2.name }}
+      debug:
+        msg: "{{ proxy_access_denied_result.stderr_lines[-1] }}"
+
+- name: Проверка SMB ресурсов
+  block:
+    - name: Отображение ресурсов под разными пользователями
+      shell: >
+        printf '%s\n' '{{ item.value.password }}' \
+        | kinit {{ item.value.name }} \
+        && /usr/bin/smbclient -L {{ file_server }} -k
+      no_log: true
+      loop: "{{ samba_users | dict2items }}"
+      register: smb_result
+
+    - name: Вывод результатов smbclient для каждого пользователя samba_u
+      debug:
+        msg: "{{ (item.stdout_lines)[4:] }}"
+      loop: "{{ smb_result.results }}"
+
+    - name: Попытка входа под пользователями на ресурс {{ (smb_shares_config | list)[0] }}
+      shell: >
+        printf '%s\n' '{{ item.value.password }}' \
+        | kinit {{ item.value.name }} \
+        && /usr/bin/smbclient //{{ file_server }}/{{ (smb_shares_config | list)[0] }} -k -c 'ls'
+      no_log: true
+      loop: "{{ samba_users | dict2items }}"
+      register: smb_ls_results1
+      ignore_errors: true
+      changed_when: false
+
+    - name: Вывести результаты smbclient ls для каждого пользователя
+      debug:
+        msg: "{{ (item.stdout_lines)[4:] }}"
+      loop: "{{ smb_ls_results1.results }}"
+
+    - name: Попытка входа под пользователями на ресурс {{ (smb_shares_config | list)[1] }}
+      shell: |
+        printf '%s\n' '{{ item.value.password }}' | kinit {{ item.value.name }}
+        /usr/bin/smbclient //{{ file_server }}/{{ (smb_shares_config | list)[1] }} -k -c 'ls'
+      no_log: true
+      loop: "{{ samba_users | dict2items }}"
+      register: smb_ls_results2
+      ignore_errors: true
+      changed_when: false
+
+    - name: Вывести результаты smbclient ls для каждого пользователя
+      debug:
+        msg: "{{ (item.stdout_lines)[4:] }}"
+      loop: "{{ smb_ls_results2.results }}"
+
+- name: Проверка NFS ресурсов
+  command: /usr/bin/showmount -e {{ file_server }}
+  msg: "{{ stdout_lines }}"
+...
+EOF
+```
+
+</details>
+
+#### Переменные по умолчанию роли тестирования
 
 <details>
 <summary>./roles/tests_vkr/defaults/main.yml</summary>
@@ -4472,6 +4591,50 @@ dist_upd: true # Обновление кеша пакетов
 dist_upgrd: true # обновление установленных приложений
 kernel_upd: true # обновление ядра
 tests_vkr: false
+proxy_server: "{{ hostvars[ groups['proxy_servers'][0] ]['ansible_nodename'] }}:3128"
+file_server: "{{ hostvars[ groups['file_servers'][0] ]['ansible_hostname'] }}"
+samba_users:
+  user1:
+    name: "samba_u1"
+    password: "1qaz@WSX"
+  user2:
+    name: "samba_u2"
+    password: "1qaz@WSX"
+  user3:
+    name: "samba_u3"
+    password: "1qaz@WSX"
+  user4:
+    name: "samba_u4"
+    password: "1qaz@WSX"
+
+smb_shares_config:
+  VG: []
+  trash: []
+  IT: []
+  Work: []
+...
+EOF
+```
+
+</details>
+
+#### Постоянные переменные роли тестирования
+
+<details>
+<summary>./roles/tests_vkr/vars/main.yml</summary>
+
+```bash
+cat > roles/tests_vkr/vars/main.yml <<'EOF'
+---
+base_pkg:
+  - task-auth-ad-sssd
+  - chrony
+  - samba-common-tools
+  - samba-client
+  - avahi-daemon
+  - libnss-role
+  - gpupdate
+  - samba-gpupdate
 ...
 EOF
 ```
@@ -4509,7 +4672,7 @@ cat > roles/tests_vkr/templates/resolv.conf.j2 <<'EOF'
 nameserver {{ hostvars[server].ansible_host }}
 {% endfor %}
 search {{ ad_workgroup }}
-options rotate
+options timeout:1 attempts:2
 EOF
 ```
 
@@ -4533,29 +4696,6 @@ RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
-EOF
-```
-
-</details>
-
-#### Постоянные переменные роли тестирования
-
-<details>
-<summary>./roles/tests_vkr/vars/main.yml</summary>
-
-```bash
-cat > roles/tests_vkr/vars/main.yml <<'EOF'
----
-base_pkg:
-  - task-auth-ad-sssd
-  - chrony
-  - samba-common-tools
-  - samba-client
-  - avahi-daemon
-  - libnss-role
-  - gpupdate
-  - samba-gpupdate
-...
 EOF
 ```
 
@@ -4587,7 +4727,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "[upd20]ansible" \
+git commit -am "[upd21]ansible" \
 && git push \
 --set-upstream \
 altlinux \

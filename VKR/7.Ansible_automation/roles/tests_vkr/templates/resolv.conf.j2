@@ -2,4 +2,4 @@
 nameserver {{ hostvars[server].ansible_host }}
 {% endfor %}
 search {{ ad_workgroup }}
-options rotate
+options timeout:1 attempts:2

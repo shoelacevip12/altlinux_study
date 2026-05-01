@@ -24,7 +24,7 @@
         and "Failed to resolve" not in item.stderr
 
 - name: Тестирование инфраструктуры
-  hosts: all:!clients,reachable_clients
+  hosts: all, all:!clients, reachable_clients
   gather_facts: true
   become: true
   become_method: su

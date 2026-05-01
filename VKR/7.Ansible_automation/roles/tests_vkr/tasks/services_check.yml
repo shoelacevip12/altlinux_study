@@ -1,0 +1,85 @@
+---
+- name: Проверка proxy доступа выхода в интернет
+  block:
+    - name: Доступ разрешен под пользователем в группе доступа
+      shell: >
+        printf '%s\n' '{{ samba_users.user1.password }}' \
+        | kinit {{ samba_users.user1.name }} \
+        && curl --proxy-negotiate --proxy-user : \
+        -x http://{{ proxy_server }} \
+        https://2ip.ru
+      no_log: true
+      register: proxy_access_result
+
+    - name: Вывод сайта https://2ip.ru под пользователем {{ samba_users.user1.name }}
+      debug:
+        msg: "{{ proxy_access_result.stdout_lines[-1] }}"
+  
+    - name: Доступ запрещен под пользователем вне группы доступа
+      shell: >
+        printf '%s\n' '{{ samba_users.user2.password }}' \
+        | kinit {{ samba_users.user2.name }} \
+        && curl --proxy-negotiate --proxy-user : \
+        -x http://{{ proxy_server }} \
+        https://2ip.ru
+      no_log: true
+      register: proxy_access_denied_result
+      ignore_errors: true
+      changed_when: false
+
+    - name: Вывод сайта https://2ip.ru под пользователем {{ samba_users.user2.name }}
+      debug:
+        msg: "{{ proxy_access_denied_result.stderr_lines[-1] }}"
+
+- name: Проверка SMB ресурсов
+  block:
+    - name: Отображение ресурсов под разными пользователями
+      shell: >
+        printf '%s\n' '{{ item.value.password }}' \
+        | kinit {{ item.value.name }} \
+        && /usr/bin/smbclient -L {{ file_server }} -k
+      no_log: true
+      loop: "{{ samba_users | dict2items }}"
+      register: smb_result
+
+    - name: Вывод результатов smbclient для каждого пользователя samba_u
+      debug:
+        msg: "{{ (item.stdout_lines)[4:] }}"
+      loop: "{{ smb_result.results }}"
+
+    - name: Попытка входа под пользователями на ресурс {{ (smb_shares_config | list)[0] }}
+      shell: >
+        printf '%s\n' '{{ item.value.password }}' \
+        | kinit {{ item.value.name }} \
+        && /usr/bin/smbclient //{{ file_server }}/{{ (smb_shares_config | list)[0] }} -k -c 'ls'
+      no_log: true
+      loop: "{{ samba_users | dict2items }}"
+      register: smb_ls_results1
+      ignore_errors: true
+      changed_when: false
+
+    - name: Вывести результаты smbclient ls для каждого пользователя
+      debug:
+        msg: "{{ (item.stdout_lines)[4:] }}"
+      loop: "{{ smb_ls_results1.results }}"
+
+    - name: Попытка входа под пользователями на ресурс {{ (smb_shares_config | list)[1] }}
+      shell: |
+        printf '%s\n' '{{ item.value.password }}' | kinit {{ item.value.name }}
+        /usr/bin/smbclient //{{ file_server }}/{{ (smb_shares_config | list)[1] }} -k -c 'ls'
+      no_log: true
+      loop: "{{ samba_users | dict2items }}"
+      register: smb_ls_results2
+      ignore_errors: true
+      changed_when: false
+
+    - name: Вывести результаты smbclient ls для каждого пользователя
+      debug:
+        msg: "{{ (item.stdout_lines)[4:] }}"
+      loop: "{{ smb_ls_results2.results }}"
+
+- name: Проверка NFS ресурсов
+  block:
+    - name: Отображение доступных exports
+      command: /usr/bin/showmount -e {{ file_server }}
+...

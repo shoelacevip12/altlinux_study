@@ -14,10 +14,16 @@ eval $(ssh-agent) \
 
 ssh -t \
 -i ~/.ssh/id_skv_VKR_vpn \
--J skv@81.26.178.206 \
+-J skv@81.26.190.148 \
 -o StrictHostKeyChecking=accept-new \
 sysadmin@172.16.100.2 \
 "su -"
+
+sed -i '/**vkr$/d' /etc/hosts
+echo "81.26.190.148 \
+vkr" \
+>> /etc/hosts
+systemctl restart openvpn-client@tun0.service
 
 # вход на bastion хост по ключу по ssh
 > ~/.ssh/known_hosts \

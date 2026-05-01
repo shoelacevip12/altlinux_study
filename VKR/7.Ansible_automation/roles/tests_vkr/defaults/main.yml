@@ -3,4 +3,25 @@ dist_upd: true # Обновление кеша пакетов
 dist_upgrd: true # обновление установленных приложений
 kernel_upd: true # обновление ядра
 tests_vkr: false
+proxy_server: "{{ hostvars[ groups['proxy_servers'][0] ]['ansible_nodename'] }}:3128"
+file_server: "{{ hostvars[ groups['file_servers'][0] ]['ansible_hostname'] }}"
+samba_users:
+  user1:
+    name: "samba_u1"
+    password: "1qaz@WSX"
+  user2:
+    name: "samba_u2"
+    password: "1qaz@WSX"
+  user3:
+    name: "samba_u3"
+    password: "1qaz@WSX"
+  user4:
+    name: "samba_u4"
+    password: "1qaz@WSX"
+
+smb_shares_config:
+  VG: []
+  trash: []
+  IT: []
+  Work: []
 ...

@@ -2,18 +2,38 @@
 - name: Подготовка и обновление пакетов
   include_tasks: prepare.yml
   when:
-    - inventory_hostname not in (
-        groups.get('domain_controllers', []) +
-        groups.get('file_servers', []) +
-        groups.get('proxy_servers', [])
-      )
+    - inventory_hostname in groups.get('reachable_clients', [])
+
+- name: Выключение основного домен контроллера на 420 секунд
+  block:
+    - name: Определить основной интерфейс
+      set_fact:
+        primary_iface_name: >-
+          {{
+              ansible_interfaces
+              | difference(['lo'])
+              | select('match', '^(eth|en)[a-z0-9]*')
+              | first
+          }}
+    
+    # - name: Выключение интерфейса
+    #   shell: >
+    #     /sbin/ifdown {{ primary_iface_name }} \
+    #     && /bin/sleep 420 \
+    #     && /sbin/ifup {{ primary_iface_name }} \
+    #     &
+    #   async: 10
+    #   poll: 0
+  when:
+    - inventory_hostname == (groups['domain_controllers'] | list)[0]
 
 - name: Ввод в домен
   include_tasks: ad_prerare.yml
   when:
-    - inventory_hostname not in (
-        groups.get('domain_controllers', []) +
-        groups.get('file_servers', []) +
-        groups.get('proxy_servers', [])
-      )
+    - inventory_hostname in groups.get('reachable_clients', [])
+
+- name: Проверка сервисов
+  include_tasks: services_check.yml
+  when:
+    - inventory_hostname in groups.get('reachable_clients', [])
 ...

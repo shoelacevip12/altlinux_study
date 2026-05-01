@@ -15,22 +15,24 @@ primary_dc: "{{ groups['domain_controllers'][0] }}"
 primary_dc_ip: "{{ hostvars[primary_dc]['ansible_host'] }}"
 secondary_dc: "{{ groups['domain_controllers'][1] }}"
 secondary_dc_ip: "{{ hostvars[secondary_dc]['ansible_host'] }}"
+proxy_server: "{{ hostvars[ groups['proxy_servers'][0] ]['ansible_nodename'] }}:3128"
+file_server: "{{ hostvars[ groups['file_servers'][0] ]['ansible_hostname'] }}"
 
 #====| ВКЛ\ВЫКЛ ролей |===#
 
 # включаем(true)\выключаем(false) РОЛИ
-base_setup: true
+base_setup: false
 
-chrony_sync: true
+chrony_sync: false
 
-sysvol_replication: true  # на эту переменную завязаны репликации служб AD и DHCP
-samba_ad_dc: true
-dhcp_server: true
+sysvol_replication: false  # на эту переменную завязаны репликации служб AD и DHCP
+samba_ad_dc: false
+dhcp_server: false
 
-smb_shares: true
-nfs_server: true
+smb_shares: false
+nfs_server: false
 
-squid_proxy: true
+squid_proxy: false
 
 tests_vkr: true
 
