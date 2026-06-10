@@ -14,13 +14,13 @@ eval $(ssh-agent) \
 
 ssh -t \
 -i ~/.ssh/id_skv_VKR_vpn \
--J skv@81.26.190.148 \
+-J skv@81.26.180.222 \
 -o StrictHostKeyChecking=accept-new \
 sysadmin@172.16.100.2 \
 "su -"
 
 sed -i '/**vkr$/d' /etc/hosts
-echo "81.26.190.148 \
+echo "158.160.244.156 \
 vkr" \
 >> /etc/hosts
 systemctl restart openvpn-client@tun0.service

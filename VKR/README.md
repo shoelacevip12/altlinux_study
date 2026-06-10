@@ -582,7 +582,7 @@ sysadmin@192.168.100."$ip" \
 && apt-get install -y \
 ansible \
 python3-module-importlib-resources \
-python3-module-zip \
+python3-module-zipp \
 python3-module-yaml \
 python3-module-jinja2 \
 python3-module-jsonobject \
@@ -3907,7 +3907,7 @@ EOF
 
 ```bash
 cat > roles/squid_proxy/tasks/main.yml <<'EOF'
-
+---
 - name: Создание групп для Прокси
   include_tasks: groups_proxy_add.yml
   when:
@@ -3917,6 +3917,7 @@ cat > roles/squid_proxy/tasks/main.yml <<'EOF'
   include_tasks: install_squid.yml
   when:
     - inventory_hostname in groups['proxy_servers']
+...
 EOF
 ```
 
