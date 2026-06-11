@@ -72,8 +72,6 @@ cat /etc/samba/smb.conf
 
 </details>
 
-![](./img/1.png)
-
 ## Установка пакета Bind9
 ```bash
 apt-get update \
@@ -206,7 +204,7 @@ samba_upgradedns \
 <details>
 <summary>лог миграции</summary>
 
-```log
+```
 Reading domain information
 DNS accounts already exist
 No zone file /var/lib/samba/bind-dns/dns/DEN.SKV.zone (normal)
@@ -352,8 +350,6 @@ active
 ```
 
 </details>
-
-![](./img/2.png)
 
 ## Диагностика работы Контролера домена 
 ```bash
