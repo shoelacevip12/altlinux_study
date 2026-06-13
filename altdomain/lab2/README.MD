@@ -120,7 +120,7 @@ cat /etc/sysconfig/bind
 # Use -4 for ipv4 only behaviour. See named(8) for details.
 
 # EXTRAOPTIONS can be used to override any other options (the last passed wins)
-EXTRAOPTIONS=""
+EXTRAOPTIONS="-4"
 
 # Starting with bind 9.10, chrooted mode is under control(1).
 CHROOT="-t /"

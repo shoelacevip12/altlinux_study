@@ -79,7 +79,7 @@ sysadmin@192.168.100.11 \
 <summary>вывод доступа до dc1</summary>
 
 ```log
- Static hostname: dc1
+ Static hostname: altsrv1
        Icon name: computer-vm
          Chassis: vm 🖴
       Machine ID: dac3b001c8db895abaedef1a683ecf35
