@@ -66,11 +66,10 @@ find /home/sysadmin/.ssh/ \
 
 ```bash
 # проброс ключа до Управляемых хостов
-for ip in 12; do \
 ssh-copy-id \
 -o StrictHostKeyChecking=accept-new \
 -i /home/sysadmin/.ssh/id_alt-domain_2026_host_ed25519.pub \
-sysadmin@192.168.100.$ip; done
+sysadmin@192.168.100.12
 ```
 
 <details>
@@ -93,13 +92,12 @@ and check to make sure that only the key(s) you wanted were added.
 ### Проверка входа
 
 ```bash
-for ip in 12; do \
 ssh -t \
 -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
 -J sysadmin@172.16.100.2 \
 -o StrictHostKeyChecking=accept-new \
-sysadmin@192.168.100."$ip" \
-"hostnamectl && ip -br a" ; done
+sysadmin@192.168.100.12 \
+"hostnamectl && ip -br a"
 ```
 
 <details>
@@ -1048,8 +1046,7 @@ Connection to 192.168.100.12 closed.
 
 </details>
 
-
-#### Запуск проверок со стороны dc2
+#### Запуск проверок со стороны `dc2`
 
 ```bash
 ssh -t \
@@ -1089,6 +1086,12 @@ sysadmin@192.168.100.12 \
 && samba-tool dns zoneinfo dc2.den.skv den.skv --use-krb5-ccache=/tmp/krb5cc_0 \
 && echo -e \"\n-----===== Check Reverse Zone =====-----\" \
 && samba-tool dns zoneinfo dc2.den.skv 100.168.192.in-addr.arpa --use-krb5-ccache=/tmp/krb5cc_0 \
+&& echo -e \"\n-----===== DRS Repl Check =====-----\" \
+&& samba-tool drs showrepl --summary --use-krb5-ccache=/tmp/krb5cc_0 \
+&& echo -e \"\n-----===== DRS Repl Check =====-----\" \
+&& samba-tool ldapcmp  ldap://dc1.den.skv ldap://dc2.den.skv --use-krb5-ccache=/tmp/krb5cc_0 \
+&& echo -e \"\n-----===== FSMO CHECK =====-----\" \
+&& samba-tool fsmo show --use-krb5-ccache=/tmp/krb5cc_0 \
 && kdestroy'"
 ```
 
@@ -1096,13 +1099,649 @@ sysadmin@192.168.100.12 \
 <summary>лог вывода проверок</summary>
 
 ```log
+Password: 
 
+-----=====diag-domain-controller=====-----
+[DONE]: is_domain_info_available
+[DONE]: is_hostname_correct
+[DONE]: is_hostname_static_and_transient
+[DONE]: is_not_empty_sysvol
+[DONE]: does_sysvol_contain_necessary_files
+[DONE]: is_samba_package_installed
+[DONE]: is_samba_service_running
+[DONE]: is_resolve_local
+[DONE]: is_krb5_conf_file_exists
+[DONE]: is_smb_conf_file_exists
+[DONE]: is_there_way_to_cache_kerberos_tickets
+[DONE]: is_sections_with_domain_name_in_krb5_empty
+[DONE]: is_dns_lookup_kdc_enabled
+[DONE]: is_dns_lookup_realm_disabled
+[DONE]: is_resolv_conf_file_exists
+[DONE]: does_resolv_conf_and_default_realm_it_match
+[DONE]: does_smb_realm_and_krb5_default_realm_it_match
+[DONE]: are_there_errors_in_samba_databases
+[DONE]: is_ntp_service_running
+[DONE]: is_time_synchronization_enabled
+[DONE]: is_ports_listening
+[DONE]: is_list_trusts_validated
+[DONE]: is_nscd_service_disabled
+[DONE]: is_nslcd_service_disabled
+[DONE]: is_smb_service_disabled
+[DONE]: is_nmb_service_disabled
+
+-----=====krb5.conf=====-----
+[libdefaults]
+        default_realm = DEN.SKV
+        dns_lookup_realm = false
+        dns_lookup_kdc = true
+
+[realms]
+DEN.SKV = {
+        default_domain = den.skv
+}
+
+[domain_realm]
+        DC2 = DEN.SKV
+        dc1 = DEN.SKV
+
+-----=====resolvconf=====-----
+# resolv.conf from ens19
+nameserver 127.0.0.1
+search den.skv
+
+
+-----=====ping-test=====-----
+PING pub.ru (62.122.170.171) 56(84) bytes of data.
+64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=1 ttl=53 time=40.0 ms
+64 bytes from 62.122.170.171.serverel.net (62.122.170.171): icmp_seq=2 ttl=53 time=40.0 ms
+
+--- pub.ru ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 39.963/39.965/39.967/0.002 ms
+
+-----=====host domain=====-----
+Using domain server:
+Name: 127.0.0.1
+Address: 127.0.0.1#53
+Aliases: 
+
+den.skv has address 192.168.100.12
+den.skv has address 192.168.100.11
+
+-----===== A DC1 =====-----
+Using domain server:
+Name: 127.0.0.1
+Address: 127.0.0.1#53
+Aliases: 
+
+dc1.den.skv has address 192.168.100.11
+
+-----===== A DC2 =====-----
+Using domain server:
+Name: 127.0.0.1
+Address: 127.0.0.1#53
+Aliases: 
+
+dc2.den.skv has address 192.168.100.12
+
+-----===== PTR DC1 =====-----
+Using domain server:
+Name: 127.0.0.1
+Address: 127.0.0.1#53
+Aliases: 
+
+11.100.168.192.in-addr.arpa domain name pointer dc1.den.skv.
+
+-----===== PTR DC2 =====-----
+Using domain server:
+Name: 127.0.0.1
+Address: 127.0.0.1#53
+Aliases: 
+
+12.100.168.192.in-addr.arpa domain name pointer dc2.den.skv.
+
+-----===== NS domain =====-----
+Using domain server:
+Name: 127.0.0.1
+Address: 127.0.0.1#53
+Aliases: 
+
+den.skv name server dc2.den.skv.
+den.skv name server dc1.den.skv.
+
+-----===== SRV-kerberos domain =====-----
+Using domain server:
+Name: 127.0.0.1
+Address: 127.0.0.1#53
+Aliases: 
+
+_kerberos._udp.den.skv has SRV record 0 100 88 dc1.den.skv.
+_kerberos._udp.den.skv has SRV record 0 100 88 dc2.den.skv.
+
+-----===== SRV-LDAP domain =====-----
+Using domain server:
+Name: 127.0.0.1
+Address: 127.0.0.1#53
+Aliases: 
+
+_ldap._tcp.den.skv has SRV record 0 100 389 dc1.den.skv.
+_ldap._tcp.den.skv has SRV record 0 100 389 dc2.den.skv.
+
+-----===== Kinit domain-admin =====-----
+Using default cache: /tmp/krb5cc_0
+Using principal: Administrator@DEN.SKV
+Password for Administrator@DEN.SKV: 
+Warning: Your password will expire in 39 days on Thu Jul 23 18:39:24 2026
+Authenticated to Kerberos v5
+
+-----===== Check Forward Zone =====-----
+  pszZoneName                 : den.skv
+  dwZoneType                  : DNS_ZONE_TYPE_PRIMARY
+  fReverse                    : FALSE
+  fAllowUpdate                : DNS_ZONE_UPDATE_SECURE
+  fPaused                     : FALSE
+  fShutdown                   : FALSE
+  fAutoCreated                : FALSE
+  fUseDatabase                : TRUE
+  pszDataFile                 : None
+  aipMasters                  : []
+  fSecureSecondaries          : DNS_ZONE_SECSECURE_NO_XFER
+  fNotifyLevel                : DNS_ZONE_NOTIFY_LIST_ONLY
+  aipSecondaries              : []
+  aipNotify                   : []
+  fUseWins                    : FALSE
+  fUseNbstat                  : FALSE
+  fAging                      : TRUE
+  dwNoRefreshInterval         : 168
+  dwRefreshInterval           : 720
+  dwAvailForScavengeTime      : 0
+  aipScavengeServers          : []
+  dwRpcStructureVersion       : 0x2
+  dwForwarderTimeout          : 0
+  fForwarderSlave             : 0
+  aipLocalMasters             : []
+  dwDpFlags                   : DNS_DP_AUTOCREATED DNS_DP_DOMAIN_DEFAULT DNS_DP_ENLISTED 
+  pszDpFqdn                   : DomainDnsZones.den.skv
+  pwszZoneDn                  : DC=den.skv,CN=MicrosoftDNS,DC=DomainDnsZones,DC=den,DC=skv
+  dwLastSuccessfulSoaCheck    : 0
+  dwLastSuccessfulXfr         : 0
+  fQueuedForBackgroundLoad    : FALSE
+  fBackgroundLoadInProgress   : FALSE
+  fReadOnlyZone               : FALSE
+  dwLastXfrAttempt            : 0
+  dwLastXfrResult             : 0
+
+-----===== Check Reverse Zone =====-----
+  pszZoneName                 : 100.168.192.in-addr.arpa
+  dwZoneType                  : DNS_ZONE_TYPE_PRIMARY
+  fReverse                    : TRUE
+  fAllowUpdate                : DNS_ZONE_UPDATE_SECURE
+  fPaused                     : FALSE
+  fShutdown                   : FALSE
+  fAutoCreated                : FALSE
+  fUseDatabase                : TRUE
+  pszDataFile                 : None
+  aipMasters                  : []
+  fSecureSecondaries          : DNS_ZONE_SECSECURE_NO_XFER
+  fNotifyLevel                : DNS_ZONE_NOTIFY_LIST_ONLY
+  aipSecondaries              : []
+  aipNotify                   : []
+  fUseWins                    : FALSE
+  fUseNbstat                  : FALSE
+  fAging                      : FALSE
+  dwNoRefreshInterval         : 168
+  dwRefreshInterval           : 168
+  dwAvailForScavengeTime      : 0
+  aipScavengeServers          : []
+  dwRpcStructureVersion       : 0x2
+  dwForwarderTimeout          : 0
+  fForwarderSlave             : 0
+  aipLocalMasters             : []
+  dwDpFlags                   : DNS_DP_AUTOCREATED DNS_DP_DOMAIN_DEFAULT DNS_DP_ENLISTED 
+  pszDpFqdn                   : DomainDnsZones.den.skv
+  pwszZoneDn                  : DC=100.168.192.in-addr.arpa,CN=MicrosoftDNS,DC=DomainDnsZones,DC=den,DC=skv
+  dwLastSuccessfulSoaCheck    : 0
+  dwLastSuccessfulXfr         : 0
+  fQueuedForBackgroundLoad    : FALSE
+  fBackgroundLoadInProgress   : FALSE
+  fReadOnlyZone               : FALSE
+  dwLastXfrAttempt            : 0
+  dwLastXfrResult             : 0
+
+-----===== DRS Repl Check =====-----
+[ALL GOOD]
+
+-----===== DRS Repl Check =====-----
+
+* Comparing [DOMAIN] context...
+
+* Objects to be compared: 285
+
+* Result for [DOMAIN]: SUCCESS
+
+* Comparing [CONFIGURATION] context...
+
+* Objects to be compared: 1734
+
+* Result for [CONFIGURATION]: SUCCESS
+
+* Comparing [SCHEMA] context...
+
+* Objects to be compared: 1770
+
+* Result for [SCHEMA]: SUCCESS
+
+* Comparing [DNSDOMAIN] context...
+
+* Objects to be compared: 44
+
+* Result for [DNSDOMAIN]: SUCCESS
+
+* Comparing [DNSFOREST] context...
+
+* Objects to be compared: 18
+
+* Result for [DNSFOREST]: SUCCESS
+
+-----===== FSMO CHECK =====-----
+SchemaMasterRole owner: CN=NTDS Settings,CN=DC1,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=den,DC=skv
+InfrastructureMasterRole owner: CN=NTDS Settings,CN=DC1,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=den,DC=skv
+RidAllocationMasterRole owner: CN=NTDS Settings,CN=DC1,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=den,DC=skv
+PdcEmulationMasterRole owner: CN=NTDS Settings,CN=DC1,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=den,DC=skv
+DomainNamingMasterRole owner: CN=NTDS Settings,CN=DC1,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=den,DC=skv
+DomainDnsZonesMasterRole owner: CN=NTDS Settings,CN=DC1,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=den,DC=skv
+ForestDnsZonesMasterRole owner: CN=NTDS Settings,CN=DC1,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=den,DC=skv
+Connection to 192.168.100.12 closed.
 ```
 
 </details>
 
+### `Sysvol` репликация
+
+#### Установка пакетов `rsync` и `unison`
+
+```bash
+for ip in {11,12}; do \
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100."$ip" \
+"su -c \
+'export PATH=/root/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/games \
+&& apt-get update \
+&& apt-get -y install \
+rsync \
+unison'" ; done
+```
+
+#### Формирование уникальной пары ключей между доменами у каждого хоста
+
+```bash
+for ip in {11,12}; do \
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.$ip \
+"su -c \
+'export PATH=/root/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/games \
+&& ssh-keygen -f /root/.ssh/id_sysvol_ed25519 -t ed25519 -C \"rsync SysVol\" \
+&& chmod 600 -v /root/.ssh/id_sysvol_ed25519 \
+&& chmod 644 -v /root/.ssh/id_sysvol_ed25519.pub'" ; done
+```
+
+<details>
+<summary>лог генерации ключей </summary>
+
+```log
+Password: 
+Generating public/private ed25519 key pair.
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /root/.ssh/id_sysvol_ed25519
+Your public key has been saved in /root/.ssh/id_sysvol_ed25519.pub
+The key fingerprint is:
+SHA256:rsZlmOnaNvvlDYt4S5m/uNAW4rhMISR0lD49RClZWlw rsync SysVol
+The key's randomart image is:
++--[ED25519 256]--+
+| ..o*+oE         |
+|. .+o+           |
+|. o.+            |
+| o o o           |
+|  . o o+S        |
+|   . +++o+       |
+|    ooooB o      |
+|   o o**.* +     |
+|    ++==*o=..    |
++----[SHA256]-----+
+mode of '/root/.ssh/id_sysvol_ed25519' retained as 0600 (rw-------)
+mode of '/root/.ssh/id_sysvol_ed25519.pub' retained as 0644 (rw-r--r--)
+Connection to 192.168.100.11 closed.
+Password: 
+Generating public/private ed25519 key pair.
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /root/.ssh/id_sysvol_ed25519
+Your public key has been saved in /root/.ssh/id_sysvol_ed25519.pub
+The key fingerprint is:
+SHA256:odbl2i8uuoyPsK9iHXH3K1YU6MpYCLarSY/gX03Ow9Q rsync SysVol
+The key's randomart image is:
++--[ED25519 256]--+
+|        .        |
+| o     . .       |
+|. o . . . o      |
+| . o o =.=       |
+|  . * =oSE.      |
+|.o o +B  =       |
+|=.= .. *o o      |
+|++ =.+ oo...     |
+|..+++.*o.o...    |
++----[SHA256]-----+
+mode of '/root/.ssh/id_sysvol_ed25519' retained as 0600 (rw-------)
+mode of '/root/.ssh/id_sysvol_ed25519.pub' retained as 0644 (rw-r--r--)
+Connection to 192.168.100.12 closed.
+```
+
+</details>
+
+#### РУчная Процедура проброса ключей между хостами
+
+```bash
+# Последовательный вход на хосты
+for ip in {11,12}; do \
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.$ip \
+"su -" ; done
+
+# Унифицированная команда для проброса ключей
+ssh-copy-id -i ~/.ssh/id_sysvol_ed25519.pub \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")"
+
+# Перенос проброшенного ключа на удалнном хосте с sysadmin до root
+ssh -t \
+-i ~/.ssh/id_sysvol_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")" \
+"su - \
+-c 'grep SysVol /home/sysadmin/.ssh/authorized_keys \
+| tee -a ~/.ssh/authorized_keys'"
+
+# Актуализация списока открытых SSH-ключей для узлов для dc1
+ssh-keyscan \
+192.168.100.12 dc2.den.skv \
+>> .ssh/known_hosts
+
+# Актуализация списока открытых SSH-ключей для узлов для dc2
+ssh-keyscan \
+192.168.100.11 dc1.den.skv \
+>> .ssh/known_hosts
+
+# Проверка входа
+ssh -t \
+-i ~/.ssh/id_sysvol_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+root@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")" \
+"su - \
+-c 'hostname && whoami'"
+
+# Выход из текущего хоста и вход на следующий
+exit
+```
+
+<details>
+<summary>лог действий</summary>
+
+```log
+Password: 
+[root@dc1 ~]# ssh-copy-id -i ~/.ssh/id_sysvol_ed25519.pub \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")"
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/root/.ssh/id_sysvol_ed25519.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+sysadmin@192.168.100.12's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh -o 'StrictHostKeyChecking=accept-new' 'sysadmin@192.168.100.12'"
+and check to make sure that only the key(s) you wanted were added.
+
+[root@dc1 ~]# ssh -t \
+-i ~/.ssh/id_sysvol_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")" \
+"su - \
+-c 'grep SysVol /home/sysadmin/.ssh/authorized_keys \
+| tee -a ~/.ssh/authorized_keys'"
+Password: 
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP9YWULJayOW6Ma0krReGffnlhxlcg8CnX1Lyzj0U7go rsync SysVol
+Connection to 192.168.100.12 closed.
+[root@dc1 ~]# ssh -t \
+-i ~/.ssh/id_sysvol_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+root@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")" \
+"su - \
+-c 'hostname && whoami'"
+dc2.den.skv
+root
+Connection to 192.168.100.12 closed.
+[root@dc1 ~]# exit
+logout
+Connection to 192.168.100.11 closed.
+Password: 
+[root@dc2 ~]# ssh-copy-id -i ~/.ssh/id_sysvol_ed25519.pub \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")"
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/root/.ssh/id_sysvol_ed25519.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+sysadmin@192.168.100.11's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh -o 'StrictHostKeyChecking=accept-new' 'sysadmin@192.168.100.11'"
+and check to make sure that only the key(s) you wanted were added.
+
+[root@dc2 ~]# ssh -t \
+-i ~/.ssh/id_sysvol_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")" \
+"su - \
+-c 'grep SysVol /home/sysadmin/.ssh/authorized_keys \
+| tee -a ~/.ssh/authorized_keys'"
+Password: 
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMEBUZ6DZUnGkOQDpRluB6g+4eKTrogZ81hLJVafm07 rsync SysVol
+Connection to 192.168.100.11 closed.
+[root@dc2 ~]# ssh -t \
+-i ~/.ssh/id_sysvol_ed25519 \
+-o StrictHostKeyChecking=accept-new \
+root@"$(host den.skv | awk '{print $4}' | grep -v "$(hostname -i)")" \
+"su - \
+-c 'hostname && whoami'"
+dc1.den.skv
+root
+Connection to 192.168.100.11 closed.
+[root@dc2 ~]# exit
+logout
+Connection to 192.168.100.12 closed.
+```
+
+</details>
+
+#### Преднастройка использования существующего SSH-соединение вместо установки нового
+
+```bash
+for ip in {11,12}; do \
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100."$ip" \
+"su - -c \
+'mkdir -v ~/.ssh/ctl ~/.unison \
+&& touch /var/log/sysvol-sync.log \
+&& cat << EOF > ~/.ssh/config
+Host *
+ControlMaster auto
+ControlPath ~/.ssh/ctl/%h_%p_%r
+ControlPersist 1
+EOF'" ; done
+```
+
+#### Файл настроек синхронизации unison для dc1
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.11 \
+"su - -c \
+'cat << EOT > ~/.unison/sync_dc2.prf
+root = /var/lib/samba
+root = ssh://root@dc2.den.skv//var/lib/samba
+path = sysvol
+acl=true
+xattrs=true
+auto=true
+batch=true
+perms=0
+rsync=true
+maxthreads=1
+retry=3
+confirmbigdeletes=false
+servercmd=/usr/bin/unison
+copythreshold=0
+copymax = 1
+
+logfile = /var/log/sysvol-sync.log
+EOT'"
+```
+
+#### Файл настроек синхронизации unison для dc2
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su - -c \
+'cat << EOT > ~/.unison/sync_dc1.prf
+root = /var/lib/samba
+root = ssh://root@dc1.den.skv//var/lib/samba
+path = sysvol
+acl=true
+xattrs=true
+auto=true
+batch=true
+perms=0
+rsync=true
+maxthreads=1
+retry=3
+confirmbigdeletes=false
+servercmd=/usr/bin/unison
+copythreshold=0
+copymax = 1
+
+logfile = /var/log/sysvol-sync.log
+EOT'"
+```
+
+#### Создание timer systemd Для отслеживания синхронизации sysvol
+```bash
+for ip in {11,12}; do \
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100."$ip" \
+"su - -c \
+'cat > /etc/systemd/system/sysvol-sync.timer <<EOF
+[Unit]
+Description=Cинхронизация sysvol каждые 5 минуты
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=sysvol-syn.service
+
+[Install]
+WantedBy=timers.target
+EOF'" ; done
+```
 
 
+# One-shot служба запускаемая таймером на dc1
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.11 \
+"su - -c \
+'cat > /etc/systemd/system/sysvol-syn.service <<EOF
+[Unit]
+Description=Sysvol sync
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=SSH_AUTH_SOCK=/run/sysvol-ssh-agent.sock
+ExecStartPre=/usr/bin/ssh-agent -a /run/sysvol-ssh-agent.sock
+ExecStart=/usr/bin/ssh-add /root/.ssh/id_sysvol_ed25519
+ExecStart=/usr/bin/unison sync_dc2 -silent
+ExecStartPost=/usr/bin/pkill -f \"ssh-agent -a /run/sysvol-ssh-agent.sock\"
+EOF'"
+```
+
+# One-shot служба запускаемая таймером dc1
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su - -c \
+'cat > /etc/systemd/system/sysvol-syn.service <<EOF
+[Unit]
+Description=Sysvol sync
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=SSH_AUTH_SOCK=/run/sysvol-ssh-agent.sock
+ExecStartPre=/usr/bin/ssh-agent -a /run/sysvol-ssh-agent.sock
+ExecStart=/usr/bin/ssh-add /root/.ssh/id_sysvol_ed25519
+ExecStart=/usr/bin/unison sync_dc1 -silent
+ExecStartPost=/usr/bin/pkill -f \"ssh-agent -a /run/sysvol-ssh-agent.sock\"
+EOF'"
+```
+
+### Запуск созданного таймера синхронизации
+```bash
+for ip in {11,12}; do \
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100."$ip" \
+"su - -c \
+'systemctl daemon-reload \
+&& systemctl enable --now sysvol-sync.timer \
+&& systemctl start sysvol-syn.service \
+&& echo -e \"\n-----==========-----\" \
+&& tail -n5 /var/log/sysvol-sync.log'" ; done
+```
+
+</details>
 
 ### Для github и gitflic
 ```bash
@@ -1127,7 +1766,7 @@ git add . ../ \
 
 git remote -v
 
-git commit -am "Secondary AD BIND9_DLZ" \
+git commit -am "Secondary AD BIND9_DLZ unison_synced" \
 && git push \
 --set-upstream \
 altlinux \
@@ -1138,4 +1777,41 @@ altlinux_gf \
 main
 
 popd
+```
+
+
+<details>
+<summary>xxxx</summary>
+
+```log
+
+```
+
+</details>
+
+```bash
+for ip in {11,12}; do \
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100."$ip" \
+"su -c \
+'export PATH=/root/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/games \
+&& poweroff'" ; done
+
+ssh-keyscan \
+192.168.100.12 dc2.den.skv \
+192.168.100.11 dc1.den.skv \
+>> .ssh/known_hosts
+
+eval $(ssh-agent) && ssh-add /root/.ssh/id_sysvol_ed25519
+
+/usr/bin/rsync -XAavz --log-file /var/log/sysvol-sync.log \
+--delete-after -f"+ */" -f"- *" /var/lib/samba/sysvol \
+root@dc2.den.skv:/var/lib/samba && /usr/bin/unison
+
+/usr/bin/rsync -XAavz --log-file /var/log/sysvol-sync.log \
+--delete-after -f"+ */" -f"- *" /var/lib/samba/sysvol \
+root@dc1.den.skv:/var/lib/samba && /usr/bin/unison
 ```
