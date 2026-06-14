@@ -1741,7 +1741,7 @@ sysadmin@192.168.100."$ip" \
 && tail -n5 /var/log/sysvol-sync.log'" ; done
 ```
 
-</details>
+![](./img/8.png)
 
 ### Для github и gitflic
 ```bash
