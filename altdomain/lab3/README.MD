@@ -957,6 +957,65 @@ Connection to 192.168.100.12 closed.
 
 </details>
 
+#### Смена Kerberos настроек для клиентского обращение к серверу созданные доменом
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su -c \
+'export PATH=/root/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/games \
+&& cat > /etc/krb5.conf<<'EOF'
+[libdefaults]
+        default_realm = DEN.SKV
+        dns_lookup_realm = false
+        dns_lookup_kdc = true
+
+[realms]
+DEN.SKV = {
+        default_domain = den.skv
+}
+
+[domain_realm]
+        DC2 = DEN.SKV
+        dc1 = DEN.SKV
+EOF'"
+```
+
+#### Смена домена поиска и dns на себя 127.0.0.1
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su -c \
+'export PATH=/root/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/games \
+&& cat > /etc/net/ifaces/ens19/resolv.conf<<'EOF'
+nameserver 127.0.0.1
+search den.skv
+EOF'"
+```
+
+#### применение изменений reolver
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su -c \
+'export PATH=/root/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/games \
+&& ifdown ens19 \
+; systemctl restart network \
+; ifup ens19 \
+&& resolvconf -u'"
+```
+
 #### Запуск служб
 
 ```bash
@@ -988,6 +1047,62 @@ Connection to 192.168.100.12 closed.
 ```
 
 </details>
+
+
+#### Запуск проверок со стороны dc2
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su -c \
+'export PATH=/root/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/games \
+&& echo -e \"\n-----=====diag-domain-controller=====-----\" \
+&& diag-domain-controller \
+&& echo -e \"\n-----=====krb5.conf=====-----\" \
+&& cat /etc/krb5.conf \
+&& echo -e \"\n-----=====resolvconf=====-----\" \
+&& resolvconf -l \
+&& echo -e \"\n-----=====ping-test=====-----\" \
+&& ping pub.ru -c 2 \
+&& echo -e \"\n-----=====host domain=====-----\" \
+&& host den.skv 127.0.0.1 \
+&& echo -e \"\n-----===== A DC1 =====-----\" \
+&& host dc1.den.skv 127.0.0.1 \
+&& echo -e \"\n-----===== A DC2 =====-----\" \
+&& host dc2.den.skv 127.0.0.1 \
+&& echo -e \"\n-----===== PTR DC1 =====-----\" \
+&& host 192.168.100.11 127.0.0.1 \
+&& echo -e \"\n-----===== PTR DC2 =====-----\" \
+&& host 192.168.100.12 127.0.0.1 \
+&& echo -e \"\n-----===== NS domain =====-----\" \
+&& host -t NS den.skv 127.0.0.1 \
+&& echo -e \"\n-----===== SRV-kerberos domain =====-----\" \
+&& host -t SRV _kerberos._udp.den.skv 127.0.0.1 \
+&& echo -e \"\n-----===== SRV-LDAP domain =====-----\" \
+&& host -t SRV _ldap._tcp.den.skv 127.0.0.1 \
+&& echo -e \"\n-----===== Kinit domain-admin =====-----\" \
+&& kinit -V Administrator \
+&& echo -e \"\n-----===== Check Forward Zone =====-----\" \
+&& samba-tool dns zoneinfo dc2.den.skv den.skv --use-krb5-ccache=/tmp/krb5cc_0 \
+&& echo -e \"\n-----===== Check Reverse Zone =====-----\" \
+&& samba-tool dns zoneinfo dc2.den.skv 100.168.192.in-addr.arpa --use-krb5-ccache=/tmp/krb5cc_0 \
+&& kdestroy'"
+```
+
+<details>
+<summary>лог вывода проверок</summary>
+
+```log
+
+```
+
+</details>
+
+
+
 
 ### Для github и gitflic
 ```bash
