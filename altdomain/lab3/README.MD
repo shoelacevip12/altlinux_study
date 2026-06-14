@@ -1701,7 +1701,7 @@ ExecStartPost=/usr/bin/pkill -f \"ssh-agent -a /run/sysvol-ssh-agent.sock\"
 EOF'"
 ```
 
-# One-shot служба запускаемая таймером dc1
+# One-shot служба запускаемая таймером dc2
 ```bash
 ssh -t \
 -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
