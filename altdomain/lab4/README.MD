@@ -987,6 +987,7 @@ Valid starting       Expires              Service principal
 </details>
 
 #### Создание пользователей
+
 ```bash
 samba-tool user create \
 samba_u1 \
@@ -1045,6 +1046,7 @@ User 'samba_u3' added successfully
 </details>
 
 #### Включение пользователей
+
 ```bash
 # Просмотр списка имеющихся пользователей
 samba-tool user \
@@ -1090,7 +1092,209 @@ Expiry for user 'samba_u3' disabled.
 
 ![](./img/GIF2.gif)
 
+### Создание групп пользователей
+
+```bash
+# Создание групп
+samba-tool group add \
+'Вымышленные_герои'
+```
+
+<details>
+<summary>Лог создания пользователей
+</summary>
+
+```log
+Added group Вымышленные_герои
+```
+
+</details>
+
+```bash
+# Списки имеющихся групп
+samba-tool group \
+list 
+```
+
+<details>
+<summary>
+Список групп домена
+</summary>
+
+```log
+list 
+Domain Computers
+Event Log Readers
+Read-only Domain Controllers
+IIS_IUSRS
+Remote Desktop Users
+Users
+Incoming Forest Trust Builders
+Enterprise Admins
+Denied RODC Password Replication Group
+Replicator
+RAS and IAS Servers
+DnsUpdateProxy
+Administrators
+Terminal Server License Servers
+Distributed COM Users
+Backup Operators
+Schema Admins
+Вымышленные_герои
+Cert Publishers
+Protected Users
+Network Configuration Operators
+Account Operators
+Group Policy Creator Owners
+Certificate Service DCOM Access
+Enterprise Read-only Domain Controllers
+Domain Guests
+Domain Controllers
+Performance Log Users
+Domain Users
+Domain Admins
+Print Operators
+Windows Authorization Access Group
+DnsAdmins
+Server Operators
+Guests
+Pre-Windows 2000 Compatible Access
+Cryptographic Operators
+Allowed RODC Password Replication Group
+Performance Monitor Users
+```
+
+</details>
+
+### Добавление пользователей в группы
+
+```bash
+# Добавление пользователей в группы
+for n in {1..3}; do \
+samba-tool group addmembers \
+'Вымышленные_герои' \
+samba_u$n ; done
+```
+
+```bash
+samba-tool group addmembers \
+'Domain Admins' \
+samba_u1
+```
+
+<details>
+<summary>Лог добавления пользователей в группу
+</summary>
+
+```log
+Added members to group Вымышленные_герои
+Added members to group Вымышленные_герои
+Added members to group Вымышленные_герои
+```
+
+```log
+Added members to group Domain Admins
+```
+
+</details>
+
+```bash
+# Проверка членства в группах
+for g in \
+{'Вымышленные_герои','Domain Users','Domain Admins'}; do \
+echo "---$g---"
+samba-tool group listmembers "$g"; done
+```
+
+<details>
+<summary>Вывод списка пользователей групп</summary>
+
+```log
+---Вымышленные_герои---
+samba_u3
+samba_u2
+samba_u1
+---Domain Users---
+Administrator
+krbtgt
+samba_u3
+dns-DC2
+samba_u2
+samba_u1
+dns-dc1
+---Domain Admins---
+Administrator
+samba_u1
+```
+
+</details>
+
+### Добавление Доменной группы из AD в роль localadmins
+
+#### Вход на узел введенный в домен
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.2 \
+"su -"
+```
+
+#### Предварительный вывод
+
+```bash
+rolelst
+```
+
+<details>
+<summary>Вывод списка ролей и привилегий до ввода группы домена</summary>
+
+```log
+users:vmusers,usershares,cdwriter,cdrom,audio,video,proc,radio,camera,floppy,xgrp,scanner,uucp,vboxusers,fuse,vboxadd
+domain admins:localadmins
+domain users:users
+localadmins:wheel,vboxadd
+powerusers:remote,vboxadd
+vboxadd:vboxsf
+```
+
+</details>
+
+#### Добавление Доменной группы из AD
+
+```bash
+roleadd 'Вымышленные_герои' \
+localadmins
+```
+
+```bash
+# Проверка вывода предоставленных привелегий
+rolelst
+```
+
+<details>
+<summary>Проверка предоставления привелегий</summary>
+
+```log
+users:vmusers,usershares,cdwriter,cdrom,audio,video,proc,radio,camera,floppy,xgrp,scanner,uucp,vboxusers,fuse,vboxadd
+domain admins:localadmins
+domain users:users
+вымышленные_герои:localadmins
+localadmins:wheel,vboxadd
+powerusers:remote,vboxadd
+vboxadd:vboxsf
+```
+
+</details>
+
+![](./img/4.png)
+
+![](./img/4.1.png)
+
 ### Для github и gitflic
+
 ```bash
 exit
 
