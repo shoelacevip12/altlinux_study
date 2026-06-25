@@ -1,4 +1,4 @@
-# Лабораторная работа 5 «`Работа с объектами в Альт Домен`»
+# Лабораторная работа 6 «`Интеграция служб в Альт Домен`»
 
 ![](./img/0.png)
 
@@ -238,8 +238,6 @@ altsrv3.den.skv
 domainname den.skv
 ```
 
-
-
 ### Обновление системы и Установка пакетов для Web-Nginx
 
 ```bash
@@ -307,6 +305,8 @@ includedir /etc/krb5.conf.d/
 systemctl reboot
 ```
 
+## Выполнение работы на домен контроллере
+
 ### Вход на домен контроллер
 
 ```bash
@@ -369,6 +369,395 @@ add dc2.den.skv \
 100.168.192.in-addr.arpa 13 PTR web.den.skv \
 --use-krb5-ccache=/tmp/krb5cc_0
 ```
+
+### SPN и Keytab-файл для Web-сервера
+
+#### Создание пользователя для аутентификации по keytab-файлу
+
+```bash
+samba-tool user \
+add \
+--random-password webauth \
+--use-krb5-ccache=/tmp/krb5cc_0
+
+samba-tool user \
+setpassword \
+webauth \
+--random-password
+
+samba-tool user \
+setexpiry webauth \
+--noexpiry
+```
+
+#### Изменение `userPrincipalName:` webauth@`den.skv` на webauth@`DEN.SKV`
+
+```bash
+EDITOR=nano samba-tool user edit webauth
+
+Modified User 'webauth' successfully
+```
+
+#### Создание SPN на учетную запись и Keytab-файла
+
+```bash
+samba-tool spn \
+add \
+HTTP/web.den.skv \
+webauth
+
+samba-tool spn \
+add \
+HTTP/web.den.skv@DEN.SKV \
+webauth
+
+samba-tool domain \
+exportkeytab \
+/tmp/nginx_web.keytab \
+--principal=HTTP/web.den.skv@DEN.SKV
+```
+
+### Проверка авторизации по keytab-файлу
+
+```bash
+klist -ke /tmp/nginx_web.keytab
+
+kinit -5 -V -k -t /tmp/nginx_web.keytab \
+HTTP/web.den.skv@den.skv
+```
+
+<details>
+<summary>
+вывод klist
+</summary>
+
+```log
+Keytab name: FILE:/tmp/nginx_web.keytab
+KVNO Principal
+---- --------------------------------------------------------------------------
+   4 HTTP/web.den.skv@DEN.SKV (DEPRECATED:arcfour-hmac) 
+```
+
+```log
+HTTP/web.den.skv@den.skv
+Using default cache: /tmp/krb5cc_0
+Using principal: HTTP/web.den.skv@den.skv
+Using keytab: /tmp/nginx_web.keytab
+kinit: Keytab contains no suitable keys for HTTP/web.den.skv@den.skv while getting initial credentials
+```
+
+</details>
+
+#### Проброс экспортированного keytab-файла по scp
+
+```bash
+scp \
+/tmp/nginx_web.keytab \
+sysadmin@altsrv3:/tmp/nginx_web.keytab
+```
+
+## Выполнение работы на Web-сервере
+
+### Вход на Web-сервер
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.13 \
+"su -"
+```
+
+### Включение модуля spnego
+
+```bash
+ln -vs /etc/nginx/modules-available.d/http_auth_spnego.conf \
+/etc/nginx
+/modules-enabled.d/
+```
+
+<details>
+<summary>
+вывод при создании ссылки для включения модуля
+</summary>
+
+```log
+/modules-enabled.d/
+'/etc/nginx/modules-enabled.d/http_auth_spnego.conf' -> '/etc/nginx/modules-available.d/http_auth_spnego.conf'
+```
+
+</details>
+
+### Создание nginx конфиг сайта из default.conf
+
+```bash
+cp -v /etc/nginx/sites-available.d/{default,web_skv}.conf
+```
+
+<details>
+<summary>
+вывод при создании конфиг сайта
+</summary>
+
+```log
+'/etc/nginx/sites-available.d/default.conf' -> '/etc/nginx/sites-available.d/web_skv.conf'
+```
+
+</details>
+
+### Внесение настроек в конфиг сайта
+
+```bash
+sed -i \
+'s/127.0.0.1/*/' \
+/etc/nginx/sites-available.d/web_skv.conf
+
+sed -i \
+'s/listen  \[/#listen  \[/' \
+/etc/nginx/sites-available.d/web_skv.conf
+
+sed -i \
+'s/localhost localhost.localdomain/web.den.skv/' \
+/etc/nginx/sites-available.d/web_skv.conf
+
+sed -i '/root\ \/var\/www\/html;/r /dev/stdin' \
+/etc/nginx/sites-available.d/web_skv.conf <<'EOF'
+                auth_gss on;
+                auth_gss_realm DEN.SKV;
+                auth_gss_keytab /etc/nginx/nginx_web.keytab;
+                auth_gss_service_name HTTP/web.den.skv;
+                auth_gss_allow_basic_fallback off;
+                satisfy all;
+                error_page 401 /401.html;
+                location = /401.html {
+                    root /var/www/html;
+                    internal;
+                }
+EOF
+
+cat /etc/nginx/sites-available.d/web_skv.conf
+```
+
+<details>
+<summary>
+вывод настроек после внесения настроек в конфиг сайта
+</summary>
+
+```json
+#load_module modules/ngx_http_geoip_module.so;
+#load_module modules/ngx_http_perl_module.so;
+#load_module modules/ngx_mail_module.so;
+#load_module modules/ngx_stream_module.so;
+
+server {
+        listen  *:80;
+        #listen  [::1]:80;
+        # can't use wildcards in first server_name
+        server_name web.den.skv;
+
+        location / {
+            root /var/www/html;
+                auth_gss on;
+                auth_gss_realm DEN.SKV;
+                auth_gss_keytab /etc/nginx/nginx_web.keytab;
+                auth_gss_service_name HTTP/web.den.skv;
+                auth_gss_allow_basic_fallback off;
+                satisfy all;
+                error_page 401 /401.html;
+                location = /401.html {
+                    root /var/www/html;
+                    internal;
+                }
+                # autoindex off;
+                # autoindex_exact_size on;
+                # autoindex_localtime off;
+
+                # expires off;
+
+                # cooperate with mod_realip in apache-1.3 or mod_rpaf in apache-2.x
+                #       proxy_redirect off;
+                #       proxy_set_header Host $host;
+                #       proxy_set_header X-Real-IP $remote_addr;
+                #       proxy_set_header X-Forwarded-For $remote_addr;
+                #       proxy_pass http://back.end.addr.ess:80/;
+                #
+                # NB: it's better for URI canonicalization that apache sits on :80
+                # (even if that's only *:80)
+                #
+                # see also set_real_ip_from, real_ip_header if this nginx
+                # would need to cooperate with another one acting as a frontend
+        }
+
+#               charset         on;
+#               source_charset  koi8-r;
+
+                access_log  /var/log/nginx/access.log;
+}
+```
+
+</details>
+
+### Создание страницы 401.html для отказа в доступе
+
+```bash
+cat > /var/www/html/401.html <<'EOF'
+<!DOCTYPE html>
+<html>
+<head><title>401 Authorization Required</title></head>
+<body>
+<h1>401 Unauthorized</h1>
+<p>Kerberos authentication failed. Access denied.</p>
+</body>
+</html>
+EOF
+```
+
+### Создание главно страницы testkrb.html для сайта
+
+```bash
+cat > /var/www/html/testkrb.html <<'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+</head>
+<body>
+<h1>
+Что-то рабочее с авторизацией по kerberos!
+</h1>
+</body>
+</html>
+EOF
+```
+
+### Создание символьной ссылки на конфиг nginx `web_skv.conf`
+
+```bash
+ln -vs \
+/etc/nginx/sites-available.d/web_skv.conf \
+/etc/nginx/sites-enabled.d/
+```
+
+<details>
+<summary>
+вывод при создании символьной ссылки на конфиг nginx `web_skv.conf`
+</summary>
+
+```log
+'/etc/nginx/sites-enabled.d/web_skv.conf' -> '/etc/nginx/sites-available.d/web_skv.conf'
+```
+
+</details>
+
+### перенос keytab-файла в директорию `/etc/nginx`
+
+```bash
+mv -v /tmp/nginx_web.keytab \
+/etc/nginx/
+```
+
+<details>
+<summary>
+вывод при перемещении keytab-файла
+</summary>
+
+```log
+copied '/tmp/nginx_web.keytab' -> '/etc/nginx/nginx_web.keytab'
+removed '/tmp/nginx_web.keytab'
+```
+
+</details>
+
+### Проверка конфига nginx на корректность синтаксиса
+
+```bash
+nginx -t
+```
+
+<details>
+<summary>
+вывод при проверке конфига
+</summary>
+
+```log
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+```
+
+</details>
+
+### Смена владельца keytab-файла на `_nginx:_nginx`
+
+```bash
+chown -v _nginx:_nginx \
+/etc/nginx/nginx_web.keytab
+```
+
+<details>
+<summary>
+вывод при смене владельца keytab-файла
+</summary>
+
+```log
+changed ownership of '/etc/nginx/nginx_web.keytab' from sysadmin:sysadmin to _nginx:_nginx
+```
+
+</details>
+
+### Ограничение прав к keytab-файлу (0440)
+
+```bash
+chmod -v 0440 \
+/etc/nginx/nginx_web.keytab
+```
+
+<details>
+<summary>
+вывод при ограничении прав к keytab-файлу
+</summary>
+
+```log
+mode of '/etc/nginx/nginx_web.keytab' changed from 0600 (rw-------) to 0440 (r--r-----)
+```
+
+</details>
+
+### Запуск nginx
+
+```bash
+systemctl enable --now nginx
+```
+
+### Тест аутентификации Kerberos для сайта
+
+```bash
+curl --negotiate -u : http://web.den.skv/testkrb.html
+```
+
+<details>
+<summary>
+вывод при тесте аутентификации Kerberos
+</summary>
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+</head>
+<body>
+<h1>
+Что-то рабочее с авторизацией по kerberos!
+</h1>
+</body>
+</html>
+```
+
+</details>
+
+![](./img/GIF.gif)
+![](./img/2.png)
 
 ## Для github и gitflic
 
