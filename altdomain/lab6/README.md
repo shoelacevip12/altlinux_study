@@ -756,8 +756,12 @@ curl --negotiate -u : http://web.den.skv/testkrb.html
 
 </details>
 
+---
+
 ![](./img/GIF.gif)
 ![](./img/2.png)
+
+---
 
 ## Для github и gitflic
 
@@ -791,6 +795,10 @@ main \
 && git push \
 --set-upstream \
 altlinux_gf \
+main \
+&& git push \
+--set-upstream \
+altlinux_sc \
 main
 
 popd
