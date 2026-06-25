@@ -371,7 +371,7 @@ netsh interface show interface
 
 </details>
 
-#### Прописывам основной и вторичные DNS
+#### Прописываем основной и вторичные DNS
 
 ```shell
 netsh interface ip set dns name="Ethernet" source=static address="192.168.100.11"
@@ -388,7 +388,7 @@ powershell
 # Чистка DNS
 ipconfig /flushdns
 
-# Вывод совпадений вывод об интерфесе по слову DNS
+# Вывод совпадений вывод об интерфейсе по слову DNS
 ipconfig /all | Select-String -Pattern "DNS" -Context 0,1
 ```
 
