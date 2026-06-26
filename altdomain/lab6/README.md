@@ -763,6 +763,912 @@ curl --negotiate -u : http://web.den.skv/testkrb.html
 
 ---
 
+## Настройка SMB-ресурсов на серверах домена
+
+### Ввод altsrv4 в домен
+
+#### Предварительная подготовка
+
+```bash
+# Вход под суперпользователем
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.14 \
+"su -"
+```
+
+#### Отключение IPv6 для altsrv4
+
+```bash
+echo "net.ipv6.conf.all.disable_ipv6 = 1" \
+| tee -a  /etc/sysctl.conf \
+&& sysctl -p
+```
+
+<details>
+<summary>
+Вывод добавленного содержимого /etc/sysctl.conf
+</summary>
+
+```log
+net.ipv6.conf.all.disable_ipv6 = 1
+```
+
+</details>
+
+#### Вывод о состоянии настроек ядра с IPV6
+
+```bash
+sysctl -a \
+| grep "disable_ipv6"
+```
+
+<details>
+<summary>Вывод о состоянии настроек ядра с IPV6</summary>
+
+```log
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.ens19.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+```
+
+</details>
+
+#### Смена DNS на интерфейсе и домен поиска узлу altsrv4
+
+```bash
+cat > /etc/net/ifaces/ens19/resolv.conf<<'EOF'
+nameserver 192.168.100.11
+nameserver 192.168.100.12
+search den.skv
+EOF
+```
+
+#### Перезапуск интерфейса и сетевых служб узлу altsrv4
+
+```bash
+ifdown ens19 \
+; systemctl restart network \
+; ifup ens19
+```
+
+#### Вывод изменений в resolver узла altsrv4
+
+```bash
+resolvconf -l
+```
+
+<details>
+<summary>вывод resolvconf для обновления системы</summary>
+
+```log
+# resolv.conf from ens19
+nameserver 192.168.100.11
+nameserver 192.168.100.12
+search den.skv
+```
+
+</details>
+
+#### Обновление системы и установка пакетов
+
+```bash
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get -y install \
+samba-common \
+samba-client \
+task-auth-ad-sssd \
+bind-utils \
+diag-domain-client \
+qemu-guest-agent
+```
+
+#### Включение PVE агента
+
+```bash
+systemctl enable --now qemu-guest-agent
+```
+
+#### Перезагрузка системы
+
+```bash
+systemctl reboot
+```
+
+#### Ввод в домен altsrv4
+
+```bash
+# Вход под суперпользователем
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.14 \
+"su -"
+```
+
+```bash
+# Переменные для ввода в домен
+host_name="$(hostname)"
+domain=den.skv
+WORKGR=DEN
+_REALM=DEN.SKV
+_DNS_ADM=Administrator
+```
+
+```bash
+mkdir -vp /tmp/.private/root/
+
+sed -i "s/# default_realm = EXAMPLE.COM/ default_realm = "$_REALM"/" \
+/etc/krb5.conf
+
+sed -i 's/realm = true/realm = false/' \
+/etc/krb5.conf
+
+cat /etc/krb5.conf
+
+hostnamectl hostname "$host_name"."$domain" --static
+
+domainname "$domain"
+
+kinit -V "$_DNS_ADM" \
+&& system-auth write \
+ad \
+"$domain" \
+"$host_name" \
+"$WORKGR" \
+&& systemctl reboot
+```
+
+<details>
+<summary>
+Лог входа в домен
+</summary>
+
+```log
+includedir /etc/krb5.conf.d/
+
+[logging]
+# default = FILE:/var/log/krb5libs.log
+# kdc = FILE:/var/log/krb5kdc.log
+# admin_server = FILE:/var/log/kadmind.log
+
+[libdefaults]
+ dns_lookup_kdc = true
+ dns_lookup_realm = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+ rdns = false
+ default_realm = DEN.SKV
+ default_ccache_name = KEYRING:persistent:%{uid}
+
+[realms]
+# EXAMPLE.COM = {
+#  default_domain = example.com
+# }
+
+[domain_realm]
+# .example.com = EXAMPLE.COM
+# example.com = EXAMPLE.COM
+Using default cache: persistent:0:0
+Using principal: Administrator@DEN.SKV
+Password for Administrator@DEN.SKV: 
+Warning: Your password will expire in 27 days on Thu Jul 23 18:39:24 2026
+Authenticated to Kerberos v5
+gensec_gse_client_prepare_ccache: Kinit for ALTSRV4$@den.skv to access ldap/dc1.den.skv failed: Client not found in Kerberos database: NT_STATUS_LOGON_FAILURE
+Using short domain name -- DEN
+Joined 'ALTSRV4' to dns domain 'den.skv'
+Successfully registered hostname with DNS
+```
+
+</details>
+
+### Проверка ввода в домен
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.14 \
+"su -"
+```
+
+```bash
+hostname -f
+
+system-auth status
+
+diag-domain-client
+```
+
+<details>
+<summary>
+Статус проверок
+</summary>
+
+```log
+altsrv4.den.skv
+```
+
+```log
+ad DEN.SKV ALTSRV4 DEN
+```
+
+```log
+[DONE]: Check hostname persistance
+
+[DONE]: Test hostname is FQDN (not short)
+
+[DONE]: System authentication method
+
+[DONE]: Domain system authentication enabled
+
+[DONE]: System policy method
+
+[WARN]: System group policy enabled
+
+[DONE]: Check Kerberos configuration exists
+
+[DONE]: Kerberos credential cache status
+
+[DONE]: Using keyring as kerberos credential cache
+
+[DONE]: Check DNS lookup kerberos KDC status
+
+[DONE]: Check machine crendetial cache is exists
+
+[DONE]: Check machine credentials list in keytab
+
+[DONE]: Check nameserver resolver configuration
+
+[DONE]: Compare krb5 realm and first search domain
+
+[DONE]: Check Samba configuration
+
+[DONE]: Compare samba and krb5 realms
+
+[DONE]: Check Samba domain realm
+
+[DONE]: Check hostname FQDN domainname
+
+[DONE]: Check time synchronization
+
+[DONE]: Time synchronization enabled
+
+[DONE]: Check nameservers availability
+
+[DONE]: Trace Kerberos authentication process
+
+[DONE]: Check domain controllers list
+
+[DONE]: Check Kerberos and LDAP SRV-records
+
+[DONE]: Compare NetBIOS name and hostname
+
+[DONE]: Check common packages
+
+[FAIL]: Check group policy packages
+
+[DONE]: Check SSSD AD packages
+
+[WARN]: Check SSSD Winbind packages
+```
+
+</details>
+
+### Создание SMB-ресурсов на серверах
+
+```bash
+for ip in 4 5; do \
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+Administrator@192.168.100.1$ip \
+"su - -c \
+'mkdir -pv /srv/samba/dfs \
+&& chown -vR Administrator:\"Domain Users\" /srv/samba \
+&& chmod -vR 2775 /srv/samba \
+&& ls -lhd /srv/*'" \
+; done
+```
+
+<details>
+<summary>
+лог создания каталогов
+</summary>
+
+```log
+Warning: Permanently added '192.168.100.14' (ED25519) to the list of known hosts.
+Administrator@192.168.100.14's password: 
+Password: 
+mkdir: created directory '/srv/samba'
+mkdir: created directory '/srv/samba/dfs'
+changed ownership of '/srv/samba/dfs' from root:root to Administrator:Domain Users
+changed ownership of '/srv/samba' from root:root to Administrator:Domain Users
+mode of '/srv/samba' changed from 0755 (rwxr-xr-x) to 2775 (rwxrwsr-x)
+mode of '/srv/samba/dfs' changed from 0755 (rwxr-xr-x) to 2775 (rwxrwsr-x)
+drwxr-xr-x 2 root          root         4.0K Jun  3  2025 /srv/public
+drwxrwsr-x 3 administrator domain users 4.0K Jun 26 01:02 /srv/samba
+drwxrwxrwt 2 root          root         4.0K Jun  3  2025 /srv/share
+Connection to 192.168.100.14 closed.
+Warning: Permanently added '192.168.100.15' (ED25519) to the list of known hosts.
+Administrator@192.168.100.15's password: 
+Password: 
+mkdir: created directory '/srv/samba'
+mkdir: created directory '/srv/samba/dfs'
+changed ownership of '/srv/samba/dfs' from root:root to Administrator:Domain Users
+changed ownership of '/srv/samba' from root:root to Administrator:Domain Users
+mode of '/srv/samba' changed from 0755 (rwxr-xr-x) to 2775 (rwxrwsr-x)
+mode of '/srv/samba/dfs' changed from 0755 (rwxr-xr-x) to 2775 (rwxrwsr-x)
+drwxr-xr-x 2 root          root         4.0K Jun  3  2025 /srv/public
+drwxrwsr-x 3 administrator domain users 4.0K Jun 26 01:02 /srv/samba
+drwxrwxrwt 2 root          root         4.0K Jun  3  2025 /srv/share
+Connection to 192.168.100.15 closed.
+```
+
+</details>
+
+### Бэкап имеющихся рабочих настроек
+
+```bash
+cp -v /etc/samba/smb.conf{,.bak}
+```
+
+<details>
+<summary>
+лог создания каталогов
+</summary>
+
+```log
+'/etc/samba/smb.conf' -> '/etc/samba/smb.conf.bak'
+```
+
+</details>
+
+### чистка конфига от комментариев
+
+```bash
+# /^[[:space:]]*#/d - удаляет строки, начинающиеся с #
+# /^[[:space:]]*$/d - удаляет пустые строки.
+# /^;/d - удаляет строки, начинающиеся с точки с запятой
+sed -i \
+-e '/^[[:space:]]*#/d' \
+-e '/^[[:space:]]*$/d' \
+-e '/^;/d' \
+/etc/samba/smb.conf
+```
+
+### Удаление в `/etc/samba/smb.conf` не используемых ресурсов SMB
+
+```bash
+# Где:
+# /\[homes\]/ - находит начало удаления
+# ,/0775$ - указывает диапазон до строки, закачивающейся 0775
+# /d удалить все строки что совпали по диапазону
+sed -i '/\[homes\]/,/0775$/d' \
+/etc/samba/smb.conf
+```
+
+```bash
+# Вывод файла /etc/samba/smb.conf
+cat !$
+```
+
+<details>
+<summary>
+Конфиг после чистки
+</summary>
+
+```ini
+cat /etc/samba/smb.conf
+[global]
+        security = ads
+        realm = DEN.SKV
+        workgroup = DEN
+        netbios name = ALTSRV4
+        template shell = /bin/bash
+        kerberos method = system keytab
+        wins support = no
+        winbind use default domain = yes
+        winbind enum users = no
+        winbind enum groups = no
+        template homedir = /home/DEN.SKV/%U
+        idmap config * : range = 200000-2000200000
+        idmap config * : backend = sss
+        machine password timeout = 0
+```
+
+</details>
+
+#### Добавление SMB-ресурса в конфигурацию Samba на altsrv4 (Samba-server1)
+
+```bash
+cat >/etc/samba/usershares.conf<<'EOF'
+[dfs]
+        comment = DFS
+        path = /srv/samba/dfs
+        msdfs root = yes
+        writable = yes
+        guest ok = no
+        read list = +'Domain Users' +'Domain Admins'
+        write list = +'Domain Users' +'Domain Admins'
+        browseable = yes
+        create mask = 2770
+        directory mask = 1770
+EOF
+```
+
+#### Добавляем в Общий конфиг `smb.conf` включение режима dfs
+
+```bash
+sed -i '/\[global\]/a\        host msdfs = yes' \
+/etc/samba/smb.conf
+```
+
+#### Добавляем в Общий конфиг smb.conf обращение к файлу с отдельными прописанными сетевыми ресурсами
+
+```bash
+echo "        include = /etc/samba/usershares.conf" \
+| tee -a /etc/samba/smb.conf
+```
+
+#### Проверка конфигурации Samba
+
+```bash
+testparm -s
+```
+
+<details>
+<summary>
+Вывод testparm
+</summary>
+
+```log
+Load smb config files from /etc/samba/smb.conf
+Loaded services file OK.
+Weak crypto is allowed by GnuTLS (e.g. NTLM as a compatibility fallback)
+
+SUGGESTION: You may want to use 'sync machine password to keytab' parameter instead of 'kerberos method'.
+
+Server role: ROLE_DOMAIN_MEMBER
+
+# Global parameters
+[global]
+        kerberos method = system keytab
+        machine password timeout = 0
+        realm = DEN.SKV
+        security = ADS
+        template homedir = /home/DEN.SKV/%U
+        template shell = /bin/bash
+        winbind use default domain = Yes
+        workgroup = DEN
+        idmap config * : range = 200000-2000200000
+        idmap config * : backend = sss
+        include = /etc/samba/usershares.conf
+
+
+[dfs]
+        comment = DFS
+        create mask = 02770
+        directory mask = 01770
+        msdfs root = Yes
+        path = /srv/samba/dfs
+        read list = +'Domain Users' +'Domain Admins'
+        read only = No
+        write list = +'Domain Users' +'Domain Admins'
+```
+
+</details>
+
+#### Вход на altsrv5
+
+```bash
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@altsrv5 \
+"su -"
+```
+
+#### Добавление SMB-ресурса в конфигурацию Samba на altsrv5 (Samba-server2)
+
+### Бэкап имеющихся рабочих настроек на altsrv5
+
+```bash
+cp -v /etc/samba/smb.conf{,.bak}
+```
+
+<details>
+<summary>
+лог создания каталогов
+</summary>
+
+```log
+'/etc/samba/smb.conf' -> '/etc/samba/smb.conf.bak'
+```
+
+</details>
+
+### чистка конфига от комментариев на altsrv5
+
+```bash
+# /^[[:space:]]*#/d - удаляет строки, начинающиеся с #
+# /^[[:space:]]*$/d - удаляет пустые строки.
+# /^;/d - удаляет строки, начинающиеся с точки с запятой
+sed -i \
+-e '/^[[:space:]]*#/d' \
+-e '/^[[:space:]]*$/d' \
+-e '/^;/d' \
+/etc/samba/smb.conf
+```
+
+### Удаление в `/etc/samba/smb.conf` не используемых ресурсов SMB на altsrv5
+
+```bash
+# Где:
+# /\[homes\]/ - находит начало удаления
+# ,/0775$ - указывает диапазон до строки, закачивающейся 0775
+# /d удалить все строки что совпали по диапазону
+sed -i '/\[homes\]/,/0775$/d' \
+/etc/samba/smb.conf
+```
+
+```bash
+# Вывод файла /etc/samba/smb.conf
+cat !$
+```
+
+<details>
+<summary>
+Конфиг после чистки
+</summary>
+
+```ini
+cat /etc/samba/smb.conf
+[global]
+        security = ads
+        realm = DEN.SKV
+        workgroup = DEN
+        netbios name = ALTSRV5
+        template shell = /bin/bash
+        kerberos method = system keytab
+        wins support = no
+        winbind use default domain = yes
+        winbind enum users = no
+        winbind enum groups = no
+        template homedir = /home/DEN.SKV/%U
+        idmap config * : range = 200000-2000200000
+        idmap config * : backend = sss
+        machine password timeout = 0
+```
+
+</details>
+
+#### Добавление SMB-ресурса в конфигурацию Samba на altsrv5(Samba-server2)
+
+```bash
+cat >/etc/samba/usershares.conf<<'EOF'
+[dfs]
+        comment = DFS
+        path = /srv/samba/dfs
+        msdfs root = yes
+        writable = yes
+        guest ok = no
+        read list = +'Domain Users' +'Domain Admins'
+        write list = +'Domain Users' +'Domain Admins'
+        browseable = yes
+        create mask = 2770
+        directory mask = 1770
+EOF
+```
+
+#### Добавляем в Общий конфиг `smb.conf` включение режима dfs на altsrv5
+
+```bash
+sed -i '/\[global\]/a\        host msdfs = yes' \
+/etc/samba/smb.conf
+```
+
+#### Добавляем в Общий конфиг smb.conf обращение к файлу с отдельными прописанными сетевыми ресурсами на altsrv5
+
+```bash
+echo "        include = /etc/samba/usershares.conf" \
+| tee -a /etc/samba/smb.conf
+```
+
+#### Проверка конфигурации Samba на altsrv5
+
+```bash
+testparm -s
+```
+
+<details>
+<summary>
+Вывод testparm
+</summary>
+
+```log
+Load smb config files from /etc/samba/smb.conf
+Loaded services file OK.
+Weak crypto is allowed by GnuTLS (e.g. NTLM as a compatibility fallback)
+
+SUGGESTION: You may want to use 'sync machine password to keytab' parameter instead of 'kerberos method'.
+
+Server role: ROLE_DOMAIN_MEMBER
+
+# Global parameters
+[global]
+        kerberos method = system keytab
+        machine password timeout = 0
+        realm = DEN.SKV
+        security = ADS
+        template homedir = /home/DEN.SKV/%U
+        template shell = /bin/bash
+        winbind use default domain = Yes
+        workgroup = DEN
+        idmap config * : range = 200000-2000200000
+        idmap config * : backend = sss
+        include = /etc/samba/usershares.conf
+
+
+[dfs]
+        comment = DFS
+        create mask = 02770
+        directory mask = 01770
+        msdfs root = Yes
+        path = /srv/samba/dfs
+        read list = +'Domain Users' +'Domain Admins'
+        read only = No
+        write list = +'Domain Users' +'Domain Admins'
+```
+
+</details>
+
+### Настройка общих ссылок DFS на общие ресурсы в сети
+
+```bash
+for ip in 4 5; do \
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+Administrator@192.168.100.1$ip \
+"su - -c \
+'pushd /srv/samba/dfs \
+&& ln -vs msdfs:altsrv4.den.skv\\\dfs,altsrv5.den.skv\\\dfs linkdfs'" \
+; done
+```
+
+<details>
+<summary>
+лог создания ссылок DFS
+</summary>
+
+```log
+Administrator@192.168.100.14's password: 
+Password: 
+/srv/samba/dfs ~
+'linkdfs' -> 'msdfs:altsrv4.den.skv\dfs,altsrv5.den.skv\dfs'
+Connection to 192.168.100.14 closed.
+Administrator@192.168.100.15's password: 
+Password: 
+/srv/samba/dfs ~
+'linkdfs' -> 'msdfs:altsrv4.den.skv\dfs,altsrv5.den.skv\dfs'
+Connection to 192.168.100.15 closed.
+```
+
+</details>
+
+### Запуск службы SMB сервера и службы отображения в сетевом окружении
+
+```bash
+for ip in 4 5; do \
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+Administrator@192.168.100.1$ip \
+"su - -c \
+'systemctl \
+enable --now \
+smb \
+avahi-daemon \
+&& systemctl status smb --no-pager'" \
+; done
+```
+
+<details>
+<summary>
+Статус службы smb
+</summary>
+
+```log
+Administrator@192.168.100.14's password: 
+Password: 
+Synchronizing state of smb.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable smb
+Synchronizing state of avahi-daemon.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable avahi-daemon
+● smb.service - Samba SMB Daemon
+     Loaded: loaded (/usr/lib/systemd/system/smb.service; enabled; preset: disabled)
+     Active: active (running) since Fri 2026-06-26 01:55:46 MSK; 1min 30s ago
+ Invocation: 535875b64a6d453f9da26412b9f1d81d
+       Docs: man:smbd(8)
+             man:samba(7)
+             man:smb.conf(5)
+   Main PID: 4832 (smbd)
+     Status: "smbd: ready to serve connections..."
+      Tasks: 3 (limit: 4677)
+     Memory: 7.5M (peak: 9.1M)
+        CPU: 119ms
+     CGroup: /system.slice/smb.service
+             ├─4832 /usr/sbin/smbd --foreground --no-process-group
+             ├─4835 /usr/sbin/smbd --foreground --no-process-group
+             └─4836 /usr/sbin/smbd --foreground --no-process-group
+
+Jun 26 01:55:46 altsrv4.den.skv systemd[1]: Starting smb.service - Samba SMB Daemon...
+Jun 26 01:55:46 altsrv4.den.skv systemd[1]: Started smb.service - Samba SMB Daemon.
+Connection to 192.168.100.14 closed.
+Administrator@192.168.100.15's password: 
+Password: 
+Synchronizing state of smb.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable smb
+Synchronizing state of avahi-daemon.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable avahi-daemon
+Created symlink '/etc/systemd/system/multi-user.target.wants/smb.service' → '/usr/lib/systemd/system/smb.service'.
+Created symlink '/etc/systemd/system/dbus-org.freedesktop.Avahi.service' → '/usr/lib/systemd/system/avahi-daemon.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/avahi-daemon.service' → '/usr/lib/systemd/system/avahi-daemon.service'.
+Created symlink '/etc/systemd/system/sockets.target.wants/avahi-daemon.socket' → '/usr/lib/systemd/system/avahi-daemon.socket'.
+● smb.service - Samba SMB Daemon
+     Loaded: loaded (/usr/lib/systemd/system/smb.service; enabled; preset: disabled)
+     Active: active (running) since Fri 2026-06-26 01:57:26 MSK; 19ms ago
+ Invocation: 8b861571bd3443908984e8affe7e827f
+       Docs: man:smbd(8)
+             man:samba(7)
+             man:smb.conf(5)
+   Main PID: 4647 (smbd)
+     Status: "smbd: ready to serve connections..."
+      Tasks: 3 (limit: 4677)
+     Memory: 7.2M (peak: 7.5M)
+        CPU: 119ms
+     CGroup: /system.slice/smb.service
+             ├─4647 /usr/sbin/smbd --foreground --no-process-group
+             ├─4652 /usr/sbin/smbd --foreground --no-process-group
+             └─4653 /usr/sbin/smbd --foreground --no-process-group
+
+Jun 26 01:57:26 altsrv5.den.skv systemd[1]: Starting smb.service - Samba SMB Daemon...
+Jun 26 01:57:26 altsrv5.den.skv systemd[1]: Started smb.service - Samba SMB Daemon.
+Connection to 192.168.100.15 closed.
+```
+
+</details>
+
+```bash
+smbclient //altsrv4/dfs \
+-k \
+-c 'ls'
+smbclient //altsrv5/dfs \
+-k \
+-c 'ls'
+
+smbclient //den.skv/dfs \
+-k \
+-c 'ls'
+```
+
+### Проверка ресурсов серверов smb
+
+```bash
+for ip in 4 5; do \
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+samba_u3@192.168.100.1$ip \
+"smbclient -L altsrv4 -k \
+&& smbclient -L altsrv5 -k \
+&& smbclient -L den.skv -k" \
+; done
+```
+
+<details>
+<summary>
+Результаты проверки ресурсов серверов smb
+</summary>
+
+```log
+samba_u3@192.168.100.14's password: 
+WARNING: The option -k|--kerberos is deprecated!
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        dfs             Disk      DFS
+        IPC$            IPC       IPC Service (Samba 4.21.9-alt3.p11.1)
+SMB1 disabled -- no workgroup available
+WARNING: The option -k|--kerberos is deprecated!
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        dfs             Disk      DFS
+        IPC$            IPC       IPC Service (Samba 4.21.9-alt3.p11.1)
+SMB1 disabled -- no workgroup available
+Connection to 192.168.100.14 closed.
+samba_u3@192.168.100.15's password: 
+WARNING: The option -k|--kerberos is deprecated!
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        dfs             Disk      DFS
+        IPC$            IPC       IPC Service (Samba 4.21.9-alt3.p11.1)
+SMB1 disabled -- no workgroup available
+WARNING: The option -k|--kerberos is deprecated!
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        dfs             Disk      DFS
+        IPC$            IPC       IPC Service (Samba 4.21.9-alt3.p11.1)
+SMB1 disabled -- no workgroup available
+Connection to 192.168.100.15 closed.
+```
+
+</details>
+
+## Выполнение работы на домен контроллере
+
+### Вход на домен контроллер
+
+```bash
+ssh -t \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su -"
+```
+
+### Получение билета kerberos для администратора
+
+```bash
+kinit -V Administrator
+```
+
+<details>
+<summary>
+вывод kinit
+</summary>
+
+```log
+Using default cache: /tmp/krb5cc_0
+Using principal: Administrator@DEN.SKV
+Password for Administrator@DEN.SKV: 
+Warning: Your password will expire in 27 days on Thu Jul 23 18:39:24 2026
+Authenticated to Kerberos v5
+```
+
+</details>
+
+### Добавление SPN под DFS-сервера для домена den.skv
+
+```bash
+samba-tool spn add cifs/den.skv altsrv4$
+
+samba-tool spn list altsrv4$
+```
+
+<details>
+<summary>
+вывод samba-tool spn list altsrv4$
+</summary>
+
+```log
+altsrv4$
+User CN=ALTSRV4,CN=Computers,DC=den,DC=skv has the following servicePrincipalName: 
+         HOST/ALTSRV4.den.skv
+         RestrictedKrbHost/ALTSRV4.den.skv
+         HOST/ALTSRV4
+         RestrictedKrbHost/ALTSRV4
+         cifs/den.skv
+```
+
+</details>
+
 ## Для github и gitflic
 
 ```bash

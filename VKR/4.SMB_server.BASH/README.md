@@ -11,6 +11,7 @@ eval $(ssh-agent) \
 && ssh-add  \
 ~/.ssh/id_skv_VKR_vpn
 ```
+
 ```bash
 # вход на bastion хост по ключу по ssh
 > ~/.ssh/known_hosts \
@@ -18,6 +19,7 @@ eval $(ssh-agent) \
 sysadmin@172.16.100.2 \
 "su -"
 ```
+
 ```bash
 # Вход на altsrv1 по новому Ip
 ssh -t \
@@ -27,6 +29,7 @@ ssh -t \
 sysadmin@192.168.100.254 \
 "su -"
 ```
+
 ```bash
 # Вход на altsrv2(AD1) по новому Ip
 ssh -t \
@@ -36,6 +39,7 @@ ssh -t \
 sysadmin@192.168.100.253 \
 "su -"
 ```
+
 ```bash
 # Вход на altsrv3(AD2) по новому Ip
 ssh -t \
@@ -45,6 +49,7 @@ ssh -t \
 sysadmin@192.168.100.252 \
 "su -"
 ```
+
 ```bash
 # Вход на altsrv4 по новому Ip
 ssh -t \
@@ -54,6 +59,7 @@ ssh -t \
 sysadmin@192.168.100.251 \
 "su -"
 ```
+
 ```bash
 # Вывод у dhcp сервера об аренде ip на примере у хоста altwks2
 ssh -t \
@@ -65,9 +71,11 @@ sysadmin@192.168.100.253 \
 "grep -B10 altwks2 \
 /var/lib/dhcp/dhcpd/state/dhcpd.leases" | grep lease'
 ```
+
 # `SMB.BASH`
 ## Подготовка SMB сервера
 ### Проброс ключа
+
 ```bash
 cat ~/.ssh/id_skv_VKR_vpn.pub \
 | ssh -J sysadmin@172.16.100.2 \
@@ -101,51 +109,66 @@ ssh -t \
 sysadmin@192.168.100.14 \
 "su -"
 ```
+
 ### Смен имени
+
 ```bash
 hostnamectl \
 set-hostname \
 altsrv4.den.skv
 ```
+
 ### Устанавливаем имя NIS-домена
+
 ```bash
 domainname den.skv
 ```
+
 ### Смена статического IP
+
 ```bash
 # Удаление временных конфигов интерфейса
 rm -fv /etc/net/ifaces/ens19/{options~,ipv4route~,ipv4address~}
 ```
+
 ```log
 removed '/etc/net/ifaces/ens19/options~'
 removed '/etc/net/ifaces/ens19/ipv4address~'
 ```
+
 ```bash
 # Смен IP адреса
 sed -i 's/.14/.251/' \
 /etc/net/ifaces/ens19/ipv4address
 ```
+
 ### Отключение IPV6
+
 ```bash
 echo "net.ipv6.conf.all.disable_ipv6 = 1" \
 | tee -a  /etc/sysctl.conf \
 && sysctl -p
 ```
+
 ```log
 net.ipv6.conf.all.disable_ipv6 = 1
 ```
+
 ```bash
 # Вывод о состоянии настроек ядра с IPV6
 sysctl -a \
 | grep "disable_ipv6"
 ```
+
 ```log
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.ens19.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 ```
+
 ### Настройка DNS под внутренние сервера DNS
+
 ```bash
 # nameserver 192.168.100.252\253 уже поднятые основной и дополнительный DNS сервера
 # options rotate - попеременное обращение к DNS, а не по списку
@@ -156,10 +179,13 @@ search den.skv
 options rotate
 EOF
 ```
+
 ### Вывод информации об интерфейсе
+
 ```bash
 find /etc/net/ifaces/ens19/
 ```
+
 ```log
 /etc/net/ifaces/ens19/
 /etc/net/ifaces/ens19/ipv4route
@@ -167,6 +193,7 @@ find /etc/net/ifaces/ens19/
 /etc/net/ifaces/ens19/resolv.conf
 /etc/net/ifaces/ens19/ipv4address
 ```
+
 ```bash
 cat /etc/net/ifaces/ens19/*
 ```
@@ -216,15 +243,19 @@ sysadmin@192.168.100.251 \
 
 hostname
 ```
+
 ```log
 altsrv4.den.skv
 ```
+
 ```bash
 hostname -i
 ```
+
 ```log
 192.168.100.251
 ```
+
 ```bash
 ping ya.ru -c2
 ```
@@ -245,6 +276,7 @@ rtt min/avg/max/mdev = 13.058/13.147/13.237/0.089 ms
 </details>
 
 ## Установка пакетов SMB сервер
+
 ```bash
 # Обновляем систему и Устанавливаем пакеты для SMB и chrony
 apt-get update \
@@ -257,8 +289,10 @@ samba-client \
 task-auth-ad-sssd \
 chrony
 ```
+
 ## Ввод в домен
 ### Проверка настроек DNS
+
 ```bash
 resolvconf -l
 ```
@@ -277,6 +311,7 @@ options rotate
 </details>
 
 ### Настраиваем синхронизацию под сервера времени Домена
+
 ```bash
 # вывод конфига клиента
 cat > /etc/chrony.conf <<'EOF'
@@ -290,14 +325,17 @@ server 192.168.100.252 iburst
 # pool 192.168.100.1 iburst
 EOF
 ```
+
 ```bash
 # Запуск служб NTP
 systemctl enable --now \
 chronyd.service
 ```
+
 ```log
 Executing: /lib/systemd/systemd-sysv-install enable chronyd
 ```
+
 ```bash
 # Запуск ручной синхронизации времени
 systemctl restart \
@@ -354,6 +392,7 @@ MS Name/IP address         Stratum Poll Reach LastRx Last sample
 </details>
 
 ### Ввод в домен через командную строку 
+
 ```bash
 # altsrv4 имя вводимого хоста
 ## smaba_u1 имеет права "Domain Admins"
@@ -378,24 +417,31 @@ DNS update failed!
 </details>
 
 ### Проверка подсоединенного узла
+
 ```bash
 net ads testjoin
 ```
+
 ```log
 Join is OK
 ```
+
 ```bash
 host altsrv4
 ```
+
 ```log
 altsrv4.den.skv has address 192.168.100.251
 ```
+
 ```bash
 host 192.168.100.251
 ```
+
 ```log
 251.100.168.192.in-addr.arpa domain name pointer altsrv4.den.skv.
 ```
+
 ```bash
 ls -lhd /etc/krb5*
 ```
@@ -443,13 +489,16 @@ default_realm = DEN.SKV
 </details>
 
 ## Изменение конфига SMB
+
 ```bash
 # Бэкап имеющихся рабочих настроек
 cp -v /etc/samba/smb.conf{,.bak}
 ```
+
 ```log
 '/etc/samba/smb.conf' -> '/etc/samba/smb.conf.bak'
 ```
+
 ```bash
 # чистка конфига от комментариев
 # /^[[:space:]]*#/d - удаляет строки, начинающиеся с #
@@ -461,6 +510,7 @@ sed -i \
 -e '/^;/d' \
 /etc/samba/smb.conf
 ```
+
 ```bash
 # Удаление в /etc/samba/smb.conf не используемых ресурсов SMB
 # Где:
@@ -470,10 +520,12 @@ sed -i \
 sed -i '/\[homes\]/,/0775$/d' \
 /etc/samba/smb.conf
 ```
+
 ```bash
 # Вывод файла /etc/samba/smb.conf
 cat !$
 ```
+
 <details>
 <summary>Конфиг после чистки</summary>
 
@@ -499,81 +551,101 @@ cat > /etc/samba/smb.conf
 </details>
 
 ## Подготовка ресурсов для сетевого обмена
+
 ```bash
 # Создание каталогов для
 mkdir -v /srv/{smb_work,smb_NOTadmins,trash,smb_spec_GR1}
 ```
+
 ```log
 mkdir: created directory '/srv/smb_work'
 mkdir: created directory '/srv/smb_NOTadmins'
 mkdir: created directory '/srv/trash'
 mkdir: created directory '/srv/smb_spec_GR1'
 ```
+
 ### ВЫставление Владельцев папок и предварительный доступ
+
 ```bash
 chown -v Administrator:"Domain Users" \
 /srv/trash
 ```
+
 ```
 changed ownership of '/srv/trash' from root:root to Administrator:Domain Users
 ```
+
 ```bash
 # Заранее проставляем права доступа для каталога /srv/trash
 chmod -v \
 2775 \
 /srv/trash
 ```
+
 ```log
 mode of '/srv/trash' changed from 0755 (rwxr-xr-x) to 2775 (rwxrwsr-x)
 ```
+
 ```bash
 chown -v Administrator:"Domain Admins" \
 /srv/smb_NOTadmins
 ```
+
 ```
 changed ownership of '/srv/smb_NOTadmins' from root:root to Administrator:Domain Admins
 ```
+
 ```bash
 # Заранее проставляем права доступа для каталога /srv/smb_NOTadmins
 chmod -v \
 2770 \
 /srv/smb_NOTadmins
 ```
+
 ```log
 mode of '/srv/smb_NOTadmins' changed from 0755 (rwxr-xr-x) to 2770 (rwxrws---)
 ```
+
 ```bash
 chown -v Administrator:"Domain Users" \
 /srv/smb_work
 ```
+
 ```
 changed ownership of '/srv/smb_work' from root:root to Administrator:Domain Users
 ```
+
 ```bash
 # Заранее проставляем права доступа для каталога /srv/smb_work
 chmod -v \
 2770 \
 /srv/smb_work
 ```
+
 ```log
 mode of '/srv/smb_work' changed from 0755 (rwxr-xr-x) to 2770 (rwxrws---)
 ```
+
 ```bash
 chown -v Administrator:'Вымышленные_герои' \
 /srv/smb_spec_GR1
 ```
+
 ```
 changed ownership of '/srv/smb_spec_GR1' from root:root to Administrator:Вымышленные_герои
 ```
+
 ```bash
 # Заранее проставляем права доступа для каталога /srv/smb_spec_GR1
 chmod -v \
 2770 \
 /srv/smb_spec_GR1
 ```
+
 ```log
 mode of '/srv/smb_spec_GR1' changed from 0755 (rwxr-xr-x) to 2770 (rwxrws---)
 ```
+
 ```bash
 # Вывод выставленных прав доступа на созданные каталоги
 ls -lhd /srv/*
@@ -594,6 +666,7 @@ drwxrwsr-x 2 administrator domain users      4.0K Apr  6 17:44 /srv/trash
 </details>
 
 ### Формируем конфиг сетевых ресурсов
+
 ```bash
 cat >/etc/samba/usershares.conf<<'EOF'
 [trash]
@@ -638,16 +711,19 @@ cat >/etc/samba/usershares.conf<<'EOF'
         directory mask = 1770
 EOF
 ```
+
 ```bash
 # Добавляем в Общий конфиг /etc/samba/smb.conf обращение к файлу с отдельными прописанными сетевыми ресурсами
 echo "        include = /etc/samba/usershares.conf" \
 | tee -a /etc/samba/smb.conf
 ```
+
 ```log
         include = /etc/samba/usershares.conf
 ```
 
 ### Проверка настроек /etc/samba/smb.conf
+
 ```bash
 testparm -s
 ```
@@ -723,12 +799,14 @@ Server role: ROLE_DOMAIN_MEMBER
 </details>
 
 ## Запуск службы SMB сервера и службы отображения в сетевом окружении
+
 ```bash
 systemctl \
 enable --now \
 smb \
 avahi-daemon
 ```
+
 ```log
 Synchronizing state of smb.service with SysV service script with /lib/systemd/systemd-sysv-install.
 Executing: /lib/systemd/systemd-sysv-install enable smb
@@ -736,10 +814,13 @@ Synchronizing state of avahi-daemon.service with SysV service script with /lib/s
 Executing: /lib/systemd/systemd-sysv-install enable avahi-daemon
 Created symlink /etc/systemd/system/multi-user.target.wants/smb.service → /lib/systemd/system/smb.service.
 ```
+
 ## Вывод журнала о запуске службы
+
 ```bash
 journalctl -efu smb
 ```
+
 <details>
 <summary>Первый запуск SMB</summary>
 
@@ -755,12 +836,14 @@ Apr 06 18:05:40 altsrv4.den.skv systemd[1]: Started Samba SMB Daemon.
 </details>
 
 ## Проверки доступа к сетевым папкам из-под компьютера в домене
+
 ```bash
 # Включаем агента в текущей оснастке и прописываем в базу агента созданные и переправленные ключи
 eval $(ssh-agent) \
 && ssh-add  \
 ~/.ssh/id_skv_VKR_vpn
 ```
+
 ```bash
 # Вход на altwks2 под пользователем с правами 'User Domain'
 ssh \
@@ -787,6 +870,7 @@ Last login: Sat Apr  4 22:55:54 2026 from 192.168.100.1
 </details>
 
 ### Проверка прав в домене
+
 ```bash
 id
 ```
@@ -801,6 +885,7 @@ uid=815801105(smaba_u3) gid=815800513(domain users) группы=815800513(domai
 </details>
 
 ### Вывод доступных ресурсов для пользователя smaba_u3
+
 ```bash
 smbclient -L altsrv4 \
 -k
@@ -824,11 +909,13 @@ SMB1 disabled -- no workgroup available
 </details>
 
 ### Доступ до неотображаемого ресурса для пользователя smaba_u3
+
 ```bash
 smbclient //altsrv4/IT \
 -k \
 -c 'ls'
 ```
+
 ```log
 WARNING: The option -k|--kerberos is deprecated!
 NT_STATUS_ACCESS_DENIED listing \*
@@ -881,6 +968,7 @@ SMB1 disabled -- no workgroup available
 </details>
 
 ### Попытка входа под разными пользователями на не отображаемый ресурс IT
+
 ```bash
 # Скрипт входа в каталог IT под разными пользователями
 for p in {1..3}; do \
