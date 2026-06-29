@@ -446,7 +446,6 @@ MS Name/IP address         Stratum Poll Reach LastRx Last sample
 
 </details>
 
-
 ### Развертывание bind
 
 #### Отключение bind-chroot и подготовка в /etc/sysconfig/bind
@@ -476,7 +475,8 @@ KRB5RCACHETYPE=\"none\"
 EOF'"
 ```
 
-#### Включение samba плагина для Bind 
+#### Включение samba плагина для Bind
+
 ```bash
 ssh -t \
 -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
@@ -498,6 +498,7 @@ EOF'"
 ```
 
 #### Настройки bind под локальный сервер
+
 ```bash
 ssh -t \
 -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
@@ -1654,6 +1655,7 @@ EOT'"
 ```
 
 #### Создание timer systemd Для отслеживания синхронизации sysvol
+
 ```bash
 for ip in {11,12}; do \
 ssh -t \
@@ -1676,8 +1678,8 @@ WantedBy=timers.target
 EOF'" ; done
 ```
 
-
 # One-shot служба запускаемая таймером на dc1
+
 ```bash
 ssh -t \
 -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
@@ -1702,6 +1704,7 @@ EOF'"
 ```
 
 # One-shot служба запускаемая таймером dc2
+
 ```bash
 ssh -t \
 -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
@@ -1726,6 +1729,7 @@ EOF'"
 ```
 
 ### Запуск созданного таймера синхронизации
+
 ```bash
 for ip in {11,12}; do \
 ssh -t \
@@ -1744,6 +1748,7 @@ sysadmin@192.168.100."$ip" \
 ![](./img/8.png)
 
 ### Для github и gitflic
+
 ```bash
 exit
 
@@ -1778,7 +1783,6 @@ main
 
 popd
 ```
-
 
 <details>
 <summary>xxxx</summary>

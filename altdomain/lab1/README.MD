@@ -3,6 +3,7 @@
 ![](../alt_domain.png)
 
 ## Памятка входа
+
 ```bash
 # вход на bastion хост по ключу по ssh
 eval $(ssh-agent) \
@@ -14,7 +15,9 @@ eval $(ssh-agent) \
 sysadmin@172.16.100.2 \
 "su -"
 ```
+
 ### SSH обмен ключами (проброс ключа до dc1 через altwks1)
+
 ```bash
 # Копируем пару ключей на промежуточный хост altwks1
 > ~/.ssh/known_hosts \
@@ -66,6 +69,7 @@ Connection to 172.16.100.2 closed.
 </details>
 
 ### Проверка входа
+
 ```bash
 ssh -t \
 -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
@@ -102,6 +106,7 @@ Connection to 192.168.100.11 closed.
 </details>
 
 ## Работа по развертыванию домена
+
 ```bash
 ssh -t \
 -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
@@ -110,7 +115,9 @@ ssh -t \
 sysadmin@192.168.100.11 \
 "su -"
 ```
+
 ### Смена имени под fqdn
+
 ```bash
 hostnamectl \
 set-hostname \
@@ -118,6 +125,7 @@ dc1.den.skv
 ```
 
 ### Устанавливаем имя NIS-домена
+
 ```bash
 domainname den.skv
 ```
@@ -135,6 +143,7 @@ EOF
 ```
 
 #### Вывод информации об интерфейсе
+
 ```bash
 cat /etc/net/ifaces/ens19/*
 ```
@@ -161,12 +170,15 @@ search den.skv
 </details>
 
 ### Отключение IPV6
+
 ```bash
 echo "net.ipv6.conf.all.disable_ipv6 = 1" \
 | tee -a  /etc/sysctl.conf \
 && sysctl -p
 ```
+
 #### Вывод о состоянии настроек ядра с IPV6
+
 ```bash
 
 sysctl -a \
@@ -186,6 +198,7 @@ net.ipv6.conf.lo.disable_ipv6 = 1
 </details>
 
 ### Выключение и включения интерфейса
+
 ```bash
 ifdown ens19 \
 ; ifup ens19 \
@@ -193,6 +206,7 @@ ifdown ens19 \
 ```
 
 ### Проверка связи с WAN
+
 ```bash
 ping ya.ru -c2
 ```
@@ -213,6 +227,7 @@ rtt min/avg/max/mdev = 13.633/13.685/13.737/0.052 ms
 </details>
 
 ### Подготовка и Установка необходимых пакетов для SAMBA-DC
+
 ```bash
 # Если присутствую останавливаем конфликтующие службы
 systemctl stop \
@@ -254,6 +269,7 @@ removed directory '/var/cache/samba'
 </details>
 
 ### создание каталога Sysvol для работы Домена
+
 ```bash
 mkdir -pv \
 /var/lib/samba/sysvol
@@ -270,11 +286,13 @@ mkdir: created directory '/var/lib/samba/sysvol'
 </details>
 
 ### перевод chrony в режим сервера
+
 ```bash
 control chrony server
 ```
 
 ## Настройка сервера времени Со стороны основного домен контроллера
+
 ```bash
 # Бэкап конфигурации
 cp /etc/chrony.conf{,.bak}
@@ -360,13 +378,16 @@ MS Name/IP address         Stratum Poll Reach LastRx Last sample
 # Проверка открытого порта для клиентов
 ss -ulnp | grep :123
 ```
+
 ```log
 UNCONN 0      0            0.0.0.0:123        0.0.0.0:*    users:(("chronyd",pid=1613,fd=6))
 ```
+
 ```bash
 # настройки NTP на вычислительном узле 
 cat /etc/chrony.conf
 ```
+
 ```log
 server ntp3.vniiftri.ru iburst
 driftfile /var/lib/chrony/drift
@@ -381,6 +402,7 @@ logdir /var/log/chrony
 ![](./img/3.png)
 
 ### Смена редакции лиценирования с edition_server на edition_domain
+
 ```bash
 alteratorctl editions set edition_domain
 ```
@@ -405,11 +427,13 @@ nameserver 127.0.0.1
 search den.skv
 EOF
 ```
+
 ```bash
 resolvconf -u
 ```
 
 ## Создание основного домен контроллера с командной строки
+
 ```bash
 # –realm задает область Kerberos (LDAP), и DNS имени домена;
 # –domain задает имя домена (имя рабочей группы);
@@ -604,6 +628,7 @@ cat /etc/samba/smb.conf
 </details>
 
 ## Запуск/автозапуск служб Домена
+
 ```bash
 systemctl enable \
 --now samba
@@ -612,6 +637,7 @@ systemctl enable \
 ![](./img/4.png)
 
 ### Выставляем обновление записей dns 720 с интервалом обновления 30 дней
+
 ```bash
 # --refreshinterval выставляем в часах
 samba-tool dns \
@@ -634,6 +660,7 @@ Set RefreshInterval to 720
 </details>
 
 ### Создание обратной(PTR) зоны для всей сети `192.168.100.0/24`
+
 ```bash
 samba-tool dns \
 zonecreate \
@@ -641,6 +668,7 @@ dc1.den.skv \
 100.168.192.in-addr.arpa \
 -U administrator
 ```
+
 <details>
 <summary>Создание зоны</summary>
 
@@ -651,6 +679,7 @@ Zone 100.168.192.in-addr.arpa created successfully
 </details>
 
 ### Добавление записи типа PTR для обратной зоны 192.168.0.0/24 самого домен контролера
+
 ```bash
 samba-tool dns \
 add \
@@ -660,6 +689,7 @@ dc1.den.skv \
 dc1.den.skv \
 -U administrator
 ```
+
 <details>
 <summary>Создание обратной записи на сам dc1 </summary>
 
@@ -670,6 +700,7 @@ Record added successfully
 </details>
 
 ### Вывод информации о созданной зоне
+
 ```bash
 samba-tool dns \
 zoneinfo \
@@ -723,6 +754,7 @@ Password for [DEN\administrator]:
 </details>
 
 ## Проверка поднятого домена
+
 ```bash
 # Перезапуск
 systemctl \
@@ -836,6 +868,7 @@ DC netbios name  : DC1
 Server site      : Default-First-Site-Name
 Client site      : Default-First-Site-Name
 ```
+
 </details>
 
 ```bash
@@ -1001,6 +1034,7 @@ dc1.den.skv has address 192.168.100.11
 # Резолв хоста по PTR записи
 host 192.168.100.11
 ```
+
 <details>
 <summary>PTR Запись на адрес хоста</summary>
 
@@ -1045,6 +1079,7 @@ _kerberos._udp.den.skv has SRV record 0 100 88 dc1.den.skv.
 # Резолв записи Службы ldap в домене den.skv
 host -t SRV _ldap._tcp.den.skv
 ```
+
 <details>
 <summary>SRV Запись на службу ldap</summary>
 
@@ -1055,6 +1090,7 @@ _ldap._tcp.den.skv has SRV record 0 100 389 dc1.den.skv.
 </details>
 
 ### Локальная Проверка работы Kerberos
+
 ```bash
 # backup стандартного конфига /etc/krb5.conf
 cp /etc/krb5.conf{,.bak}
@@ -1107,10 +1143,12 @@ klist: No credentials cache found (filename: /tmp/krb5cc_1000)
 # удаление имеющихся ключей kerberos (если есть)
 kdestroy
 ```
+
 ```bash
-# Получение белета kerberos администратора домена
+# Получение билета kerberos администратора домена
 kinit -V Administrator
 ```
+
 ```log
 Using default cache: /tmp/krb5cc_1000
 Using principal: Administrator@DEN.SKV
@@ -1118,8 +1156,9 @@ Password for Administrator@DEN.SKV:
 Warning: Your password will expire in 41 days on Thu Jul 23 18:39:24 2026
 Authenticated to Kerberos v5
 ```
+
 ```bash
-# Проверка получения белета
+# Проверка получения билета
 klist
 ```
 
@@ -1140,6 +1179,7 @@ Valid starting     Expires            Service principal
 ![](./img/7.png)
 
 ### Для github и gitflic
+
 ```bash
 exit
 

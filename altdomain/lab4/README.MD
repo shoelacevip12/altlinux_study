@@ -141,6 +141,7 @@ eval $(ssh-agent) \
 /home/sysadmin/.ssh/id_alt-domain_2026_host_ed25519
 /home/sysadmin/.ssh/id_alt-domain_2026_host_ed25519.pub
 ```
+
 ```log
 Agent pid 2731
 Identity added: /home/sysadmin/.ssh/id_alt-domain_2026_host_ed25519 (cours_alt-domain)
@@ -148,7 +149,7 @@ Identity added: /home/sysadmin/.ssh/id_alt-domain_2026_host_ed25519 (cours_alt-d
 
 </details>
 
-##### Проброс публичного ключа для доступа под локальной административной УЗ 
+##### Проброс публичного ключа для доступа под локальной административной УЗ
 
 ```bash
 scp ~/.ssh/id_alt-domain_2026_host_ed25519.pub \
@@ -361,7 +362,7 @@ netsh interface show interface
 ```
 
 <details>
-<summary>Список интерфесов</summary>
+<summary>Список интерфейсов</summary>
 
 ```log
 Состояние адм.  Состояние     Тип              Имя интерфейса
@@ -393,7 +394,7 @@ ipconfig /all | Select-String -Pattern "DNS" -Context 0,1
 ```
 
 <details>
-<summary>применение настрок и вывод DNS</summary>
+<summary>применение настроек и вывод DNS</summary>
 
 ```log
 Настройка протокола IP для Windows
@@ -416,13 +417,13 @@ ipconfig /all | Select-String -Pattern "DNS" -Context 0,1
 
 ```shell
 # Запуск powershell
-powershellll
+powershell
 
-# Прописывам перменные логина и пароля Администратора домена
+# Прописываем переменные логина и пароля Администратора домена
 $securePassword = ConvertTo-SecureString "1qaz@WSX" -AsPlainText -Force
 $credential = New-Object System.Management.Automation.PSCredential("DEN\Administrator", $securePassword)
 
-# команда ввода в домен с импользованием перемнных credential
+# команда ввода в домен с использованием переменных credential
 Add-Computer -DomainName "den.skv" -Credential $credential
 
 shutdown.exe /r /t 00
@@ -438,7 +439,6 @@ shutdown.exe /r /t 00
 </details>
 
 ![](./img/1.1.png)
-
 
 ### Altlinux Ввод в Домен
 
@@ -948,7 +948,6 @@ ad DEN.SKV ALTSRV5 DEN
 ```
 
 </details>
-
 
 ### Создание первых пользователей AD
 

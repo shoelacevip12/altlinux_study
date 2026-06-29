@@ -3,6 +3,7 @@
 ![](./img/0.png)
 
 ## Памятка входа
+
 ```bash
 # вход на bastion хост по ключу по ssh
 eval $(ssh-agent) \
@@ -23,11 +24,15 @@ ssh -t \
 sysadmin@192.168.100.11 \
 "su -"
 ```
+
 ## Остановка службы в режиме samba_internal
+
 ```bash
 systemctl stop samba
 ```
+
 ## Чистка конфига `/etc/samba/smb.conf`  и отключение от настроек dns
+
 ```bash
 sed -i '/dns forwarder/d' \
 /etc/samba/smb.conf
@@ -73,17 +78,22 @@ cat /etc/samba/smb.conf
 </details>
 
 ## Установка пакета Bind9
+
 ```bash
 apt-get update \
 && apt-get install -y \
 bind \
 bind-utils
 ```
+
 ## Отключение chroot bind
+
 ```bash
 control bind-chroot disabled
 ```
+
 ### Вывод chroot с каталогом /var/lib/bind/
+
 ```bash
 control bind-chroot
 ```
@@ -98,6 +108,7 @@ disabled
 </details>
 
 ## Изменение настроек `/etc/sysconfig/bind`
+
 ```bash
 # Отключение KRB5RCACHETYPE
 grep -q KRB5RCACHETYPE /etc/sysconfig/bind \
@@ -132,6 +143,7 @@ KRB5RCACHETYPE="none"
 </details>
 
 ## Подключение плагина BIND_DLZ в конфиге `/etc/bind/named.conf`
+
 ```bash
 grep -q 'bind-dns' /etc/bind/named.conf \
 || echo 'include "/var/lib/samba/bind-dns/named.conf";' \
@@ -158,6 +170,7 @@ include "/var/lib/samba/bind-dns/named.conf";
 </details>
 
 ## Формирование настроек `/etc/bind/options.conf`
+
 ```bash
 # бэкап стандартных настроек bind
 cp -v /etc/bind/options.conf{,.bak}
@@ -196,6 +209,7 @@ EOF
 ```
 
 ## Миграция с `Samba_internal` на `bind9_dlz`
+
 ```bash
 samba_upgradedns \
 --dns-backend=BIND9_DLZ
@@ -204,7 +218,7 @@ samba_upgradedns \
 <details>
 <summary>лог миграции</summary>
 
-```
+```log
 Reading domain information
 DNS accounts already exist
 No zone file /var/lib/samba/bind-dns/dns/DEN.SKV.zone (normal)
@@ -219,6 +233,7 @@ Finished upgrading DNS
 </details>
 
 ## Проверка настроек dns после миграции
+
 ```bash
 named-checkconf -p
 ```
@@ -325,10 +340,13 @@ zone "255.in-addr.arpa" {
 </details>
 
 ## ЗАпуск Служб `SAMBA-DC` и `Bind9`
+
 ```bash
 systemctl enable --now samba bind
 ```
-## Провекрка проверка что члужбы включились
+
+## Провекрка проверка что службы включились
+
 ```bash
 systemctl is-active samba bind
 ```
@@ -352,6 +370,7 @@ active
 </details>
 
 ## Диагностика работы Контролера домена 
+
 ```bash
 # Утилитой диагностики
 diag-domain-controller
@@ -511,6 +530,7 @@ _ldap._tcp.den.skv has SRV record 0 100 389 dc1.den.skv.
 
 
 ### Вывод информации о созданной зоне
+
 ```bash
 samba-tool dns \
 zoneinfo \
@@ -566,6 +586,7 @@ Password for [DEN\administrator]:
 ![](./img/3.png)
 
 ### Для github и gitflic
+
 ```bash
 exit
 
