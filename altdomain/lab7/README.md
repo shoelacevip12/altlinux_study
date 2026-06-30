@@ -1,4 +1,4 @@
-# Лабораторная работа 7 «`Интеграция служб в Альт Домен`»
+# Лабораторная работа 7 «`Настройки групповых политик домена`»
 
 ![](./img/0.png)
 
@@ -342,8 +342,6 @@ workstation
 
 #### Копирование файлов по ssh через jump-proxy
 
-
-
 ```bash
 scp -i ~/.ssh/id_alt-domain_2026_host_ed25519 \
 -o StrictHostKeyChecking=accept-new \
@@ -368,12 +366,207 @@ samba_u1@192.168.100.14:/srv/samba/dfs/WindowsTH-KB2693643-x64.msu
 ![](./img/11.png)
 ![](./img/12.png)
 
-#### Установка пакетов
+### Установка пакетов
 
 ![](./img/13.png)
 ![](./img/14.png)
 ![](./img/15.png)
 ![](./img/16.png)
+
+### Пересоздание файла `/etc/sudoers`
+
+#### Вход на Домен контролер с FSMO
+
+```bash
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su -"
+```
+
+#### Создать каталог для копирования и скопировать отредактированный `/etc/sudoers`
+
+```bash
+mkdir -vp \
+/var/lib/samba/sysvol/policy_files/sudoers
+
+cp -v /etc/sudoers \
+/var/lib/samba/sysvol/policy_files/sudoers/
+
+sed -i \
+-e '/^[[:space:]]*#/d' \
+-e '/^[[:space:]]*$/d' \
+/var/lib/samba/sysvol/policy_files/sudoers/sudoers
+
+cat /var/lib/samba/sysvol/policy_files/sudoers/sudoers
+
+chmod -v o+r -R /var/lib/samba/sysvol/policy_files
+```
+
+<details>
+<summary>
+Вывод текущего содержимого файла `/etc/sudoers`
+</summary>
+
+```log
+mkdir: создан каталог '/var/lib/samba/sysvol/policy_files'
+mkdir: создан каталог '/var/lib/samba/sysvol/policy_files/sudoers'
+```
+
+```log
+'/etc/sudoers' -> '/var/lib/samba/sysvol/policy_files/sudoers/sudoers'
+```
+
+```log
+User_Alias      WHEEL_USERS = %wheel
+User_Alias      XGRP_USERS = %xgrp
+Defaults!/usr/sbin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
+Defaults secure_path="/sbin:/usr/sbin:/usr/local/sbin:/bin:/usr/bin:/usr/local/bin"
+Defaults:XGRP_USERS env_keep += "DISPLAY XAUTHORITY"
+@includedir /etc/sudoers.d
+```
+
+```log
+права доступа '/var/lib/samba/sysvol/policy_files' оставлены в виде 0755 (rwxr-xr-x)
+права доступа '/var/lib/samba/sysvol/policy_files/sudoers' оставлены в виде 0755 (rwxr-xr-x)
+права доступа '/var/lib/samba/sysvol/policy_files/sudoers/sudoers' изменены с 0400 (r--------) на 0404 (r-----r--)
+```
+
+</details>
+
+![](./img/17.png)
+
+![](./img/18.png)
+
+![](./img/19.png)
+
+![](./img/20.png)
+
+### Обновление пакетов и Установка пакетов клиентских\диагностических утилит групповых политик для altsrv4
+
+```bash
+apt-get update \
+&& apt-get -y install \
+tree \
+gpupdate \
+gpresult \
+xdg-user-dirs
+```
+
+#### Применение и активация профиля групповых политик в `server`
+
+```bash
+gpupdate-setup \
+write \
+enable \
+server \
+&& systemctl daemon-reload
+```
+
+<details>
+<summary>
+Вывод текущего содержимого файла `/etc/sudoers`
+</summary>
+
+```log
+Warning: The unit file, source configuration file or drop-ins of autofs.service changed on disk. Run 'systemctl daemon-reload' to reload units.
+Created symlink '/etc/systemd/system/multi-user.target.wants/gpupdate-scripts-run.service' → '/usr/lib/systemd/system/gpupdate-scripts-run.service'.
+Created symlink '/etc/systemd/user/default.target.wants/gpupdate-scripts-run-user.service' → '/usr/lib/systemd/user/gpupdate-scripts-run-user.service'.
+Created symlink '/etc/systemd/system/timers.target.wants/gpupdate.timer' → '/usr/lib/systemd/system/gpupdate.timer'.
+Created symlink '/etc/systemd/user/timers.target.wants/gpupdate-user.timer' → '/usr/lib/systemd/user/gpupdate-user.timer'.
+```
+
+</details>
+
+#### Вывод режима групповых политик
+
+```bash
+gpupdate-setup status \
+&& gpupdate-setup active-policy
+```
+
+<details>
+<summary>
+Вывод текущего режима групповых политик
+</summary>
+
+```log
+enabled
+server
+```
+
+</details>
+
+### Обновление таймера обновления групповых политик
+
+#### до применения политик
+
+```bash
+systemctl cat gpupdate.timer
+```
+
+<details>
+<summary>
+Вывод текущего содержимого файла `/etc/systemd/system/gpupdate.timer`
+</summary>
+
+```ini
+# /usr/lib/systemd/system/gpupdate.timer
+[Unit]
+Description = Run gpupdate every hour
+
+[Timer]
+OnStartupSec = 30min
+OnUnitActiveSec = 30min
+
+[Install]
+WantedBy = timers.target
+```
+
+</details>
+
+![](./img/21.png)
+![](./img/22.png)
+![](./img/23.png)
+![](./img/24.png)
+
+#### после применения политик
+
+```bash
+systemctl cat gpupdate.timer
+```
+
+<details>
+<summary>
+Вывод текущего содержимого файла `/etc/systemd/system/gpupdate.timer`
+</summary>
+
+```ini
+# Warning: gpupdate.timer changed on disk, the version systemd has loaded>
+# This output shows the current version of the unit's original fragment a>
+# If fragments or drop-ins were added or removed, they are not properly r>
+# Run 'systemctl daemon-reload' to reload units.
+# /usr/lib/systemd/system/gpupdate.timer
+[Unit]
+Description = Run gpupdate every hour
+
+[Timer]
+OnStartupSec = 30min
+OnUnitActiveSec = 30min
+
+[Install]
+WantedBy = timers.target
+```
+
+</details>
+
+#### Обновление таймера для systemd
+
+```bash
+systemctl daemon-reload
+```
 
 ## Для github и gitflic
 

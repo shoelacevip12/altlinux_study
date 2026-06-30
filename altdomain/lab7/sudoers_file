@@ -1,0 +1,6 @@
+User_Alias      WHEEL_USERS = %wheel
+User_Alias      XGRP_USERS = %xgrp
+Defaults!/usr/sbin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
+Defaults secure_path="/sbin:/usr/sbin:/usr/local/sbin:/bin:/usr/bin:/usr/local/bin"
+Defaults:XGRP_USERS env_keep += "DISPLAY XAUTHORITY"
+@includedir /etc/sudoers.d
