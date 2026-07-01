@@ -165,6 +165,8 @@ sed -i 's/"den.skv";/"den.skv"; "windom.alt";/' \
 /etc/bind/options.conf
 
 cat /etc/bind/options.conf
+
+systemctl restart bind
 ```
 
 dnssec-validation no;
@@ -246,6 +248,7 @@ logging {
 ![](./img/3.png)
 ![](./img/4.png)
 ![](./img/5.png)
+![](./img/6.png)
 
 ## Для github и gitflic
 
