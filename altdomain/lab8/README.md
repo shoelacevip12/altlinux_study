@@ -250,6 +250,120 @@ logging {
 ![](./img/5.png)
 ![](./img/6.png)
 
+### Создание доверительных отношений со стороны Alt домена
+
+#### Вход на домен контролер с пролью FSMO dc2
+
+```bash
+# Хост dc2
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.12 \
+"su -"
+```
+
+#### Через инструментарий samba-tool создание доверительных отношений со стороны Alt домена
+
+```bash
+kinit -V Administrator@WINDOM.ALT
+
+klist
+
+samba-tool domain \
+trust \
+create WINDOM.ALT --type=external --direction=both --create-location=both \
+--use-krb5-ccache=/tmp/krb5cc_0
+```
+
+<details>
+<summary>
+Вывод создания доверительных отношений
+</summary>
+
+```log
+Using default cache: /tmp/krb5cc_0
+Using principal: Administrator@WINDOM.ALT
+Password for Administrator@WINDOM.ALT: 
+Authenticated to Kerberos v5
+```
+
+```log
+Ticket cache: FILE:/tmp/krb5cc_0
+Default principal: Administrator@WINDOM.ALT
+
+Valid starting     Expires            Service principal
+07/01/26 21:41:02  07/02/26 07:41:02  krbtgt/WINDOM.ALT@WINDOM.ALT
+        renew until 07/02/26 21:40:58
+```
+
+```log
+LocalDomain Netbios[DEN] DNS[den.skv] SID[S-1-5-21-1038836548-715763582-646683758]
+RemoteDC Netbios[WINDC] DNS[windc.windom.alt] ServerType[PDC,GC,LDAP,DS,KDC,TIMESERV,CLOSEST,WRITABLE,GOOD_TIMESERV,FULL_SECRET_DOMAIN_6,ADS_WEB_SERVICE,DS_8,DS_9]
+RemoteDomain Netbios[WINDOM] DNS[windom.alt] SID[S-1-5-21-2876154572-1059718147-1896706420]
+Creating remote TDO.
+Remote TDO created.
+Setting supported encryption types on remote TDO.
+Creating local TDO.
+Local TDO created
+Setting supported encryption types on local TDO.
+Validating outgoing trust...
+OK: LocalValidation: DC[\\windc.windom.alt] CONNECTION[WERR_OK] TRUST[WERR_OK] VERIFY_STATUS_RETURNED
+Validating incoming trust...
+OK: RemoteValidation: DC[\\dc2.den.skv] CONNECTION[WERR_OK] TRUST[WERR_OK] VERIFY_STATUS_RETURNED
+Success.
+```
+
+</details>
+
+#### Вывод списка доверительных отношений
+
+```bash
+samba-tool domain \
+trust \
+list
+```
+
+<details>
+<summary>
+Вывод списка доверительных отношений
+</summary>
+
+```log
+Type[External] Transitive[No]  Direction[BOTH]     Name[windom.alt]
+```
+
+</details>
+
+#### Проверка доверительных отношений
+
+```bash
+samba-tool domain \
+trust \
+validate \
+WINDOM.ALT
+```
+
+<details>
+<summary>
+Вывод проверки доверительных отношений
+</summary>
+
+```log
+LocalDomain Netbios[DEN] DNS[den.skv] SID[S-1-5-21-1038836548-715763582-646683758]
+LocalTDO Netbios[WINDOM] DNS[windom.alt] SID[S-1-5-21-2876154572-1059718147-1896706420]
+OK: LocalValidation: DC[\\windc.windom.alt] CONNECTION[WERR_OK] TRUST[WERR_OK] VERIFY_STATUS_RETURNED
+OK: LocalRediscover: DC[\\windc.windom.alt] CONNECTION[WERR_OK]
+RemoteDC Netbios[WINDC] DNS[windc.windom.alt] ServerType[PDC,GC,LDAP,DS,KDC,TIMESERV,CLOSEST,WRITABLE,GOOD_TIMESERV,FULL_SECRET_DOMAIN_6,ADS_WEB_SERVICE,DS_8,DS_9]
+OK: RemoteValidation: DC[\\dc2.den.skv] CONNECTION[WERR_OK] TRUST[WERR_OK] VERIFY_STATUS_RETURNED
+OK: RemoteRediscover: DC[\\dc2.den.skv] CONNECTION[WERR_OK]
+```
+
+</details>
+
+![](./img/7.png)
+
 ## Для github и gitflic
 
 ```bash
