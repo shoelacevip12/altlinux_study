@@ -364,6 +364,200 @@ OK: RemoteRediscover: DC[\\dc2.den.skv] CONNECTION[WERR_OK]
 
 ![](./img/7.png)
 
+### Создание пользователя в домене MS
+
+![](./img/8.png)
+
+### Проверки со стороны пользовательских машин в домене Alt
+
+#### Вход на машину в домене Alt под пользовательской УЗ
+
+```bash
+ssh -t -\
+i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.2 \
+"su -"
+```
+
+#### Присоединение машины в домен через winbind
+
+```bash
+# Обновление системы и установка пакетов
+apt-get update \
+&& update-kernel -y \
+&& apt-get dist-upgrade -y \
+&& apt-get -y install \
+samba-common \
+samba-client \
+task-auth-ad-winbind \
+bind-utils \
+diag-domain-client \
+admx-* \
+tree \
+admc \
+gpui \
+gpupdate \
+alterator-gpupdate \
+gpresult \
+&& admx-msi-setup \
+&& systemctl reboot
+```
+
+```bash
+# Переменные для ввода в домен
+host_name="$(hostname)"
+domain=den.skv
+WORKGR=DEN
+_REALM=DEN.SKV
+_DNS_ADM=Administrator
+
+mkdir -p /tmp/.private/root/
+
+sed -i "s/# default_realm = EXAMPLE.COM/ default_realm = "$_REALM"/" \
+/etc/krb5.conf
+
+sed -i 's/realm = true/realm = false/' \
+/etc/krb5.conf
+
+cat /etc/krb5.conf
+
+hostnamectl hostname "$host_name"."$domain" --static
+
+domainname "$domain"
+
+kinit -V "$_DNS_ADM" \
+&& system-auth write \
+ad \
+"$domain" \
+"$host_name" \
+"$WORKGR" \
+--winbind \
+--gpo \
+&& systemctl reboot
+```
+
+#### Проверка принадлежности и доверия
+
+```bash
+wbinfo --own-domain
+
+wbinfo -n WINDOM\\win_skv_user
+
+wbinfo -i WINDOM\\win_skv_user
+
+wbinfo -a WINDOM\\win_skv_user
+```
+
+<details>
+<summary>
+Вывод принадлежности, доверия и тест авторизации
+</summary>
+
+```log
+DEN
+```
+
+```log
+S-1-5-21-2876154572-1059718147-1896706420-2103 SID_USER (1)
+```
+
+```log
+WINDOM\win_skv_user:*:100002:100009:den skv vla:/home/DEN.SKV/win_skv_user:/bin/bash
+```
+
+```log
+Enter WINDOM.ALT\win_skv_user's password: 
+plaintext password authentication succeeded
+Enter WINDOM.ALT\win_skv_user's password: 
+challenge/response password authentication succeeded
+```
+
+</details>
+
+#### на домен контролере запрос списка пользователей через samba-tool
+
+```bash
+samba-tool user \
+list \
+-H ldap://windc.windom.alt \
+--use-krb5-ccache=/tmp/krb5cc_0
+```
+
+<details>
+<summary>
+Вывод списка пользователей домена MS
+</summary>
+
+```log
+Administrator
+krbtgt
+win_skv_user
+Guest
+```
+
+</details>
+
+### Создание группы пользователей в домене Alt
+
+```bash
+samba-tool group add \
+'Office'
+```
+
+<details>
+<summary>
+Создание группы
+</summary>
+
+```log
+Added group Office
+```
+
+</details>
+
+
+#### Добавление пользователей в группу по SID_USER
+
+```bash
+samba-tool group addmembers \
+'Office' \
+S-1-5-21-2876154572-1059718147-1896706420-2103
+```
+
+<details>
+<summary>
+Добавление пользователей в группу
+</summary>
+
+```log
+Added members to group Office
+```
+
+</details>
+
+#### Вывод участников группы в домене Alt
+
+```bash
+samba-tool group \
+listmembers \
+'Office'
+```
+
+<details>
+<summary>
+Вывод участников группы
+</summary>
+
+```log
+S-1-5-21-2876154572-1059718147-1896706420-2103
+```
+
+</details>
+
+![](./img/10.png)
+
 ## Для github и gitflic
 
 ```bash
