@@ -894,7 +894,7 @@ sysadmin@192.168.100.14 \
 
 ```bash
 # Переменные для ввода в домен
-host_name="$(hostname)"
+host_name="$(hostname -s)"
 domain=den.skv
 WORKGR=DEN
 _REALM=DEN.SKV

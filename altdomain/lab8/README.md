@@ -556,7 +556,158 @@ S-1-5-21-2876154572-1059718147-1896706420-2103
 
 </details>
 
-![](./img/10.png)
+![](./img/11.png)
+
+### Создание SMB ресурса в домене Alt
+
+#### Вход на файловый сервер `altsrv4.den.skv`
+
+```bash
+# Хост altsrv5 (Samba-server1)
+ssh -t \
+-i ~/.ssh/id_alt-domain_2026_host_ed25519 \
+-J sysadmin@172.16.100.2 \
+-o StrictHostKeyChecking=accept-new \
+sysadmin@192.168.100.14 \
+"su -"
+```
+
+#### Создание каталога для общего доступа
+
+```bash
+mkdir -pv /srv/samba/office-data \
+&& chown -vR administrator:office /srv/samba/office-data \
+&& chmod -vR 0775 /srv/samba/office-data
+
+ls -lhd /srv/samba/office-data
+```
+
+<details>
+<summary>
+Лог создания каталога для общего доступа
+</summary>
+
+```log
+mkdir: created directory '/srv/samba/office-data'
+changed ownership of '/srv/samba/office-data' from root:domain users to administrator:office
+mode of '/srv/samba/office-data' changed from 2755 (rwxr-sr-x) to 2775 (rwxrwsr-x)
+drwxrwsr-x 2 administrator office 4.0K Jul  2 00:38 /srv/samba/office-data
+```
+
+</details>
+
+#### Добавление SMB-ресурса в конфигурацию Samba на altsrv4 (Samba-server1)
+
+```bash
+cat >>/etc/samba/usershares.conf<<'EOF'
+
+[office-data]
+        comment = для совместного использования с WINDOM
+        path = /srv/samba/office-data
+        writable = yes
+        guest ok = no
+        read list = +'Office' +'Domain Admins'
+        write list = +'Office' +'Domain Admins'
+        browseable = yes
+        create mask = 0770
+        directory mask = 0770
+EOF
+
+testparm -s | tail
+```
+
+![](./img/12.png)
+
+### на станции введенной по winbind привести к виду
+
+```bash
+cat /etc/samba/smb.conf
+```
+
+<details>
+<summary>
+Вывод конфигурации Samba
+</summary>
+
+```ini
+# See smb.conf.example for a more detailed config file or
+# read the smb.conf manpage.
+# Run 'testparm' to verify the config is correct after
+# you modified it.
+#
+# Note:
+# SMB1 is disabled by default. This means clients without support for SMB2 or
+# SMB3 are no longer able to connect to smbd (by default).
+
+[global]
+        security = ads
+        realm = DEN.SKV
+        workgroup = DEN
+        netbios name = ALTWKS2
+        template shell = /bin/bash
+        kerberos method = system keytab
+        wins support = no
+        winbind use default domain = yes
+        winbind enum users = no
+        winbind enum groups = no
+        template homedir = /home/DEN.SKV/%U
+        winbind refresh tickets = yes
+        winbind offline logon = yes
+
+        idmap config * : range = 3000-9999
+        idmap config * : backend = tdb
+
+        idmap config DEN : range = 10000-19999
+        idmap config DEN : backend = rid
+
+        idmap config WINDOM : range = 20000-29999
+        idmap config WINDOM : backend = rid
+
+        machine password timeout = 0
+;       encrypt passwords = true
+;       dns proxy = no
+;       socket options = TCP_NODELAY
+;       domain master = no
+;       local master = no
+;       preferred master = no
+;       os level = 0
+;       domain logons = no
+;       load printers = no
+;       show add printer wizard = no
+;       printcap name = /dev/null
+;       disable spoolss = yes
+[homes]
+        comment = Home Directories
+        valid users = %S, %D%w%S
+        browseable = no
+        read only = no
+        inherit acls = yes
+
+[printers]
+        comment = All Printers
+        path = /var/tmp
+        printable = yes
+        create mask = 0600
+        browseable = no
+
+[print$]
+        comment = Printer Drivers
+        path = /var/lib/samba/drivers
+        write list = @printadmin root
+        force group = @printadmin
+        create mask = 0664
+        directory mask = 0775
+```
+
+</details>
+
+### перезапуск службы после
+
+```bash
+systemctl restart smb nmb winbind
+```
+
+![](./img/13.png)
 
 ## Для github и gitflic
 
